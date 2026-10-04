@@ -2197,6 +2197,11 @@
           "format": "date",
           "title": "Reviewed At",
           "type": "string"
+        },
+        "local_numeric_only": {
+          "default": false,
+          "title": "Local Numeric Only",
+          "type": "boolean"
         }
       },
       "required": [

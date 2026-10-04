@@ -51,6 +51,7 @@ export function SourceReviewCard({ request, onDecide }: { request: SourceReviewR
       {request.sources.map((source) => <div className="source-review-option" key={source.id}>
         <label><input type="checkbox" checked={selected.includes(source.id!)} onChange={(event) => setSelected((ids) => event.target.checked ? [...ids, source.id!] : ids.filter((id) => id !== source.id))}/>{source.publisher} · {source.url}</label>
         <p>Usage permission: {source.policy} · Rules reviewed {source.reviewed_at} · <a href={source.rights_url} target="_blank" rel="noopener noreferrer">Source usage terms</a></p>
+        {source.local_numeric_only && <p>Private numerical retrieval only. Yahoo history uses the owner-approved experimental local-use exception, not a Yahoo permission grant. Yahoo values and derived content stay out of cloud prompts and shareable exports. Source mapping and numerical checks still apply.</p>}
       </div>)}
       <div className="actions">
         <button type="button" onClick={() => setSelected(request.sources.map((source) => source.id!))}>Select listed sources</button>

@@ -17,7 +17,7 @@ from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
 from backend.app.terms import term_key
 from tests.desktop.financial_fixture import publish_financial_snapshot
-from tests.desktop.market_fixture import market_bundle
+from tests.desktop.test_market_research import service as market_service
 from backend.app.evidence import factual_context
 from backend.app.source_operations import shareable_view
 from tests.desktop.source_review_fixture import backup_during_review, publish_review_snapshot
@@ -43,9 +43,20 @@ def main():
             databases.append(db)
             migrate(db.engine)
         source, target = databases
-        market = market_bundle()
+        async def publish_market():
+            service, instrument, _, prompts = market_service(roots[0] / "synthetic-market", database=source)
+            from backend.app.contracts import ResearchRequest
+            try:
+                job = await service.submit(ResearchRequest(query=instrument.asset.id))
+                await service.tasks[job["id"]]
+                result = source.job(job["id"])
+                assert result["status"] == "completed"
+                assert len(prompts) == 1 and "https://finance.yahoo.com/quote/SYN/" not in prompts[0]
+                return EvidenceBundle.model_validate(result["result"])
+            finally:
+                await service.close()
+        market = asyncio.run(publish_market())
         market_payload = market.model_dump(mode="json")
-        source.put("bundle:" + market.id, "bundle", market_payload, market.asset.id)
         reviewed_job = asyncio.run(publish_review_snapshot(source, roots[0] / "synthetic-source-review"))
         reviewed_ids = {row["id"] for row in source.list("bundle")}
         financial_job = asyncio.run(publish_financial_snapshot(source, roots[0] / "synthetic-research"))
@@ -114,7 +125,7 @@ def main():
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
-        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 10 and summary.saved_reports == 1 and summary.term_explanations == 1
+        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 12 and summary.saved_reports == 1 and summary.term_explanations == 1
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
         assert summary.import_explanations == 1
 

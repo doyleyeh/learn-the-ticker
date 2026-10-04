@@ -141,6 +141,15 @@ if __name__ == "__main__":
         service.adapters, service.verifier = demo.adapters, demo.verifier
         service.identity_resolver, service.financial_adapter = demo.identity_resolver, demo.financial_adapter
         service.filing_adapter, service.clock = demo.filing_adapter, demo.clock
+        from dataclasses import replace
+        from backend.app.market_research import MarketResearch
+        from tests.desktop.market_fixture import market_candidate
+        class PreviewDataStore:
+            def load(self, name):
+                return None
+        async def preview_yahoo(symbol, start, end):
+            return replace(market_candidate(), requested_start=start, requested_end=end), 4
+        service.market_adapter = MarketResearch(service, store_factory=PreviewDataStore, yahoo=preview_yahoo)
     if "--approvals-demo" in sys.argv:
         adapter = PreviewAccessRuntime(asset)
         adapter.approvals = app.state.service.approvals

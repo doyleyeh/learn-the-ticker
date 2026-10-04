@@ -13,6 +13,9 @@ from backend.app.evidence import SourceFetchError, admit_bundle, candidate_metad
 from backend.app.evidence_reuse import conversation_evidence
 from backend.app.figi_identity import IdentityChoiceRequired, RegisteredIdentityResolver
 from backend.app.financial_evidence import attach_financials
+from backend.app.market_evidence import attach_market
+from backend.app.market_research import MarketResearch
+from backend.app.source_operations import PRIVATE_NOTICE
 from backend.app.identity import ResolvedIdentity, identity_hash, normalized
 from backend.app.research_cache import reusable
 from backend.app.runtimes import RuntimeFailure
@@ -55,7 +58,7 @@ def research_prompt(request: ResearchRequest, cached: dict | None, history: list
 
 
 class ResearchService:
-    def __init__(self, db: Database, adapters: dict, workspace: Path, verifier=verify_candidate, identity_resolver=None, financial_adapter=None, filing_adapter=None, clock=now):
+    def __init__(self, db: Database, adapters: dict, workspace: Path, verifier=verify_candidate, identity_resolver=None, financial_adapter=None, filing_adapter=None, market_adapter=None, clock=now):
         self.db, self.adapters, self.workspace, self.verifier = db, adapters, workspace, verifier
         self.clock = clock
         self.identity_resolver = identity_resolver if identity_resolver is not None else RegisteredIdentityResolver()
@@ -68,6 +71,7 @@ class ResearchService:
         self.stop_events: dict[str, threading.Event] = {}
         self.approvals = ApprovalBroker()
         self.source_reviews = SourceReviewBroker()
+        self.market_adapter = market_adapter if market_adapter is not None else MarketResearch(self)
         for adapter in self.adapters.values():
             if isinstance(adapter, AIRuntime):
                 adapter.approvals = self.approvals
@@ -230,9 +234,10 @@ class ResearchService:
         if any(not review.allowed(str(source.url)) for source in bundle.sources if source.verified):
             return
         # Revalidate after stripping notes/candidates; no raw model output is stored.
-        if not bundle.claims and not (bundle.financials and bundle.financials.observations):
+        if not bundle.claims and not (bundle.financials and bundle.financials.observations) and bundle.market is None:
             return
-        permitted = [source for source in bundle.sources if source.verified and source.policy == SourcePolicy.full_text]
+        permitted = [source for source in bundle.sources if source.verified and
+                     (source.policy == SourcePolicy.full_text or (bundle.market and source.id == bundle.market.source_id))]
         value = EvidenceBundle.model_validate({**bundle.model_dump(), "id": uid(), "completion": "section_checkpoint", "notes": [], "sources": permitted})
         self.db.checkpoint_research(job_id, value)
 
@@ -278,6 +283,14 @@ class ResearchService:
             self.require_consent()
             if financial:
                 self.checkpoint(job_id, financial, review)
+            market, market_gap = await self.market_adapter.retrieve(resolved, cancelled, review)
+            self.require_consent()
+            if market:
+                private = attach_market(EvidenceBundle(asset=resolved.asset, identity_verification=resolved.verification,
+                    language=request.language, level=request.level), market,
+                    personal_mode=self.settings().experimental_yahoo_enabled, created_at=self.clock())
+                self.checkpoint(job_id, private, review)
+                prompt += "\nLOCAL-ONLY CONTEXT GAP: " + PRIVATE_NOTICE
             issuer = (ResolvedIdentity(financial.financials.issuer, financial.financials.issuer_verification) if financial
                       else resolved if resolved and resolved.verification.authority == "sec-listings-v1" else None)
             filings = []
@@ -408,7 +421,7 @@ class ResearchService:
                     except (ValueError, OSError):
                         source = candidate_metadata(source)
                 sources.append(source)
-                # At most one narrative checkpoint plus the earlier financial checkpoint.
+                # At most one narrative checkpoint plus issuer/private-market checkpoints.
                 # Later evidence remains in the final immutable version.
                 if not narrative_checkpoint:
                     partial = admit_bundle(asset, [*sources, *filing_sources.values(), *financial_sources.values()], result.claims,
@@ -430,6 +443,12 @@ class ResearchService:
             sources.extend(financial_sources.values())
             bundle = admit_bundle(asset, sources, result.claims, language=request.language, level=request.level, identity_verification=resolved.verification,
                                   created_at=self.clock(), financials=financial.financials if financial else None)
+            if market and self.settings().experimental_yahoo_enabled and review.allowed(market.history.source_url):
+                bundle = attach_market(bundle, market, personal_mode=True, created_at=self.clock())
+            elif market:
+                market_gap = "Private market history awaits source review or renewed personal-mode opt-in."
+            if market_gap:
+                bundle.notes.append(Claim(asset_id=asset.id, section="prices", text=market_gap))
             if not financial and financial_gap:
                 bundle.notes.append(Claim(asset_id=asset.id, section="financials", text=financial_gap))
             if not filings:

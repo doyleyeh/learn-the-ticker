@@ -924,6 +924,7 @@ export type Publisher1 = string;
 export type SourcePolicy1 = "full_text_allowed" | "summary_allowed" | "metadata_only" | "link_only" | "rejected";
 export type RightsUrl = string;
 export type ReviewedAt = string;
+export type LocalNumericOnly = boolean;
 export type ExpiresAt2 = string;
 
 export interface DesktopContracts {
@@ -1412,4 +1413,5 @@ export interface ReviewSource {
   policy: SourcePolicy1;
   rights_url: RightsUrl;
   reviewed_at: ReviewedAt;
+  local_numeric_only?: LocalNumericOnly;
 }

@@ -106,6 +106,7 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
         db.put("settings", "settings", value.model_dump(mode="json"))
         if not value.cloud_enabled:
             await imports.close(online_only=True)
+        if not value.cloud_enabled or (previous.experimental_yahoo_enabled and not value.experimental_yahoo_enabled):
             await service.close()
         return value
 

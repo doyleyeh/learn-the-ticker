@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from backend.app.market_history import MAX_BYTES, MarketDataError, _window, valid_symbol
+from backend.app.market_history import MAX_BYTES, MarketDataError, _json, _window, valid_symbol
 
 TRANSPORT_ERRORS = frozenset({"source_access_denied", "source_rate_limited", "source_unavailable",
     "request_not_allowed", "request_limit", "response_size", "source_redirect", "source_not_found"})
@@ -48,6 +48,37 @@ def fetch_eodhd_prices(symbol, start, end, credential, *, _transport=None):
                     chunks.append(part)
                 return b"".join(chunks)
     except MarketDataError:
+        raise
+    except Exception:
+        raise MarketDataError("source_unavailable") from None
+
+
+def fetch_free_eodhd_prices(symbol, start, end, credential, *, _transport=None, cancelled=None):
+    """Recheck observed free-tier/no-overage scope before a production history call."""
+    valid_symbol(symbol)
+    first, last = _window(start, end)
+    if (last - first).days > 366:
+        raise MarketDataError("invalid_window")
+    try:
+        with httpx.Client(verify=True, trust_env=False, follow_redirects=False, timeout=15, transport=_transport) as client:
+            with client.stream("GET", "https://eodhd.com/api/user", headers={
+                "Authorization": "Bearer " + credential.api_key, "User-Agent": "LearnTheTicker/0.2", "Accept": "application/json"}) as response:
+                error = status_error(response.status_code)
+                if error:
+                    raise MarketDataError(error)
+                raw = bytearray()
+                for part in response.iter_bytes(chunk_size=8192):
+                    raw.extend(part)
+                    if len(raw) > 65536:
+                        raise MarketDataError("response_size")
+        data = _json(bytes(raw))
+        if (not isinstance(data, dict) or any(type(data.get(k)) is not int for k in ("dailyRateLimit", "apiRequests", "extraLimit"))
+                or data["dailyRateLimit"] != 20 or data["extraLimit"] != 0 or not 0 <= data["apiRequests"] <= 18):
+            raise MarketDataError("account_scope_unqualified")
+        if cancelled is not None and cancelled.is_set():
+            raise InterruptedError
+        return fetch_eodhd_prices(symbol, start, end, credential, _transport=_transport)
+    except (MarketDataError, InterruptedError):
         raise
     except Exception:
         raise MarketDataError("source_unavailable") from None

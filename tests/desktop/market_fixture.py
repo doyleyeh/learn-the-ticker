@@ -16,6 +16,11 @@ def market_bundle(*, financials=True):
     else:
         instrument = financial_result().instrument
         base = EvidenceBundle(asset=instrument.asset, identity_verification=instrument.verification, created_at=AT)
+    mapped = map_yahoo_history(market_candidate(), ResolvedIdentity(base.asset, base.identity_verification), at=AT)
+    return attach_market(base, mapped, personal_mode=True, created_at=AT)
+
+
+def market_candidate():
     data = {"chart": {"error": None, "result": [{
         "meta": {"symbol": "SYN", "currency": "USD", "exchangeTimezoneName": "America/New_York",
                  "exchangeName": "NMS", "fullExchangeName": "NasdaqGS", "instrumentType": "EQUITY", "longName": "Synthetic company"},
@@ -26,6 +31,4 @@ def market_bundle(*, financials=True):
                    "splits": {"event": {"date": 1767364200, "numerator": 3, "denominator": 2}}},
     }]}}
     raw = json.dumps(data).encode().replace(b'"amount": 0.5', b'"amount": 0.123456789012345678')
-    history = replace(parse_yahoo_chart(raw, "SYN", "2026-01-01", "2026-01-31"), retrieved_at=AT)
-    mapped = map_yahoo_history(history, ResolvedIdentity(base.asset, base.identity_verification), at=AT)
-    return attach_market(base, mapped, personal_mode=True, created_at=AT)
+    return replace(parse_yahoo_chart(raw, "SYN", "2026-01-01", "2026-01-31"), retrieved_at=AT)

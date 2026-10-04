@@ -24,8 +24,8 @@ def covers_boundaries(candidate, start, end):
 
 
 async def retrieve_history(symbol, start, end, *, credential, eodhd_start,
-                           eodhd_fetch=fetch_eodhd_prices, yahoo_fetch=fetch_yahoo_history):
-    """Developer qualification lane. Primary window must match the known plan.
+                           eodhd_fetch=fetch_eodhd_prices, yahoo_fetch=fetch_yahoo_history, eodhd_fetch_async=None):
+    """Shared candidate retrieval. Primary window must match the known plan.
 
     The caller explicitly selects the symbol pair; independent listing concordance
     is still required before either result can be admitted. No denied/quota request
@@ -39,7 +39,8 @@ async def retrieve_history(symbol, start, end, *, credential, eodhd_start,
     primary, gaps = None, []
     if credential is not None:
         try:
-            raw = eodhd_fetch(symbol + ".US", eodhd_start, end, credential)
+            raw = (await eodhd_fetch_async(symbol + ".US", eodhd_start, end, credential) if eodhd_fetch_async
+                   else eodhd_fetch(symbol + ".US", eodhd_start, end, credential))
             primary = replace(parse_eodhd_prices(raw, symbol + ".US", eodhd_start, end), retrieved_at=datetime.now(timezone.utc))
         except MarketDataError as exc:
             # No equivalent extraction after denial, quota or ambiguous failure.

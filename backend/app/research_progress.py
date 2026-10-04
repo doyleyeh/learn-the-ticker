@@ -7,12 +7,13 @@ def validate_checkpoint(bundle):
     from backend.app.evidence import admit_bundle, validate_claim_sources
     if (bundle.state != "partial" or bundle.notes or not bundle.identity_verification
             or not ResolvedIdentity(bundle.asset, bundle.identity_verification).valid(bundle.created_at)
-            or not (bundle.claims or (bundle.financials and bundle.financials.observations))):
+            or not (bundle.claims or (bundle.financials and bundle.financials.observations) or bundle.market)):
         raise ValueError("Section checkpoints require independently admitted evidence")
+    narrative = [s for s in bundle.sources if not bundle.market or s.id != bundle.market.source_id]
     if any(not source.verified or source.policy != SourcePolicy.full_text
-           or source.provenance not in ("verified_retrieval", "structured_adapter") for source in bundle.sources):
+           or source.provenance not in ("verified_retrieval", "structured_adapter") for source in narrative):
         raise ValueError("Section checkpoints cannot expose candidate sources")
-    admitted = admit_bundle(bundle.asset, bundle.sources, bundle.claims,
+    admitted = admit_bundle(bundle.asset, narrative, bundle.claims,
         identity_verification=bundle.identity_verification, language=bundle.language,
         level=bundle.level, created_at=bundle.created_at, financials=bundle.financials)
     if admitted.claims != bundle.claims or admitted.notes:

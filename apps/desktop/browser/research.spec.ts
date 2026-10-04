@@ -141,7 +141,23 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await expect(review).toHaveCount(0);
     await expect(page.getByText(/This job has stopped. Earlier saved research is unchanged/)).toBeVisible();
   });
-  expect(generation).toHaveLength(3);
+  await test.step("private numerical review discloses scope and remains unchecked at narrow width", async () => {
+    const headers = { Authorization: "Bearer synthetic-preview-credential-not-for-production" };
+    const settings = await (await page.request.get("http://127.0.0.1:18764/api/settings", { headers })).json();
+    const saved = await page.request.put("http://127.0.0.1:18764/api/settings", { headers, data: { ...settings, experimental_yahoo_enabled: true } });
+    expect(saved.ok()).toBe(true);
+    const review = await research(page, "Synthetic private source review");
+    await review.getByRole("button", { name: "Skip these sources" }).click();
+    await expect(review.getByRole("checkbox")).toHaveCount(2);
+    await expect(review.locator("input:checked")).toHaveCount(0);
+    await expect(review.getByText(/Private numerical retrieval only/)).toHaveCount(2);
+    await expect(review.getByRole("checkbox", { name: /finance\.yahoo\.com\/quote\/SYN\/history/ })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+    await review.screenshot({ path: testInfo.outputPath("private-review-narrow.png") });
+    await review.getByRole("button", { name: "Cancel this research" }).click();
+    await expect(page.getByText("Status: cancelled", { exact: true })).toBeVisible();
+  });
+  expect(generation).toHaveLength(4);
   expect(external).toEqual([]);
   expect(failures).toEqual([]);
 });
