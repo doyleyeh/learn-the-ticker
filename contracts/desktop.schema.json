@@ -752,6 +752,27 @@
           "maxItems": 100,
           "title": "Gaps",
           "type": "array"
+        },
+        "ratio_method": {
+          "anyOf": [
+            {
+              "const": "sec-net-income-revenue-v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratio Method"
+        },
+        "ratios": {
+          "items": {
+            "$ref": "#/$defs/FinancialRatio"
+          },
+          "maxItems": 34,
+          "title": "Ratios",
+          "type": "array"
         }
       },
       "required": [
@@ -906,6 +927,103 @@
         "revision"
       ],
       "title": "FinancialObservation",
+      "type": "object"
+    },
+    "FinancialRatio": {
+      "additionalProperties": false,
+      "description": "Retained application calculation, separate from reported observations.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "denominator_concept": {
+          "enum": [
+            "us-gaap:Revenues",
+            "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
+          ],
+          "title": "Denominator Concept",
+          "type": "string"
+        },
+        "start": {
+          "format": "date",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "period": {
+          "enum": [
+            "annual",
+            "quarter"
+          ],
+          "title": "Period",
+          "type": "string"
+        },
+        "input_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 40000,
+          "title": "Input Ids",
+          "type": "array"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "percent": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Percent"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "missing_income",
+                "conflicting_inputs",
+                "ambiguous_inputs",
+                "different_units",
+                "different_filings",
+                "nonpositive_revenue"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "denominator_concept",
+        "start",
+        "end",
+        "period",
+        "input_ids",
+        "source_ids"
+      ],
+      "title": "FinancialRatio",
       "type": "object"
     },
     "IdentityVerification": {

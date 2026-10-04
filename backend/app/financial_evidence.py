@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from backend.app.contracts import EvidenceBundle, FinancialEvidence, FinancialObservation, Source, SourcePolicy, now
 from backend.app.identity import ResolvedIdentity, identity_hash
+from backend.app.financial_ratios import METHOD, ratios_for_financials
 from backend.app.sec_financials import CONCEPTS, ConceptObservations, IssuerObservation, concept_url, default_history, mark_revisions, number_text, observation_id, unit_supported
 from backend.app.source_registry import source_rule
 from backend.app.structured_financials import StructuredFinancials, matching_issuer
@@ -98,6 +99,9 @@ def validate_financials(bundle: EvidenceBundle):
             raise ValueError("Financial history gaps are not disclosed")
     if any(row.provenance == "structured_adapter" and row.id not in used for row in bundle.sources):
         raise ValueError("Structured source has no admitted financial observations")
+    if ((data.ratio_method is None and data.ratios)
+            or (data.ratio_method == METHOD and data.ratios != ratios_for_financials(data))):
+        raise ValueError("Financial ratios differ from their admitted inputs and method")
 
 
 def attach_financials(bundle: EvidenceBundle, result: StructuredFinancials, *, created_at=None) -> EvidenceBundle:
@@ -137,6 +141,8 @@ def attach_financials(bundle: EvidenceBundle, result: StructuredFinancials, *, c
             observations.append(FinancialObservation(**values, source_id=sid))
     data = FinancialEvidence(issuer=result.issuer.asset, issuer_verification=result.issuer.verification,
                              checked_at=result.checked_at, observations=observations, gaps=list(result.gaps))
+    data.ratio_method = METHOD
+    data.ratios = ratios_for_financials(data)
     # Revalidate, rather than model_copy (which bypasses Pydantic validators).
     return EvidenceBundle.model_validate({**bundle.model_dump(), "created_at": created_at,
         "sources": [*bundle.sources, *sources.values()], "financials": data, "state": "partial"})

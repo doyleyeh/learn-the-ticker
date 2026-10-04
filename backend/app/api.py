@@ -378,6 +378,15 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
                           f"filed {row.filed} ({row.form}, {row.accession}); {row.revision}; source {row.source_id}; "
                           f"observation {row.id}; supersedes {', '.join(row.supersedes) or 'none'}."]
             lines += ["", "Availability: " + ", ".join(value.financials.gaps)]
+            if value.financials.ratio_method:
+                from backend.app.financial_ratios import DESCRIPTION
+                lines += ["", "## Calculated issuer statistics", "", DESCRIPTION,
+                          "Method: " + value.financials.ratio_method]
+                for ratio in value.financials.ratios:
+                    result = ratio.percent + "%" if ratio.percent is not None else "Unavailable: " + str(ratio.reason)
+                    lines += [f"\nNet income / {ratio.denominator_concept}: {result}; {ratio.period}; "
+                              f"{ratio.start} through {ratio.end}; inputs {', '.join(ratio.input_ids)}; "
+                              f"sources {', '.join(ratio.source_ids)}."]
         lines += ["", "## Unverified research notes", "", "These notes are not factual evidence."]
         lines += ["\n" + clean(note.text) for note in value.notes]
         lines += ["", "## Sources"]

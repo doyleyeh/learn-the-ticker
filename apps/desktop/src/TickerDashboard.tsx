@@ -4,6 +4,7 @@ import { CitationChip } from "../components/CitationChip";
 import { EvidenceSections, contextSections } from "./EvidenceSections";
 import { FinancialHistory, ObservationCitation } from "./FinancialHistory";
 import { MarketHistory } from "./MarketHistory";
+import { FinancialRatios } from "./FinancialRatios";
 import { privateClaims, privateSource } from "./marketPresentation";
 import { concepts, displayNumber, financialSeries } from "./financialSeries";
 import { sourceRoute } from "./routes";
@@ -85,7 +86,7 @@ export function KeyStatistics({ bundle }: { bundle: EvidenceBundle }) {
         </> : <p className="source-gap-note">Latest period unavailable — conflicting or superseded evidence. Inspect all retained filing versions in Financials.</p>}
         <p className="ticker-meta">Source concept: {value.concept}</p>
       </article>;
-    })}</div>
+    })}</div><FinancialRatios bundle={bundle}/>
   </div>;
 }
 

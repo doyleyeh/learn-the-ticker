@@ -53,6 +53,9 @@ def conversation_evidence(db, asset, history):
         context["claims"] = [claim for claim in context["claims"] if claim["source_ids"] and all(sid in allowed for sid in claim["source_ids"])]
         if "financials" in context:
             context["financials"]["observations"] = [row for row in context["financials"]["observations"] if row["source_id"] in allowed]
+            if "ratios" in context["financials"]:
+                context["financials"]["ratios"] = [row for row in context["financials"]["ratios"]
+                    if row["source_ids"] and all(sid in allowed for sid in row["source_ids"])]
         used = {sid for claim in context["claims"] for sid in claim["source_ids"]}
         used.update(row["source_id"] for row in context.get("financials", {}).get("observations", []))
         if not used and not context.get("context_gaps"):
@@ -64,6 +67,8 @@ def conversation_evidence(db, asset, history):
             claim["source_ids"] = [aliases[sid] for sid in claim["source_ids"]]
         for row in context.get("financials", {}).get("observations", []):
             row["source_id"] = aliases[row["source_id"]]
+        for row in context.get("financials", {}).get("ratios", []):
+            row["source_ids"] = [aliases[sid] for sid in row["source_ids"]]
         size = len(json.dumps(context))
         if size > remaining:
             continue

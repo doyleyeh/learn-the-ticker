@@ -16,7 +16,7 @@ from backend.app.db import Database, Event, Job
 from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
 from backend.app.terms import term_key
-from tests.desktop.financial_fixture import publish_financial_snapshot
+from tests.desktop.financial_fixture import publish_financial_snapshot, financial_ui_bundle
 from tests.desktop.test_market_research import service as market_service
 from backend.app.evidence import factual_context
 from backend.app.source_operations import shareable_view
@@ -72,6 +72,10 @@ def main():
         source.put("conversation:" + cited_chat.id, "conversation", cited_chat.model_dump(mode="json"))
         original_context, _ = conversation_evidence(source, financial.asset, cited_chat.model_dump(mode="json")["messages"])
         assert original_context and original_context[0]["claims"] and original_context[0]["sources"]
+        ratio_bundle = financial_ui_bundle()
+        ratio_payload = ratio_bundle.model_dump(mode="json")
+        source.put("bundle:" + ratio_bundle.id, "bundle", ratio_payload, ratio_bundle.asset.id)
+        assert len([row for row in ratio_bundle.financials.ratios if row.percent == "100"]) == 2
         identity = AssetIdentity(id="TEST:RESTORE", symbol="RESTORE", name="Synthetic restored asset", asset_type="other")
         proof = IdentityVerification(authority="synthetic-restore", source_url="https://identity.example/restore",
                                      retrieved_at=now(), content_hash="a" * 64, identity_hash=identity_hash(identity))
@@ -125,7 +129,7 @@ def main():
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
-        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 12 and summary.saved_reports == 1 and summary.term_explanations == 1
+        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 13 and summary.saved_reports == 1 and summary.term_explanations == 1
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
         assert summary.import_explanations == 1
 
@@ -163,6 +167,7 @@ def main():
         assert target.get("settings")["model"] == "synthetic-selected-model"
         assert not target.get("settings")["experimental_yahoo_enabled"]
         assert target.get("bundle:" + market.id) == market_payload
+        assert target.get("bundle:" + ratio_bundle.id) == ratio_payload
         assert target.get("bundle:" + financial.id) == financial.model_dump(mode="json")
         assert target.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
         assert target.job(import_job["id"])["result"] == import_job["result"]
@@ -200,6 +205,9 @@ def main():
         assert restarted.get("settings")["model"] == "synthetic-selected-model"
         assert not restarted.get("settings")["experimental_yahoo_enabled"]
         restored_market = EvidenceBundle.model_validate(restarted.get("bundle:" + market.id))
+        restored_ratios = EvidenceBundle.model_validate(restarted.get("bundle:" + ratio_bundle.id))
+        assert restored_ratios.model_dump(mode="json") == ratio_payload
+        assert factual_context(restored_ratios) == factual_context(ratio_bundle)
         assert restored_market.model_dump(mode="json") == market_payload
         assert restored_market.market.bars[0].volume == "9007199254740993"
         assert restored_market.market.actions[0].value == "0.123456789012345678"
@@ -241,6 +249,7 @@ def main():
         print("Typed issuer observations, exact decimals, separate identity proofs and conflict/revision references survived actual restore and restart.")
         print("Private market history, exact decimals/actions and original citations survived restore/restart; cloud/export exclusions and reset network opt-in passed.")
         print("Stored price/provider-adjusted return results, endpoint dates, original source references and missing-window reasons survived restore/restart.")
+        print("Stored SEC net-income/revenue percentages, exact input IDs, method, gaps and original source citations survived restore/restart.")
         print("Financial snapshot originated through production research orchestration with explicit synthetic source/runtime adapters.")
         print("Original conversation facts, version-specific citations, source URLs and dates remain reusable after restore and restart.")
         print("Five retained documents across four formats preserved exact bytes, checksums, locators, original provenance and permission through atomic restore and restart; concurrent capacity enforcement passed.")

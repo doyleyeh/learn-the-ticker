@@ -52,6 +52,21 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await expect(statistics).toBeFocused();
     await expect(statistics.getByText("9,007,199,254,740,992 USD", { exact: true })).toBeVisible();
     await expect(statistics.getByText(/Latest period unavailable/)).toBeVisible();
+    const ratios = statistics.getByRole("region", { name: "Calculated financial statistics" });
+    const aligned = ratios.locator("details").filter({ has: page.locator("summary", { hasText: "2024-01-01 through 2024-12-31" }) });
+    await aligned.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await expect(aligned.getByText("100%", { exact: true })).toBeVisible();
+    const citations = aligned.getByRole("link", { name: /Open source drawer for SEC issuer observations:/ });
+    await expect(citations).toHaveCount(2);
+    const ratioVersion = new URLSearchParams(new URL(original).hash.split("?")[1]).get("bundle");
+    for (const citation of await citations.all()) {
+      expect(new URLSearchParams((await citation.getAttribute("href"))!.split("?")[1]).get("bundle")).toBe(ratioVersion);
+    }
+    await expect(aligned.getByText(/Filed 2025-02-01/)).toHaveCount(2);
+    const conflicted = ratios.locator("details").filter({ has: page.locator("summary", { hasText: "2025-01-01 through 2025-12-31" }) });
+    await conflicted.locator("summary").click();
+    await expect(conflicted.getByText("The latest filing versions contain conflicting inputs.", { exact: true })).toBeVisible();
     await statistics.screenshot({ path: testInfo.outputPath("dashboard-statistics-wide.png") });
     await navigation.getByRole("button", { name: "Overview", exact: true }).click();
     await page.screenshot({ path: testInfo.outputPath("dashboard-overview-wide.png") });
@@ -73,6 +88,7 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await navigation.getByRole("button", { name: "Statistics", exact: true }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
     await statistics.screenshot({ path: testInfo.outputPath("dashboard-statistics-narrow.png") });
+    await ratios.screenshot({ path: testInfo.outputPath("financial-ratios-narrow.png") });
     await navigation.getByRole("button", { name: "Analyst insights", exact: true }).click();
     await expect(page.getByText(/no qualified analyst estimates or outlooks/)).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("dashboard-analysts-narrow.png") });

@@ -223,4 +223,9 @@ def factual_context(bundle: EvidenceBundle) -> dict:
     if bundle.financials:
         context["financials"] = {"scope": "issuer", "issuer": bundle.financials.issuer.model_dump(mode="json"),
                                  "observations": observations, "gaps": bundle.financials.gaps}
+        if bundle.financials.ratio_method:
+            from backend.app.financial_ratios import DESCRIPTION
+            context["financials"]["ratio_method"] = bundle.financials.ratio_method
+            context["financials"]["ratio_description"] = DESCRIPTION
+            context["financials"]["ratios"] = [row.model_dump(mode="json") for row in bundle.financials.ratios if row.reason is None]
     return context

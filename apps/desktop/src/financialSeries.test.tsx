@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { FinancialHistory } from "./FinancialHistory";
 import { KeyStatistics } from "./TickerDashboard";
+import { FinancialRatios } from "./FinancialRatios";
 import { chartGeometry, decimalInteger, displayNumber, financialSeries } from "./financialSeries";
 import type { EvidenceBundle, FinancialObservation } from "./contracts";
 
@@ -23,6 +24,52 @@ function bundle(rows: FinancialObservation[]): EvidenceBundle {
 }
 
 describe("admitted financial presentation", () => {
+  function ratioBundle(): EvidenceBundle {
+    const data = bundle([observation({ id: "revenue", value: "30" }), observation({ id: "income", concept: "us-gaap:NetIncomeLoss", value: "10", source_id: "source2" })]);
+    data.sources!.push({ ...data.sources![0], id: "source2", title: "Synthetic net income source", url: "https://data.sec.gov/api/xbrl/companyconcept/CIK0000000001/us-gaap/NetIncomeLoss.json" });
+    data.financials!.ratio_method = "sec-net-income-revenue-v1";
+    data.financials!.ratios = [{ denominator_concept: "us-gaap:Revenues", period: "annual", start: "2025-01-01", end: "2025-12-31",
+      input_ids: ["income", "revenue"], source_ids: ["source1", "source2"], percent: "33.333333", reason: null }];
+    return data;
+  }
+  it("shows stored calculations separately with exact results, both original citations and dates", () => {
+    const html = renderToStaticMarkup(<FinancialRatios bundle={ratioBundle()}/>);
+    expect(html).toContain("33.333333%");
+    expect(html).toContain("2025-01-01 through 2025-12-31");
+    expect(html).toContain("10 USD");
+    expect(html).toContain("30 USD");
+    expect(html).toContain("source=source1");
+    expect(html).toContain("source=source2");
+    expect(html).toContain("Retrieved 2026-10-04T00:00:00Z");
+    expect(html).toContain("sec-net-income-revenue-v1");
+    expect(html).toContain("Saved results remain unchanged offline");
+  });
+  it("does not calculate results for an older saved version", () => {
+    const data = ratioBundle();
+    delete data.financials!.ratio_method;
+    delete data.financials!.ratios;
+    const html = renderToStaticMarkup(<FinancialRatios bundle={data}/>);
+    expect(html).toContain("Not calculated for this saved version");
+    expect(html).not.toContain("33.333333%");
+  });
+  it.each(["missing_source", "foreign_period", "conflict", "foreign_filing", "foreign_concept", "unknown_asset"])("withholds stored values with invalid display references: %s", (scenario) => {
+    const data = ratioBundle();
+    if (scenario === "missing_source") data.sources = [];
+    if (scenario === "foreign_period") data.financials!.observations![0].start = "2025-01-02";
+    if (scenario === "conflict") data.financials!.observations![0].revision = "conflict";
+    if (scenario === "foreign_filing") data.financials!.observations![0].accession = "0000000001-26-000099";
+    if (scenario === "foreign_concept") data.financials!.observations![0].concept = "us-gaap:Assets";
+    if (scenario === "unknown_asset") data.asset.asset_type = "unknown";
+    expect(renderToStaticMarkup(<FinancialRatios bundle={data}/>)).not.toContain("33.333333%");
+  });
+  it("discloses incompatible latest inputs without inventing a result", () => {
+    const data = ratioBundle();
+    data.financials!.ratios![0].percent = null;
+    data.financials!.ratios![0].reason = "different_filings";
+    const html = renderToStaticMarkup(<FinancialRatios bundle={data}/>);
+    expect(html).toContain("latest inputs come from different filings");
+    expect(html).not.toContain("33.333333%");
+  });
   it("retains exact decimals beyond JavaScript precision, using bounded integers only for geometry", () => {
     const value = "9007199254740993.123456789";
     expect(displayNumber(value)).toBe("9,007,199,254,740,993.123456789");

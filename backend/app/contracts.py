@@ -139,6 +139,19 @@ class FinancialObservation(Contract):
     supersedes: list[str] = Field(default_factory=list, max_length=128)
 
 
+class FinancialRatio(Contract):
+    """Retained application calculation, separate from reported observations."""
+    denominator_concept: Literal["us-gaap:Revenues", "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"]
+    start: date
+    end: date
+    period: Literal["annual", "quarter"]
+    input_ids: list[str] = Field(max_length=40000)
+    source_ids: list[str] = Field(max_length=2)
+    percent: str | None = Field(default=None, max_length=100)
+    reason: Literal["missing_income", "conflicting_inputs", "ambiguous_inputs", "different_units",
+                    "different_filings", "nonpositive_revenue"] | None = None
+
+
 class FinancialEvidence(Contract):
     scope: Literal["issuer"] = "issuer"
     association: Literal["sec-common-stock-concordance-v1"] = "sec-common-stock-concordance-v1"
@@ -147,6 +160,8 @@ class FinancialEvidence(Contract):
     checked_at: AwareDatetime
     observations: list[FinancialObservation] = Field(default_factory=list, max_length=40000)
     gaps: list[str] = Field(default_factory=list, max_length=100)
+    ratio_method: Literal["sec-net-income-revenue-v1"] | None = None
+    ratios: list[FinancialRatio] = Field(default_factory=list, max_length=34)
 
 
 class MarketBar(Contract):
