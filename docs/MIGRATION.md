@@ -40,6 +40,8 @@ M2 filing dates add optional `Source.filing_publication` with a separately retri
 
 Document interpretations add `import_explanation` records and `import_explanation` job requests within the existing format-2 archive and database revision. Each refers to one retained document ID/hash, language/level and literal page/cell quotations. Archive validation rejects missing documents, changed references, invalid completed jobs and mismatched provider provenance; bytes, interpretations and jobs restore atomically. Reopening reparses original bytes before showing the cached interpretation. The generated date is separate from original source dates. Transmission permission recorded for an earlier request never authorizes an automatic retry after restore.
 
+Research-job recovery reads existing job IDs, bounded request metadata and statuses through the authenticated API. No SQL/archive revision changes: restored active jobs remain interrupted, and completed jobs refer to their original immutable evidence. Browser reconnection requires its temporary session credential again; native bootstrap stays automatic. Neither reopening nor polling replays a provider turn.
+
 ## Native packaging and platforms
 
 The current source setup installs Python/frontend dependencies after the developer provides Python and Node. Native launch additionally requires Rust/MSVC, webview prerequisites and an explicit `LTT_PG_BIN` directory. The optional Docker Compose database is not the private desktop cluster. The public installer must remove the need for users to install or operate core Python, Node, Docker or PostgreSQL dependencies themselves.

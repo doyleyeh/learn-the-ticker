@@ -16,6 +16,8 @@ SEC filing-event candidates now carry independently checked original filing/repo
 
 Stored facts retain their original source records and evidence version. Follow-up conversations can reuse the last five cited versions within the current asset scope, including original URLs and dates; earlier explanations are excluded from factual context. A new fact still needs independent source verification. Refresh preserves the old answer and its citations even if a page later changes or becomes unavailable. Browsing observation and factual admission are checked separately; provider navigation metadata is not treated as the complete page text seen by the model.
 
+Recent research jobs lets you reopen progress or an original saved response after reconnecting. Opening a job performs no new research. Dropped progress connections fall back to reading the existing job; restart/restore marks unfinished work interrupted, requiring an explicit new request. The list shows up to 50 jobs with active work first; original evidence remains in the library.
+
 The Sources screen can retain bounded original documents with checksums, provenance and separate storage/backup permission. Reopening preserves original dates and references, works offline and keeps the content unverified. With separate sharing permission, your selected compatible provider can explain a retained document with browsing disabled. Saved interpretations retain original page/cell quotations, work offline and never become facts or chart inputs. Backups include permitted copies and their explanations and read older archives. See [archive compatibility](docs/MIGRATION.md#database-and-library-compatibility).
 
 ## Development on Windows

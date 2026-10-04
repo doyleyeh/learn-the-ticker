@@ -252,6 +252,14 @@ class ResearchResult(Contract):
     claims: list[Claim] = Field(default_factory=list, max_length=200)
 
 
+class ResearchJobSummary(Contract):
+    """Read-only recovery metadata; no raw events, provider output or credentials."""
+    id: str = Field(min_length=1, max_length=36)
+    status: Literal["queued", "running", "completed", "failed", "cancelled", "interrupted", "needs_identity"]
+    request: ResearchRequest
+    created_at: AwareDatetime
+
+
 class TermRequest(Contract):
     purpose: Literal["term_explanation"] = "term_explanation"
     term: str = Field(min_length=1, max_length=120)

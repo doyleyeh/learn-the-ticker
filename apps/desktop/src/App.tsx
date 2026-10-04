@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { api, bootstrap, connect, download, watchJob } from "./client";
-import type { EvidenceBundle, Settings, Claim, Source, Conversation as ConversationContract, SavedResearch } from "./contracts";
+import { api, bootstrap, connect, download } from "./client";
+import type { EvidenceBundle, Settings, Claim, Source, Conversation as ConversationContract, SavedResearch, ResearchRequest } from "./contracts";
 import { FreshnessLabel } from "../components/FreshnessLabel";
 import { CitationChip } from "../components/CitationChip";
 import { bundleRoute, pages, routeFromHash, sourceRoute } from "./routes";
@@ -12,8 +12,10 @@ import { CodexConnection } from "./CodexConnection";
 import { Connections } from "./Connections";
 import { AccessReview } from "./AccessReview";
 import { TermLearning } from "./TermLearning";
+import { ResearchJobs } from "./ResearchJobs";
+import { activeResearch, observeResearch } from "./researchObservation";
 
-type Job = { id: string; status: string; error?: string; result?: EvidenceBundle & { candidates?: EvidenceBundle["asset"][]; educational_redirect?: string; message?: string } };
+type Job = { id: string; status: string; request?: ResearchRequest; error?: string; result?: EvidenceBundle & { candidates?: EvidenceBundle["asset"][]; educational_redirect?: string; message?: string } };
 type Saved = SavedResearch & { id: string };
 type Conversation = ConversationContract & { id: string; bookmarked: boolean; messages: NonNullable<ConversationContract["messages"]> };
 
@@ -34,7 +36,7 @@ export function App() {
   const [conversation, setConversation] = useState<Conversation>();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const activeConversation = conversations.find((item) => item.id === conversation?.id) ?? conversation;
-  const busy = job?.status === "queued" || job?.status === "running";
+  const busy = activeResearch(job?.status ?? "");
   const fail = (error: unknown) => setError(error instanceof Error ? error.message : "The operation could not be completed.");
 
   async function reload() {
@@ -72,23 +74,28 @@ export function App() {
   useEffect(() => {
     if (!job?.id || !busy) return;
     let active = true;
-    const refresh = async () => {
-      try {
-        const next = await api<Job>(`/api/jobs/${job.id}`);
-        if (!active) return;
-        setJob(next);
-        if (next.status === "completed" && next.result?.asset) { setAsset(next.result); location.hash = bundleRoute(next.result.id!); await reload(); }
-        if (next.error) setError(next.error);
-      } catch (error) { if (active) fail(error); }
-    };
-    const close = watchJob(job.id, (event) => { setProgress(event.text || event.kind.replaceAll(".", " ")); if (event.text?.startsWith("Refreshing ")) setNotice(event.text); if (event.kind.startsWith("run.")) void refresh(); }, () => { void refresh(); });
-    // Polling recovers a dropped socket. It only reads state and never repeats generation.
-    const timer = setInterval(() => { void refresh(); }, 2000);
-    return () => { active = false; close(); clearInterval(timer); };
+    const close = observeResearch<Job>(job.id, (next) => {
+      if (!active) return;
+      setJob(next);
+      if (next.status === "completed" && next.result?.asset) {
+        setAsset(next.result); location.hash = bundleRoute(next.result.id!);
+        void reload().catch(fail);
+      }
+      if (next.error) setError(next.error);
+    }, (event) => { setProgress(event.text || event.kind.replaceAll(".", " ")); if (event.text?.startsWith("Refreshing ")) setNotice(event.text); }, fail);
+    return () => { active = false; close(); };
   }, [job?.id, busy]);
 
+  async function reopenResearch(id: string) {
+    const next = await api<Job>(`/api/jobs/${encodeURIComponent(id)}`);
+    setJob(next); setProgress(""); setError(next.error ?? ""); setNotice("");
+    if (next.request) { setQuery(next.request.query); setLevel(next.request.level ?? "beginner"); }
+    setConversation(next.request?.conversation_id ? conversations.find((item) => item.id === next.request?.conversation_id) : undefined);
+    if (next.status === "completed" && next.result?.asset) { setAsset(next.result); location.hash = bundleRoute(next.result.id!); }
+  }
+
   async function research(event?: FormEvent, refresh = false, question?: string) {
-    event?.preventDefault(); setError("");
+    event?.preventDefault(); setError(""); setProgress("");
     try {
       const next = await api<Job>("/api/research", { method: "POST", body: JSON.stringify({ query: question || query, provider: settings?.provider ?? "codex", language: settings?.language ?? "en", level, refresh, asset_id: question || refresh ? asset?.asset.id : null, conversation_id: question && !refresh ? conversation?.id : null }) });
       setJob(next);
@@ -117,7 +124,11 @@ export function App() {
         <AccessReview />
         <form className="research-bar" onSubmit={research}><label htmlFor="research-query">Understand an asset<input id="research-query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ticker, asset name, exchange or contract" required maxLength={1000}/></label><label>Explanation level<select value={level} onChange={(e) => setLevel(e.target.value as typeof level)}><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option></select></label><button disabled={busy}>{settings?.cloud_enabled ? "Research" : "Open cached research"}</button></form>
         {!settings?.cloud_enabled && <p>Online research is off. Enable your chosen provider in <a href="#connections">Connections</a>. Cached pages remain available.</p>}
-        {busy && <section aria-live="polite" className="plain-panel"><p>{progress || "Research queued"}</p><button onClick={() => api<Job>(`/api/jobs/${job.id}/cancel`, { method: "POST" }).then(setJob).catch(fail)}>Cancel research</button></section>}
+        <ResearchJobs currentId={job?.id} revision={`${job?.id}:${job?.status}`} onOpen={reopenResearch}/>
+        {job?.id && <section aria-live="polite" className="plain-panel research-job-status"><h2>Viewed research job</h2><p>{job.request?.query}</p><p>Status: {job.status.replaceAll("_", " ")}</p>
+          {busy ? <><p>{progress || "Reading existing research progress"}</p><button onClick={() => api<Job>(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, { method: "POST" }).then(setJob).catch(fail)}>Cancel research</button></>
+            : ["failed", "cancelled", "interrupted"].includes(job.status) && <p>This job has stopped. Existing saved research is unchanged. Review the request and connection before explicitly starting new research.</p>}
+        </section>}
         {job?.status === "needs_identity" && <section className="plain-panel"><h2>Choose a more specific identity</h2><p>{job.result?.message ?? "Choose a listing or contract, then submit the selected identity. Cached matches reuse their saved evidence."}</p>{job.result?.candidates?.map((item) => <button key={item.id} onClick={() => setQuery(item.id)}>{item.name} · {item.symbol} · {item.exchange ?? item.asset_type}</button>)}</section>}
         {job?.result?.educational_redirect && <p>{job.result.educational_redirect}</p>}
         {page === "connections" && settings && <Connections key={settings.provider} settings={settings} onSave={saveSettings}/> }

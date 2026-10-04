@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, create_engine, delete, select
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, case, create_engine, delete, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -183,6 +183,17 @@ class Database:
             if not row:
                 return None
             return {"id": row.id, "status": row.status, "request": row.request, "result": row.result, "error": row.error}
+
+    def research_jobs(self) -> list[dict]:
+        from backend.app.contracts import ResearchJobSummary
+        # Bound before loading payloads. Learning jobs have a purpose and are recovered
+        # through their document/term cache, not as asset research.
+        query = select(Job.id, Job.status, Job.request, Job.created_at).where(Job.request["purpose"].as_string().is_(None))
+        query = query.order_by(case((Job.status.in_(["queued", "running"]), 0), else_=1), Job.created_at.desc(), Job.id.desc()).limit(50)
+        with self.session() as session:
+            return [ResearchJobSummary(id=row.id, status=row.status, request=row.request,
+                created_at=row.created_at if row.created_at.tzinfo else row.created_at.replace(tzinfo=timezone.utc)).model_dump(mode="json")
+                for row in session.execute(query)]
 
     def transition(self, job_id: str, status: str, *, result=None, error=None):
         with self.session.begin() as session:

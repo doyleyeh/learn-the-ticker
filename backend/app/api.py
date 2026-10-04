@@ -212,6 +212,10 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 
+    @app.get("/api/research/jobs")
+    def research_jobs():
+        return JSONResponse(db.research_jobs(), headers={"Cache-Control": "no-store"})
+
     @app.post("/api/terms/lookup")
     def lookup_term(value: TermRequest):
         try:

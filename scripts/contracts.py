@@ -6,10 +6,10 @@ from pydantic.json_schema import models_json_schema
 from backend.app.import_previews import ImportPreview
 from backend.app.import_storage import RetainedImportSummary, RetainedImportView
 from backend.app.import_learning import ImportExplanation, ImportLearningRequest, ImportLearningScope
-from backend.app.contracts import ApprovalDecision, ApprovalRequest, AssetIdentity, BackupSummary, Claim, Conversation, EvidenceBundle, ProviderLogin, ResearchRequest, ResearchResult, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, SavedResearch, Settings, Source, TermExplanation, TermRequest, TermResult
+from backend.app.contracts import ApprovalDecision, ApprovalRequest, AssetIdentity, BackupSummary, Claim, Conversation, EvidenceBundle, ProviderLogin, ResearchJobSummary, ResearchRequest, ResearchResult, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, SavedResearch, Settings, Source, TermExplanation, TermRequest, TermResult
 
 def generated_schema() -> str:
-    models = [ApprovalDecision, ApprovalRequest, AssetIdentity, BackupSummary, Claim, Conversation, EvidenceBundle, ImportPreview, RetainedImportSummary, RetainedImportView, ImportExplanation, ImportLearningRequest, ImportLearningScope, ProviderLogin, ResearchRequest, ResearchResult, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, SavedResearch, Settings, Source, TermExplanation, TermRequest, TermResult]
+    models = [ApprovalDecision, ApprovalRequest, AssetIdentity, BackupSummary, Claim, Conversation, EvidenceBundle, ImportPreview, RetainedImportSummary, RetainedImportView, ImportExplanation, ImportLearningRequest, ImportLearningScope, ProviderLogin, ResearchJobSummary, ResearchRequest, ResearchResult, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, SavedResearch, Settings, Source, TermExplanation, TermRequest, TermResult]
     _, schema = models_json_schema([(model, "validation") for model in models], title="DesktopContracts")
     schema.update({"type": "object", "properties": {model.__name__: {"$ref": "#/$defs/" + model.__name__} for model in models}, "additionalProperties": False})
     return json.dumps(schema, indent=2) + "\n"

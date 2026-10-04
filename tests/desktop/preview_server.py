@@ -7,7 +7,7 @@ import uvicorn
 from backend.app.api import create_app
 from backend.app.contracts import AssetIdentity, Claim, EvidenceBundle, IdentityVerification, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, Source, SourcePolicy, now
 from backend.app.identity import ResolvedIdentity, identity_hash
-from backend.app.db import Database
+from backend.app.db import Database, Job
 from backend.app.backup import make_backup
 
 
@@ -80,6 +80,13 @@ class PreviewIdentityRuntime(PreviewTermRuntime):
     async def stream(self, prompt, run_id, workspace, model=None, *, allow_browsing=True):
         yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps({"candidates": [self.asset.model_dump(mode="json")], "sources": [], "claims": []}))
 
+
+class PreviewRecoveryRuntime(PreviewIdentityRuntime):
+    async def stream(self, *args, **kwargs):
+        await asyncio.sleep(25)
+        async for event in super().stream(*args, **kwargs):
+            yield event
+
 if __name__ == "__main__":
     db = Database("sqlite://", testing=True)
     asset = AssetIdentity(id="XTEST:SYNTH", name="Synthetic Research Example", symbol="SYNTH", asset_type="stock", exchange="XTEST")
@@ -104,6 +111,14 @@ if __name__ == "__main__":
         app.state.service.identity_resolver = PreviewIdentityResolver(asset, unavailable=True)
         app.state.service.adapters = {"codex": PreviewIdentityRuntime(asset)}
         db.put("settings", "settings", {"cloud_enabled": True})
+    if "--recovery-demo" in sys.argv:
+        app.state.service.adapters = {"codex": PreviewRecoveryRuntime(asset)}
+        db.put("settings", "settings", {"cloud_enabled": True})
+        with db.session.begin() as session:
+            for state in ("failed", "cancelled", "running"):
+                session.add(Job(id="synthetic-" + state, status=state, request={"query": "Synthetic previous " + state}))
+            session.add(Job(id="synthetic-completed", status="running", request={"query": "Synthetic saved response"}))
+        db.complete_research("synthetic-completed", value)
     if "--approvals-demo" in sys.argv:
         adapter = PreviewAccessRuntime(asset)
         adapter.approvals = app.state.service.approvals

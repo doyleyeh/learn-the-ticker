@@ -1488,6 +1488,53 @@
       "title": "ProviderLogin",
       "type": "object"
     },
+    "ResearchJobSummary": {
+      "additionalProperties": false,
+      "description": "Read-only recovery metadata; no raw events, provider output or credentials.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 36,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "interrupted",
+            "needs_identity"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/ResearchRequest"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "request",
+        "created_at"
+      ],
+      "title": "ResearchJobSummary",
+      "type": "object"
+    },
     "ResearchRequest": {
       "additionalProperties": false,
       "properties": {
@@ -2499,6 +2546,9 @@
     },
     "ProviderLogin": {
       "$ref": "#/$defs/ProviderLogin"
+    },
+    "ResearchJobSummary": {
+      "$ref": "#/$defs/ResearchJobSummary"
     },
     "ResearchRequest": {
       "$ref": "#/$defs/ResearchRequest"

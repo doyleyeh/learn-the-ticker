@@ -93,6 +93,9 @@ def main():
         finally:
             retained_module.MAX_ATTACHMENTS = original_limit
         archive = make_backup(source)
+        original_jobs = {row["id"]: row for row in source.research_jobs()}
+        assert original_jobs["pending"]["status"] == "running"
+        assert import_job["id"] not in original_jobs and "term-job" not in original_jobs
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
@@ -117,6 +120,10 @@ def main():
         assert not target.list("import")
         assert not target.list("import_explanation")
         restore_backup(target, archive, summary.fingerprint)
+        restored_jobs = {row["id"]: row for row in target.research_jobs()}
+        assert restored_jobs["pending"]["status"] == "interrupted"
+        assert restored_jobs["pending"]["request"] == original_jobs["pending"]["request"]
+        assert restored_jobs[financial_job["id"]] == original_jobs[financial_job["id"]]
         assert target.get("bundle:" + old.id) and target.get("asset:" + identity.id)["id"] == latest.id
         assert target.list("saved")[0]["bundle_id"] == old.id
         assert target.list("conversation")[0]["bookmarked"]
@@ -145,6 +152,7 @@ def main():
         clusters[1].start()
         restarted = Database(clusters[1].url())
         databases.append(restarted)
+        assert {row["id"]: row for row in restarted.research_jobs()} == restored_jobs
         assert restarted.list("saved")[0]["bundle_id"] == old.id
         assert restarted.get("asset:" + identity.id)["id"] == latest.id
         assert restarted.get("asset:" + identity.id)["identity_verification"] == proof.model_dump(mode="json")
