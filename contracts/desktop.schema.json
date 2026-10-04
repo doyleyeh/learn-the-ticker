@@ -581,6 +581,92 @@
       "title": "EvidenceBundle",
       "type": "object"
     },
+    "FilingPublication": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "authority": {
+          "const": "sec-submissions-v1",
+          "default": "sec-submissions-v1",
+          "title": "Authority",
+          "type": "string"
+        },
+        "cik": {
+          "pattern": "^[0-9]{10}$",
+          "title": "Cik",
+          "type": "string"
+        },
+        "accession": {
+          "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$",
+          "title": "Accession",
+          "type": "string"
+        },
+        "form": {
+          "maxLength": 20,
+          "title": "Form",
+          "type": "string"
+        },
+        "filed": {
+          "format": "date",
+          "title": "Filed",
+          "type": "string"
+        },
+        "report_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Report Date"
+        },
+        "document_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Document Url",
+          "type": "string"
+        },
+        "index_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Index Url",
+          "type": "string"
+        },
+        "index_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Index Hash",
+          "type": "string"
+        },
+        "retrieved_at": {
+          "format": "date-time",
+          "title": "Retrieved At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cik",
+        "accession",
+        "form",
+        "filed",
+        "document_url",
+        "index_url",
+        "index_hash",
+        "retrieved_at"
+      ],
+      "title": "FilingPublication",
+      "type": "object"
+    },
     "FinancialEvidence": {
       "additionalProperties": false,
       "properties": {
@@ -1503,6 +1589,17 @@
           ],
           "title": "Provenance",
           "type": "string"
+        },
+        "filing_publication": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FilingPublication"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [

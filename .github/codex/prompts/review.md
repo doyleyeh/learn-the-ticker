@@ -42,6 +42,8 @@ Typed numeric documents must pass the same scope/source/period/unit/revision val
 
 Research scheduling must retain the retrieval slot until cancelled blocking I/O finishes; cancelling a coroutine alone cannot create a third concurrent request. Stop financial follow-ups, await owned workers at shutdown and check consent at phase boundaries. Term and research inference share one semaphore. Manual review enabled during a run must still prevent automatic publication. Require actual database restore of a snapshot produced through orchestration; deterministic runtime substitutes never qualify live search or subscription behavior.
 
+Filing publication/report dates require independently retrieved SEC index metadata bound to exact issuer/accession/document URLs; model proof fields must be cleared. Metadata is not narrative claim support or a complete news feed. Validate publication references with issuer proof in the same bundle, keep original dates in exports/restore and disclose unavailable current coverage. A live research check needs observed search, page opening and subsequent follow-up plus independently dated supported claims; snippets, action counts or an application-owned fetch alone cannot establish the full workflow. Match a dated admitted quote against bounded in-memory text from a completed open result for the same URL; prefetched application context or an attempted open alone is insufficient. Never log raw provider actions or contact headers to diagnose it.
+
 Return:
 
 - summary

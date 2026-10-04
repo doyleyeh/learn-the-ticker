@@ -35,6 +35,12 @@ def valid_sec_contact(value: str) -> bool:
 
 
 class VisibleText(HTMLParser):
+    # Inline formatting may split a word or put a closing quote in another node.
+    # Insert whitespace at structural boundaries, never between every data node.
+    blocks = {"address", "article", "aside", "blockquote", "br", "dd", "div", "dl", "dt", "fieldset",
+              "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header",
+              "hr", "li", "main", "nav", "ol", "p", "pre", "section", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul"}
+
     def __init__(self):
         super().__init__()
         self.parts, self.ignored = [], 0
@@ -42,14 +48,21 @@ class VisibleText(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag in ("script", "style", "noscript"):
             self.ignored += 1
+        elif not self.ignored and tag in self.blocks:
+            self.parts.append(" ")
 
     def handle_endtag(self, tag):
         if tag in ("script", "style", "noscript") and self.ignored:
             self.ignored -= 1
+        elif not self.ignored and tag in self.blocks:
+            self.parts.append(" ")
 
     def handle_data(self, data):
         if not self.ignored:
             self.parts.append(data)
+
+    def text(self):
+        return " ".join("".join(self.parts).split())
 
 
 def normalize(text: str) -> str:
@@ -107,12 +120,12 @@ def fetch_public_bytes(url: str, *, accept="text/html,text/plain", user_agent="L
 def fetch_public_text(url: str) -> str:
     parser = VisibleText()
     parser.feed(fetch_public_bytes(url).decode("utf-8", errors="replace"))
-    return " ".join(parser.parts)
+    return parser.text()
 
 
 def candidate_metadata(candidate: Source, *, rules=SOURCE_RULES) -> Source:
     # Discard every model-controlled verification, rights and provenance field.
-    source = candidate.model_copy(update={"verified": False, "official": False, "policy": SourcePolicy.link, "excerpt": "", "content_hash": "", "provenance": "agent_candidate", "retrieved_at": now(), "published_at": None, "as_of": None})
+    source = candidate.model_copy(update={"verified": False, "official": False, "policy": SourcePolicy.link, "excerpt": "", "content_hash": "", "provenance": "agent_candidate", "retrieved_at": now(), "published_at": None, "as_of": None, "filing_publication": None})
     if candidate.policy == SourcePolicy.rejected:
         return source.model_copy(update={"policy": SourcePolicy.rejected})
     rule = source_rule(str(candidate.url), rules)
@@ -141,7 +154,7 @@ def verify_candidate(candidate: Source, asset: AssetIdentity, fetcher=fetch_publ
     return source.model_copy(update={"verified": True, "provenance": "verified_retrieval", "excerpt": text[:20000], "content_hash": hashlib.sha256(text.encode()).hexdigest()})
 
 
-def admit_bundle(asset: AssetIdentity, sources: list[Source], claims: list[Claim], *, language="en", level=None, identity_verification=None, created_at=None) -> EvidenceBundle:
+def admit_bundle(asset: AssetIdentity, sources: list[Source], claims: list[Claim], *, language="en", level=None, identity_verification=None, created_at=None, financials=None) -> EvidenceBundle:
     by_id = {s.id: s for s in sources if s.asset_id == asset.id and s.policy != SourcePolicy.rejected}
     if len({s.id for s in sources}) != len(sources):
         raise ValueError("Duplicate source IDs")
@@ -169,7 +182,7 @@ def admit_bundle(asset: AssetIdentity, sources: list[Source], claims: list[Claim
             admitted.append(claim.model_copy(update={"as_of": None}))
         else:
             notes.append(claim.model_copy(update={"kind": "unverified_note", "value": None, "unit": None, "input_claim_ids": [], "source_ids": [s.id for s in supports]}))
-    return EvidenceBundle(asset=asset, sources=list(by_id.values()), claims=admitted, notes=notes, language=language, level=level, identity_verification=identity_verification, created_at=created_at or now(), state="partial")
+    return EvidenceBundle(asset=asset, sources=list(by_id.values()), claims=admitted, notes=notes, language=language, level=level, identity_verification=identity_verification, created_at=created_at or now(), financials=financials, state="partial")
 
 
 def factual_context(bundle: EvidenceBundle) -> dict:

@@ -50,6 +50,21 @@ class SourcePolicy(str, Enum):
     rejected = "rejected"
 
 
+class FilingPublication(Contract):
+    authority: Literal["sec-submissions-v1"] = "sec-submissions-v1"
+    cik: str = Field(pattern=r"^[0-9]{10}$")
+    accession: str = Field(pattern=r"^[0-9]{10}-[0-9]{2}-[0-9]{6}$")
+    form: str = Field(max_length=20)
+    filed: date
+    report_date: date | None = None
+    document_url: HttpUrl
+    index_url: HttpUrl
+    index_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    retrieved_at: AwareDatetime
+
+    _public_urls = field_validator("document_url", "index_url")(public_reference_url)
+
+
 class Source(Contract):
     id: str = Field(default_factory=uid)
     asset_id: str
@@ -66,6 +81,7 @@ class Source(Contract):
     # This excerpt is set by an application-owned retriever, never trusted from a model.
     excerpt: str = Field(default="", max_length=20000)
     provenance: Literal["agent_candidate", "structured_adapter", "verified_retrieval", "user_import"] = "agent_candidate"
+    filing_publication: FilingPublication | None = None
 
     _public_url = field_validator("url")(public_reference_url)
 
@@ -152,6 +168,9 @@ class EvidenceBundle(Contract):
             # Delayed import keeps wire definitions independent of adapter initialization.
             from backend.app.financial_evidence import validate_financials
             validate_financials(self)
+        if any(source.filing_publication is not None for source in self.sources):
+            from backend.app.sec_filings import validate_publications
+            validate_publications(self)
         return self
 
 

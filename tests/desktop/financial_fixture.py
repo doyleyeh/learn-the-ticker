@@ -45,8 +45,10 @@ def financial_bundle(*, conflict=False):
 
 async def publish_financial_snapshot(db, workspace):
     """Exercise production orchestration against synthetic sources/runtime in a real DB."""
-    from backend.app.contracts import ResearchRequest, RuntimeEvent
+    from backend.app.contracts import Claim, ResearchRequest, RuntimeEvent, Source
     from backend.app.research import ResearchService
+    from backend.app.evidence import verify_candidate
+    from backend.app.sec_filings import SecFilingsAdapter
     result = financial_result(conflict=True)
     class Resolver:
         def resolve(self, query):
@@ -54,20 +56,32 @@ async def publish_financial_snapshot(db, workspace):
     class Financial:
         def retrieve(self, *args, **kwargs):
             return result
+    raw_filings = json.dumps({"cik": "0000000001", "name": "SYNTHETIC COMPANY", "filings": {"recent": {
+        "accessionNumber": ["0000009999-26-000004"], "filingDate": ["2026-09-17"], "reportDate": ["2026-09-15"],
+        "form": ["8-K"], "primaryDocument": ["event.htm"]}}}).encode()
+    filing_adapter = SecFilingsAdapter(lambda *args, **kwargs: raw_filings, clock=lambda: AT)
+    def verifier(source, asset):
+        value = verify_candidate(source, asset, lambda _: "SYNTHETIC COMPANY reported a material event.")
+        return value.model_copy(update={"retrieved_at": AT})
     class Runtime:
         async def stream(self, prompt, run_id, workspace, model=None):
             assert "CURRENT RETRIEVAL OF HISTORICAL ISSUER EVIDENCE" in prompt
+            source = Source(id="event", asset_id=result.instrument.asset.id,
+                url="https://www.sec.gov/Archives/edgar/data/1/000000999926000004/event.htm", title="Synthetic event", publisher="candidate")
+            claim = Claim(asset_id=source.asset_id, kind="fact", text="SYNTHETIC COMPANY reported a material event.", source_ids=[source.id])
             yield RuntimeEvent(run_id=run_id, kind="message.delta",
-                text=json.dumps({"candidates": [result.instrument.asset.model_dump(mode="json")]}))
+                text=json.dumps({"candidates": [result.instrument.asset.model_dump(mode="json")],
+                    "sources": [source.model_dump(mode="json")], "claims": [claim.model_dump(mode="json")]}))
     db.put("settings", "settings", {"cloud_enabled": True})
     service = ResearchService(db, {"codex": Runtime()}, workspace, identity_resolver=Resolver(),
-                              financial_adapter=Financial(), clock=lambda: AT)
+                              financial_adapter=Financial(), filing_adapter=filing_adapter, verifier=verifier, clock=lambda: AT)
     try:
         job = await service.submit(ResearchRequest(query=result.instrument.asset.id))
         await service.tasks[job["id"]]
         job = db.job(job["id"])
         assert job["status"] == "completed"
         assert len(job["result"]["financials"]["observations"]) == 3
+        assert job["result"]["sources"][0]["filing_publication"]["filed"] == "2026-09-17"
         return job
     finally:
         await service.close()

@@ -36,11 +36,11 @@ class ConversationUpdate(BaseModel):
     bookmarked: bool | None = None
 
 
-def create_app(db: Database, token: str, workspace: Path, *, adapters=None, verifier=None, identity_resolver=None, financial_adapter=None) -> FastAPI:
+def create_app(db: Database, token: str, workspace: Path, *, adapters=None, verifier=None, identity_resolver=None, financial_adapter=None, filing_adapter=None) -> FastAPI:
     if len(token) < 32:
         raise ValueError("A random session credential of at least 32 characters is required")
     codex_profile = workspace.parent / "connections" / "codex"
-    service = ResearchService(db, adapters or runtimes(codex_profile), workspace, identity_resolver=identity_resolver, financial_adapter=financial_adapter, **({"verifier": verifier} if verifier else {}))
+    service = ResearchService(db, adapters or runtimes(codex_profile), workspace, identity_resolver=identity_resolver, financial_adapter=financial_adapter, filing_adapter=filing_adapter, **({"verifier": verifier} if verifier else {}))
     codex_login = CodexLogin(codex_profile)
     terms = TermService(service)
     settings_lock = asyncio.Lock()
@@ -336,7 +336,13 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
         lines += ["", "## Unverified research notes", "", "These notes are not factual evidence."]
         lines += ["\n" + clean(note.text) for note in value.notes]
         lines += ["", "## Sources"]
-        lines += [f"\n{s.id}: {clean(s.title)} — {s.url} (retrieved {s.retrieved_at.isoformat()}, {s.policy.value})" for s in value.sources]
+        for source in value.sources:
+            lines += [f"\n{source.id}: {clean(source.title)} — {source.url} (published {source.published_at or 'unknown'}; "
+                      f"as of {source.as_of or 'unknown'}; retrieved {source.retrieved_at.isoformat()}; {source.policy.value}; {source.provenance})"]
+            if source.filing_publication:
+                proof = source.filing_publication
+                lines += [f"Filing-date reference: {proof.index_url}; accession {proof.accession}; "
+                          f"index retrieved {proof.retrieved_at.isoformat()}; index SHA-256 {proof.index_hash}."]
         return Response("\n".join(lines), media_type="text/markdown", headers={"Content-Disposition": 'attachment; filename="research.md"'})
 
     return app
