@@ -1,5 +1,6 @@
 """Restore a complete synthetic library between two private PostgreSQL clusters."""
 import os
+import asyncio
 import secrets
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from backend.app.db import Database, Event, Job
 from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
 from backend.app.terms import term_key
-from tests.desktop.financial_fixture import financial_bundle
+from tests.desktop.financial_fixture import publish_financial_snapshot
 
 
 def main():
@@ -32,10 +33,8 @@ def main():
             databases.append(db)
             migrate(db.engine)
         source, target = databases
-        financial = financial_bundle(conflict=True)
-        with source.session.begin() as session:
-            session.add(Job(id="financial", status="running", request={"query": "Synthetic issuer"}))
-        source.complete_research("financial", financial.model_dump(mode="json"))
+        financial_job = asyncio.run(publish_financial_snapshot(source, roots[0] / "synthetic-research"))
+        financial = EvidenceBundle.model_validate(financial_job["result"])
         identity = AssetIdentity(id="TEST:RESTORE", symbol="RESTORE", name="Synthetic restored asset", asset_type="other")
         proof = IdentityVerification(authority="synthetic-restore", source_url="https://identity.example/restore",
                                      retrieved_at=now(), content_hash="a" * 64, identity_hash=identity_hash(identity))
@@ -85,7 +84,7 @@ def main():
         assert target.job("pending")["status"] == "interrupted" and not target.get("settings")["cloud_enabled"]
         assert target.get("settings")["model"] == "synthetic-selected-model"
         assert target.get("bundle:" + financial.id) == financial.model_dump(mode="json")
-        assert target.job("financial")["result"] == financial.model_dump(mode="json")
+        assert target.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
         with target.session.begin() as session:
             session.add(Event(job_id="pending", payload=RuntimeEvent(run_id="pending", kind="run.cancelled").model_dump(mode="json")))
         assert len(target.events("pending")) == 2
@@ -110,9 +109,10 @@ def main():
         assert restarted.get("settings")["model"] == "synthetic-selected-model"
         assert restarted.get("asset:" + financial.asset.id) == financial.model_dump(mode="json")
         assert restarted.get("bundle:" + financial.id)["financials"]["observations"][0]["value"] == "9007199254740993"
-        assert restarted.job("financial")["result"] == financial.model_dump(mode="json")
+        assert restarted.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
         print("PostgreSQL full-library restore, rollback on failure, preserved saved versions, event sequence and restart passed.")
         print("Typed issuer observations, exact decimals, separate identity proofs and conflict/revision references survived actual restore and restart.")
+        print("Financial snapshot originated through production research orchestration with explicit synthetic source/runtime adapters.")
         print("Non-empty restore was rejected; cloud consent reset and no provider calls were made.")
     finally:
         for db in databases:

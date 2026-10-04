@@ -54,7 +54,8 @@ class SecFinancialAdapter:
         self.resolver = resolver or RegisteredIdentityResolver()
         self.fetcher, self.clock = fetcher or fetch_public_bytes, clock
 
-    def retrieve(self, query: str, *, concepts=None, cancelled: threading.Event | None = None) -> StructuredFinancials:
+    def retrieve(self, query: str, *, concepts=None, cancelled: threading.Event | None = None,
+                 resolved: ResolvedIdentity | None = None) -> StructuredFinancials:
         selected = tuple(CONCEPTS) if concepts is None else tuple(concepts)
         if not selected or len(selected) > len(CONCEPTS) or len(set(selected)) != len(selected) or any(key not in CONCEPTS for key in selected):
             raise ValueError("Select registered financial concepts")
@@ -63,7 +64,7 @@ class SecFinancialAdapter:
                 raise InterruptedError("Structured retrieval was cancelled")
         check_cancel()
         try:
-            instruments = self.resolver.resolve(query)
+            instruments = [resolved] if resolved is not None else self.resolver.resolve(query)
         except (ValueError, OSError):
             return StructuredFinancials(None, None, (), ("instrument_identity_unavailable",))
         check_cancel()

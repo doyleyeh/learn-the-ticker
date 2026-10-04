@@ -36,11 +36,11 @@ class ConversationUpdate(BaseModel):
     bookmarked: bool | None = None
 
 
-def create_app(db: Database, token: str, workspace: Path, *, adapters=None, verifier=None, identity_resolver=None) -> FastAPI:
+def create_app(db: Database, token: str, workspace: Path, *, adapters=None, verifier=None, identity_resolver=None, financial_adapter=None) -> FastAPI:
     if len(token) < 32:
         raise ValueError("A random session credential of at least 32 characters is required")
     codex_profile = workspace.parent / "connections" / "codex"
-    service = ResearchService(db, adapters or runtimes(codex_profile), workspace, identity_resolver=identity_resolver, **({"verifier": verifier} if verifier else {}))
+    service = ResearchService(db, adapters or runtimes(codex_profile), workspace, identity_resolver=identity_resolver, financial_adapter=financial_adapter, **({"verifier": verifier} if verifier else {}))
     codex_login = CodexLogin(codex_profile)
     terms = TermService(service)
     settings_lock = asyncio.Lock()

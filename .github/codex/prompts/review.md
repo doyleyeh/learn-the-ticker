@@ -40,6 +40,8 @@ SEC financial association must preserve both independent proofs and DEC-025's ex
 
 Typed numeric documents must pass the same scope/source/period/unit/revision validation on publication and archive restore. Preserve exact decimal strings through generated contracts, exports and real PostgreSQL restore; do not route them through Claim.value or JavaScript floats. ResearchResult cannot self-attest financial documents. Recomputed archive checksums do not prove external source authenticity. Keep conflicts/superseded values out of current numeric context while retaining their versions and disclosures. Current financial snapshots cannot inherit prose-only cache freshness.
 
+Research scheduling must retain the retrieval slot until cancelled blocking I/O finishes; cancelling a coroutine alone cannot create a third concurrent request. Stop financial follow-ups, await owned workers at shutdown and check consent at phase boundaries. Term and research inference share one semaphore. Manual review enabled during a run must still prevent automatic publication. Require actual database restore of a snapshot produced through orchestration; deterministic runtime substitutes never qualify live search or subscription behavior.
+
 Return:
 
 - summary

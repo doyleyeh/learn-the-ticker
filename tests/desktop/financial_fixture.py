@@ -41,3 +41,33 @@ def financial_bundle(*, conflict=False):
     base = EvidenceBundle(asset=result.instrument.asset, identity_verification=result.instrument.verification,
                           language="zh-TW", level="intermediate", created_at=AT)
     return attach_financials(base, result, created_at=AT)
+
+
+async def publish_financial_snapshot(db, workspace):
+    """Exercise production orchestration against synthetic sources/runtime in a real DB."""
+    from backend.app.contracts import ResearchRequest, RuntimeEvent
+    from backend.app.research import ResearchService
+    result = financial_result(conflict=True)
+    class Resolver:
+        def resolve(self, query):
+            return [result.instrument]
+    class Financial:
+        def retrieve(self, *args, **kwargs):
+            return result
+    class Runtime:
+        async def stream(self, prompt, run_id, workspace, model=None):
+            assert "CURRENT RETRIEVAL OF HISTORICAL ISSUER EVIDENCE" in prompt
+            yield RuntimeEvent(run_id=run_id, kind="message.delta",
+                text=json.dumps({"candidates": [result.instrument.asset.model_dump(mode="json")]}))
+    db.put("settings", "settings", {"cloud_enabled": True})
+    service = ResearchService(db, {"codex": Runtime()}, workspace, identity_resolver=Resolver(),
+                              financial_adapter=Financial(), clock=lambda: AT)
+    try:
+        job = await service.submit(ResearchRequest(query=result.instrument.asset.id))
+        await service.tasks[job["id"]]
+        job = db.job(job["id"])
+        assert job["status"] == "completed"
+        assert len(job["result"]["financials"]["observations"]) == 3
+        return job
+    finally:
+        await service.close()

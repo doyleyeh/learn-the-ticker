@@ -141,7 +141,7 @@ def verify_candidate(candidate: Source, asset: AssetIdentity, fetcher=fetch_publ
     return source.model_copy(update={"verified": True, "provenance": "verified_retrieval", "excerpt": text[:20000], "content_hash": hashlib.sha256(text.encode()).hexdigest()})
 
 
-def admit_bundle(asset: AssetIdentity, sources: list[Source], claims: list[Claim], *, language="en", level=None, identity_verification=None) -> EvidenceBundle:
+def admit_bundle(asset: AssetIdentity, sources: list[Source], claims: list[Claim], *, language="en", level=None, identity_verification=None, created_at=None) -> EvidenceBundle:
     by_id = {s.id: s for s in sources if s.asset_id == asset.id and s.policy != SourcePolicy.rejected}
     if len({s.id for s in sources}) != len(sources):
         raise ValueError("Duplicate source IDs")
@@ -169,7 +169,7 @@ def admit_bundle(asset: AssetIdentity, sources: list[Source], claims: list[Claim
             admitted.append(claim.model_copy(update={"as_of": None}))
         else:
             notes.append(claim.model_copy(update={"kind": "unverified_note", "value": None, "unit": None, "input_claim_ids": [], "source_ids": [s.id for s in supports]}))
-    return EvidenceBundle(asset=asset, sources=list(by_id.values()), claims=admitted, notes=notes, language=language, level=level, identity_verification=identity_verification, state="partial")
+    return EvidenceBundle(asset=asset, sources=list(by_id.values()), claims=admitted, notes=notes, language=language, level=level, identity_verification=identity_verification, created_at=created_at or now(), state="partial")
 
 
 def factual_context(bundle: EvidenceBundle) -> dict:
