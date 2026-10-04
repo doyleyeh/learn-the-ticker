@@ -6,6 +6,7 @@ from pathlib import Path
 
 from backend.app.codex_rpc import CodexRPC
 from backend.app.codex_runtime import CodexRuntime
+from backend.app.codex_qualification import native_identity_verified
 
 
 async def main():
@@ -44,9 +45,9 @@ async def main():
                 await rpc.close()
         capabilities = await CodexRuntime(profile).check()
         assert capabilities.installed and capabilities.authentication == "required"
-        assert capabilities.qualification == "protocol_only"
-        assert not capabilities.generation and not capabilities.browsing and not capabilities.approvals
-        print(f"Exact version {capabilities.version}: protocol-only; unauthenticated capabilities remain disabled.")
+        assert capabilities.qualification == ("live" if native_identity_verified() else "protocol_only")
+        assert not any(getattr(capabilities, field) for field in ("generation", "browsing", "approvals", "streaming", "cancellation"))
+        print(f"Exact version {capabilities.version}: {capabilities.qualification}; all unauthenticated capabilities remain disabled.")
         catalog = await CodexRuntime(profile).models()
         assert catalog.status == "authentication_required" and not catalog.models
         print("Model discovery requires the dedicated subscription sign-in; no catalog entitlement or inference was assumed.")

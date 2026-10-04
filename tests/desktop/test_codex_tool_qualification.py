@@ -84,3 +84,27 @@ def test_default_cli_path_does_not_request_inference(tmp_path, monkeypatch, caps
     monkeypatch.setattr(probes, "acceptance", forbidden)
     assert asyncio.run(probes.run(SimpleNamespace(profile=None, model=None, live=False))) == 0
     assert json.loads(capsys.readouterr().out)["generation_requested"] is False
+
+
+def test_production_mode_uses_unmodified_production_guards(tmp_path):
+    from backend.app.codex_runtime import CodexRuntime
+    runtime = probes.runtime_for(tmp_path, "synthetic", True)
+    assert type(runtime) is CodexRuntime
+    assert type(probes.runtime_for(tmp_path, "synthetic", False)) is probes.ProbeRuntime
+
+
+def test_production_switch_alone_cannot_start_live_check(monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, "argv", ["qualify_codex_tools", "--production"])
+    with pytest.raises(SystemExit) as error: probes.main()
+    assert error.value.code == 2
+
+
+def test_live_cli_routes_to_production_only_when_explicit(tmp_path, monkeypatch, capsys):
+    async def preflight(*args): return {"status": "preflight_passed"}
+    async def acceptance(*args, production): return {"status": "probes_finished_review_required", "production_path": production}
+    monkeypatch.setattr(probes, "resolve_profile", lambda _: tmp_path)
+    monkeypatch.setattr(probes, "preflight", preflight)
+    monkeypatch.setattr(probes, "acceptance", acceptance)
+    assert asyncio.run(probes.run(SimpleNamespace(profile=None, model=None, live=True, production=True))) == 2
+    assert json.loads(capsys.readouterr().out)["production_path"] is True

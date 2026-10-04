@@ -11,6 +11,7 @@ from backend.app.codex_usage import require_included_usage
 from backend.app.codex_policy import require_execution_sandbox
 from backend.app.runtime_base import AIRuntime, RuntimeFailure
 from backend.app.runtime_policy import apply_qualification
+from backend.app.codex_qualification import native_identity_verified
 
 
 def subscription_account(value: dict) -> bool:
@@ -35,7 +36,7 @@ class CodexRuntime(AIRuntime):
             await rpc.open()
             account = await rpc.request("account/read", {"refreshToken": False})
             result.authentication = "authenticated" if subscription_account(account) else ("required" if account.get("account") is None else "unsupported")
-            apply_qualification(result)
+            apply_qualification(result, native_identity_verified=await asyncio.to_thread(native_identity_verified))
         except (RuntimeFailure, OSError):
             result.authentication = "unknown"
             result.reason = "Codex connection check failed. Check runtime compatibility and reconnect."
@@ -67,6 +68,9 @@ class CodexRuntime(AIRuntime):
         finally:
             await rpc.close()
 
+    async def verify_qualification(self, rpc, selected):
+        await rpc.verify_qualification(selected)
+
     async def stream(self, prompt, run_id, workspace, model=None, *, allow_browsing=True):
         await self.require_generation(allow_browsing=allow_browsing)
         profile = self.profile or workspace.parent.parent / "connections" / "codex"
@@ -84,6 +88,7 @@ class CodexRuntime(AIRuntime):
                 thread_id = await rpc.start_thread(selected)
                 await require_execution_sandbox(rpc)
                 await rpc.verify_generation(selected)
+                await self.verify_qualification(rpc, selected)
                 require_included_usage(await rpc.request("account/rateLimits/read", {}))
                 response = await rpc.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": prompt}]})
                 turn = response.get("turn")

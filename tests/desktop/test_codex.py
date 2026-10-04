@@ -34,6 +34,9 @@ class FakeRPC:
     async def verify_generation(self, selected):
         assert self.restricted_model == selected
 
+    async def verify_qualification(self, selected):
+        assert self.restricted_model == selected  # Synthetic RPC, no installed runtime.
+
     async def request(self, method, params, **kwargs):
         self.requests.append((method, params))
         if method == "account/read":

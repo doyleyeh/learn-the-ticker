@@ -88,6 +88,11 @@ class ProbeRuntime(CodexRuntime):
         if not result.installed or result.qualification == "unqualified" or result.version != self.expected_version:
             raise RuntimeFailure("The exact probe runtime version is unsupported.")
 
+    async def verify_qualification(self, rpc, selected):
+        # Explicit developer probes gather evidence before registry promotion.
+        # Authentication, catalog integrity, policy, sandbox and usage still run.
+        pass
+
 
 class DenyAccess:
     async def review(self, *args): return "deny"

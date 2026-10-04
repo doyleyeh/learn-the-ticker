@@ -8,6 +8,7 @@ from pathlib import Path
 
 from backend.app.codex_catalog import RestrictedCatalog, read_metadata
 from backend.app.codex_models import read_models, select_model
+from backend.app.codex_qualification import require_scope
 from backend.app.codex_policy import (policy_arguments, prepare_workspace, thread_parameters,
     validate_config, validate_features, validate_thread)
 from backend.app.runtime_base import RuntimeFailure, executable_command, provider_environment
@@ -68,6 +69,11 @@ class CodexRPC:
         if self.catalog is None or self.catalog.model != model:
             raise RuntimeFailure("Codex requires a verified restricted model before inference.")
         await self.verify_policy()
+
+    async def verify_qualification(self, model: str):
+        if self.catalog is None: raise RuntimeFailure("Codex requires a qualified restricted catalog before inference.")
+        capabilities = await self.request("modelProvider/capabilities/read", {})
+        require_scope(self.catalog, model, self.allow_browsing, capabilities)
 
     async def start_thread(self, model: str | None = None) -> str:
         # Recheck immediately before creating a thread, without any inference.

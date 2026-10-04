@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from backend.app.approvals import ApprovalBroker
 from backend.app.codex_rpc import CodexRPC
+from backend.app.codex_runtime import CodexRuntime
 from backend.app.contracts import ApprovalDecision
 from backend.app.runtime_base import RuntimeFailure
 from scripts.qualify_codex import (ProbeRuntime, collect, enforcement_ready, failure_reason,
@@ -21,9 +22,13 @@ def object_answer(text):
     return value
 
 
-async def permission_probe(profile, workspace, model, version, decision, *, rpc_base=CodexRPC):
+def runtime_for(profile, version, production):
+    return CodexRuntime(profile) if production else ProbeRuntime(profile, version)
+
+
+async def permission_probe(profile, workspace, model, version, decision, *, rpc_base=CodexRPC, production=False):
     broker = ApprovalBroker()
-    runtime = ProbeRuntime(profile, version)
+    runtime = runtime_for(profile, version, production)
     runtime.approvals = broker
     instances, catalog_paths = [], []
     observation = {"permission_requested": False, "only_empty_turn_responses": True,
@@ -112,19 +117,19 @@ async def permission_probe(profile, workspace, model, version, decision, *, rpc_
         broker.cancel()
 
 
-async def acceptance(profile, report):
+async def acceptance(profile, report, *, production=False):
     if report["status"] != "preflight_passed": return report
     if not await enforcement_ready(profile):
         return {**report, "status": "blocked", "blocker": "sandbox_enforcement"}
-    report = {**report, "generation_requested": True, "checks": {}}
+    report = {**report, "generation_requested": True, "production_path": production, "checks": {}}
     with tempfile.TemporaryDirectory(prefix="ltt-codex-tools-") as directory:
         root = Path(directory)
         try:
             for decision in ("deny", "cancel"):
                 report["stage"] = decision
-                report["checks"][decision] = await permission_probe(profile, root / decision, report["model"], report["version"], decision)
+                report["checks"][decision] = await permission_probe(profile, root / decision, report["model"], report["version"], decision, production=production)
             report["stage"] = "source"
-            runtime = ProbeRuntime(profile, report["version"])
+            runtime = runtime_for(profile, report["version"], production)
             report["checks"]["source"] = await source_probe(runtime, root / "source", report["model"])
             report["stage"] = "cached"
             text, progress = await collect(runtime,
@@ -136,6 +141,7 @@ async def acceptance(profile, report):
                                           "no_search_observed": progress == 0, "reported_inventory_empty": answer.get("tools") == []}
             if not all(report["checks"]["cached"].values()): raise RuntimeFailure("Cached tool checks failed")
             report.update(status="probes_finished_review_required", stage="review", blocker="authoritative_inventory_review")
+            if production: report["blocker"] = "milestone_acceptance_review"
         except (RuntimeFailure, OSError, ValueError, TypeError, TimeoutError) as error:
             report.update(status="blocked", blocker="restricted_tool_probe_failed", failure_reason=failure_reason(error))
     return report
@@ -144,7 +150,7 @@ async def acceptance(profile, report):
 async def run(args):
     profile = resolve_profile(args.profile)
     report = await preflight(profile, args.model)
-    if args.live: report = await acceptance(profile, report)
+    if args.live: report = await acceptance(profile, report, production=args.production)
     print(json.dumps(report, indent=2))
     return 0 if report["status"] == "preflight_passed" else 2
 
@@ -154,7 +160,11 @@ def main():
     parser.add_argument("--profile")
     parser.add_argument("--model")
     parser.add_argument("--live", action="store_true")
-    try: return asyncio.run(run(parser.parse_args()))
+    parser.add_argument("--production", action="store_true", help="Use all production qualification guards; requires --live.")
+    try:
+        args = parser.parse_args()
+        if args.production and not args.live: parser.error("--production requires explicit --live")
+        return asyncio.run(run(args))
     except KeyboardInterrupt:
         print(json.dumps({"status": "cancelled", "live_qualified": False}))
         return 130

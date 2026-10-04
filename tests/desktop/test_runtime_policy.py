@@ -111,6 +111,7 @@ def test_known_codex_authentication_is_reported_without_qualification(tmp_path, 
             assert kwargs["allow_browsing"] is False
             return SimpleNamespace(open=noop, close=noop, request=request)
         monkeypatch.setattr(AIRuntime, "check", discover)
+        monkeypatch.setattr("backend.app.codex_runtime.native_identity_verified", lambda: False)
         monkeypatch.setattr("backend.app.codex_runtime.CodexRPC", factory)
         result = await CodexRuntime(tmp_path).check()
         assert result.authentication == "authenticated" and result.qualification == "protocol_only"
