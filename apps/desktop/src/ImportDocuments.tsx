@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./client";
-import type { ImportPreview, RetainedImportSummary } from "./contracts";
+import type { ImportPreview, RetainedImportSummary, Settings } from "./contracts";
 import { RetainedDocuments } from "./RetainedDocuments";
+import { ImportLearning } from "./ImportLearning";
 
 const limits: Record<string, string> = {
   unverified_import: "Imported content has not been checked against the original publisher or an asset identity. It cannot supply facts or chart values.",
@@ -11,7 +12,7 @@ const limits: Record<string, string> = {
   merged_cells_not_expanded: "Merged cells are not expanded into repeated values.",
 };
 
-export function ImportDocuments({ online }: { online: boolean }) {
+export function ImportDocuments({ online, settings, level = "beginner" }: { online: boolean; settings?: Settings; level?: "beginner" | "intermediate" }) {
   const [file, setFile] = useState<File>();
   const [permission, setPermission] = useState(false);
   const [url, setUrl] = useState("");
@@ -107,8 +108,11 @@ export function ImportDocuments({ online }: { online: boolean }) {
       <label><input type="checkbox" checked={storagePermission} disabled={busy} onChange={(event) => setStoragePermission(event.target.checked)}/> I have permission to retain this document locally and include it in my backups.</label>
       <button disabled={busy || !storagePermission || !title.trim() || (preview.origin === "public_url" && !online)} onClick={() => void save()}>Retain document</button>
     </section>}
-    <RetainedDocuments revision={revision} renderDocument={(view) => <ImportPreviewDetails key={view.item.id} retained={view.item} filename={view.item.title}
-      preview={{ state: "unverified", origin: view.item.origin, source: view.item.source, checked_at: view.item.checked_at, document: view.document }}/>} />
+    <RetainedDocuments revision={revision} renderDocument={(view) => <>
+      <ImportPreviewDetails key={view.item.id} retained={view.item} filename={view.item.title}
+        preview={{ state: "unverified", origin: view.item.origin, source: view.item.source, checked_at: view.item.checked_at, document: view.document }}/>
+      <ImportLearning key={`${view.item.id}:${settings?.provider}:${settings?.model}:${settings?.language}:${level}`} view={view} settings={settings} level={level}/>
+    </>} />
   </section>;
 }
 

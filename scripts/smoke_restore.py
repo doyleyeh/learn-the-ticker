@@ -17,7 +17,7 @@ from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
 from backend.app.terms import term_key
 from tests.desktop.financial_fixture import publish_financial_snapshot
-from tests.desktop.import_fixture import retain_synthetic_documents
+from tests.desktop.import_fixture import retain_synthetic_documents, explain_synthetic_document
 from backend.app.import_previews import ImportPreview
 from backend.app.retained_imports import RetainedImport, retain_import
 
@@ -68,6 +68,7 @@ def main():
         with source.session.begin() as session:
             session.add(Event(job_id="pending", payload=RuntimeEvent(run_id="pending", kind="run.started").model_dump(mode="json")))
         imports = asyncio.run(retain_synthetic_documents(source))
+        import_job = asyncio.run(explain_synthetic_document(source, imports[0], roots[0] / "synthetic-import-learning"))
         # The real PostgreSQL lock must serialize two final-slot admissions.
         import backend.app.retained_imports as retained_module
         original_limit = retained_module.MAX_ATTACHMENTS
@@ -97,6 +98,7 @@ def main():
         summary = preview_backup(target, archive)
         assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 3 and summary.saved_reports == 1 and summary.term_explanations == 1
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
+        assert summary.import_explanations == 1
 
         def fail_event(*args):
             raise RuntimeError("Simulated restored-event write failure")
@@ -113,6 +115,7 @@ def main():
             event.remove(Event, "before_insert", fail_event)
         assert not target.list("asset") and not target.list("settings") and not target.job("pending")
         assert not target.list("import")
+        assert not target.list("import_explanation")
         restore_backup(target, archive, summary.fingerprint)
         assert target.get("bundle:" + old.id) and target.get("asset:" + identity.id)["id"] == latest.id
         assert target.list("saved")[0]["bundle_id"] == old.id
@@ -122,6 +125,8 @@ def main():
         assert target.get("settings")["model"] == "synthetic-selected-model"
         assert target.get("bundle:" + financial.id) == financial.model_dump(mode="json")
         assert target.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
+        assert target.job(import_job["id"])["result"] == import_job["result"]
+        assert target.get("import_explanation:" + import_job["result"]["id"]) == import_job["result"]
         restored_context, _ = conversation_evidence(target, financial.asset, target.get("conversation:" + cited_chat.id)["messages"])
         assert restored_context == original_context
         for document in imports:
@@ -151,6 +156,23 @@ def main():
         assert restarted.get("asset:" + financial.asset.id) == financial.model_dump(mode="json")
         assert restarted.get("bundle:" + financial.id)["financials"]["observations"][0]["value"] == "9007199254740993"
         assert restarted.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
+        assert restarted.job(import_job["id"])["result"] == import_job["result"]
+        assert restarted.get("import_explanation:" + import_job["result"]["id"]) == import_job["result"]
+        async def reopen_import_explanation():
+            from backend.app.import_learning import ImportLearningRequest
+            from backend.app.import_learning_service import ImportLearning
+            from backend.app.import_previews import ImportPreviews
+            from backend.app.import_storage import ImportStorage
+            from backend.app.research import ResearchService
+            offline = ResearchService(restarted, {}, roots[1] / "offline-import-learning")
+            learning = ImportLearning(offline, ImportStorage(ImportPreviews(offline)))
+            try:
+                cached = await learning.lookup(ImportLearningRequest.model_validate(import_job["request"]))
+                assert cached["status"] == "cached" and cached["result"] == import_job["result"]
+                assert not offline.tasks
+            finally:
+                await offline.close()
+        asyncio.run(reopen_import_explanation())
         restarted_context, _ = conversation_evidence(restarted, financial.asset, restarted.get("conversation:" + cited_chat.id)["messages"])
         assert restarted_context == original_context
         for document in imports:

@@ -22,6 +22,8 @@ from backend.app.identity import identity_hash
 from backend.app.retained_imports import MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, RetainedImport
 from backend.app.import_documents import MAX_INPUT
 from backend.app.terms import term_key, validate_explanation
+from backend.app.import_learning import ImportExplanation, ImportLearningRequest, learning_key, validate_learning
+from backend.app.import_storage import RetainedImportView, summary as import_summary
 
 MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
 MAX_CONTENT_BYTES = 256 * 1024 * 1024
@@ -39,7 +41,7 @@ class StrictModel(BaseModel):
 
 class StoredRecord(StrictModel):
     id: str = Field(max_length=200)
-    kind: Literal["asset", "bundle", "conversation", "saved", "settings", "term", "import"]
+    kind: Literal["asset", "bundle", "conversation", "saved", "settings", "term", "import", "import_explanation"]
     parent_id: str | None = Field(default=None, max_length=200)
     updated_at: AwareDatetime
     payload: dict
@@ -48,7 +50,7 @@ class StoredRecord(StrictModel):
 class StoredJob(StrictModel):
     id: str = Field(min_length=1, max_length=36)
     status: Literal["queued", "running", "completed", "failed", "cancelled", "interrupted", "needs_identity"]
-    request: ResearchRequest | TermRequest
+    request: ResearchRequest | TermRequest | ImportLearningRequest
     result: dict | None = None
     error: str | None = Field(default=None, max_length=1000)
     created_at: AwareDatetime
@@ -122,7 +124,7 @@ def validate_library(data: LibraryData):
         raise BackupError("Library exceeds the current 100 retained-document archive limit")
     attachment_bytes = 0
     for row in data.records:
-        model = {"asset": EvidenceBundle, "bundle": EvidenceBundle, "settings": Settings, "conversation": Conversation, "saved": SavedResearch, "term": TermExplanation, "import": RetainedImport}[row.kind]
+        model = {"asset": EvidenceBundle, "bundle": EvidenceBundle, "settings": Settings, "conversation": Conversation, "saved": SavedResearch, "term": TermExplanation, "import": RetainedImport, "import_explanation": ImportExplanation}[row.kind]
         value = model.model_validate(row.payload)
         suffix = value.asset.id if row.kind == "asset" else getattr(value, "id", "")
         expected = "settings" if row.kind == "settings" else row.kind + ":" + suffix
@@ -157,6 +159,12 @@ def validate_library(data: LibraryData):
             if value["bundle_id"] not in bundles or row.parent_id != value["bundle_id"]:
                 raise BackupError("Term explanation references missing evidence")
             validate_explanation(TermExplanation.model_validate(value), bundles[value["bundle_id"]])
+        elif row.kind == "import_explanation":
+            source = records.get("import:" + value["document_id"])
+            if not source or source.kind != "import" or row.parent_id != value["document_id"]:
+                raise BackupError("Import explanation references missing material")
+            retained = RetainedImport.model_validate(source.payload)
+            validate_learning(ImportExplanation.model_validate(value), RetainedImportView(item=import_summary(retained), document=retained.document))
         elif row.kind == "conversation":
             if "asset:" + value["asset_id"] not in records:
                 raise BackupError("Conversation scope is missing from the library")
@@ -169,6 +177,19 @@ def validate_library(data: LibraryData):
     if len(jobs) != len(data.jobs) or len({event.id for event in data.events}) != len(data.events):
         raise BackupError("Duplicate jobs or events")
     for job in data.jobs:
+        if isinstance(job.request, ImportLearningRequest):
+            source = records.get("import:" + job.request.document_id)
+            if not source or source.kind != "import" or source.payload["document"]["content_hash"] != job.request.content_hash:
+                raise BackupError("Import job material is missing or changed")
+            if (job.status == "completed") != (job.result is not None):
+                raise BackupError("Import job completion is inconsistent")
+            if job.result is not None:
+                explanation = ImportExplanation.model_validate(job.result)
+                record = records.get("import_explanation:" + explanation.id)
+                if (not record or record.payload != explanation.model_dump(mode="json") or explanation.id != learning_key(job.request)
+                        or (explanation.provider, explanation.model) != (job.request.provider, job.request.model)):
+                    raise BackupError("Completed import explanation is missing or inconsistent")
+            continue
         if isinstance(job.request, TermRequest):
             if job.request.bundle_id not in bundles:
                 raise BackupError("Term job evidence is missing")
@@ -298,7 +319,7 @@ def preview_backup(db: Database, raw: bytes) -> BackupSummary:
     manifest, data = read_backup(raw)
     counts = Counter(record.kind for record in data.records)
     allowed = restore_allowed(db)
-    return BackupSummary(format_version=manifest.format_version, created_at=manifest.created_at, fingerprint=hashlib.sha256(raw).hexdigest(), assets=counts["asset"], evidence_versions=counts["bundle"], conversations=counts["conversation"], saved_reports=counts["saved"], term_explanations=counts["term"], retained_imports=counts["import"], attachment_bytes=sum(entry.byte_count for entry in manifest.attachments), jobs=len(data.jobs), can_restore=allowed, reason=None if allowed else "Restore requires an empty library. Keep this installation intact and restore into a new library to preserve newer research.")
+    return BackupSummary(format_version=manifest.format_version, created_at=manifest.created_at, fingerprint=hashlib.sha256(raw).hexdigest(), assets=counts["asset"], evidence_versions=counts["bundle"], conversations=counts["conversation"], saved_reports=counts["saved"], term_explanations=counts["term"], retained_imports=counts["import"], import_explanations=counts["import_explanation"], attachment_bytes=sum(entry.byte_count for entry in manifest.attachments), jobs=len(data.jobs), can_restore=allowed, reason=None if allowed else "Restore requires an empty library. Keep this installation intact and restore into a new library to preserve newer research.")
 
 
 def restore_backup(db: Database, raw: bytes, fingerprint: str) -> BackupSummary:

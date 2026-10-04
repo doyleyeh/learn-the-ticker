@@ -5,6 +5,9 @@ from backend.app.import_previews import ImportPreview
 from backend.app.import_worker import extract_document
 from backend.app.retained_imports import retain_import
 from tests.desktop.test_import_documents import pdf_bytes, workbook_bytes
+import asyncio
+import json
+from backend.app.contracts import RuntimeEvent
 
 
 async def retain_synthetic_documents(db):
@@ -24,3 +27,35 @@ async def retain_synthetic_documents(db):
                                 source=source, document=document, checked_at=now())
         retained.append(retain_import(db, raw, preview, title="Synthetic " + format, storage_and_backup_confirmed=True))
     return retained
+
+
+class ImportLearningFixture:
+    """No provider connection. Quotes only the supplied synthetic parsed context."""
+    def __init__(self, delay=1):
+        self.delay = delay
+
+    async def stream(self, prompt, run_id, workspace, model=None, *, allow_browsing=True):
+        assert not allow_browsing
+        context = json.loads(prompt.split("\nUNTRUSTED DOCUMENT: ", 1)[1])
+        locator, quote = next(iter(context["passages"].items()))
+        quote = quote[:500]
+        explanation = "這是文件內容的未驗證解讀。引用保留了原始文字。" if "in zh-TW" in prompt else "This is an unverified interpretation of the document. The reference preserves its original text."
+        await asyncio.sleep(self.delay)
+        yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps({"explanation": explanation, "references": [{"locator": locator, "quote": quote}]}))
+
+
+async def explain_synthetic_document(db, item, workspace):
+    from backend.app.import_learning import ImportLearningRequest
+    from backend.app.import_learning_service import ImportLearning
+    from backend.app.import_previews import ImportPreviews
+    from backend.app.import_storage import ImportStorage
+    from backend.app.research import ResearchService
+    service = ResearchService(db, {"codex": ImportLearningFixture()}, workspace)
+    learning = ImportLearning(service, ImportStorage(ImportPreviews(service)))
+    request = ImportLearningRequest(document_id=item.id, content_hash=item.document.content_hash, transmission_confirmed=True)
+    job = await learning.submit(request)
+    await service.tasks[job["id"]]
+    result = db.job(job["id"])
+    assert result["status"] == "completed"
+    await service.close()
+    return result

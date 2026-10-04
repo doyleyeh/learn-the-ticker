@@ -229,10 +229,18 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
             raise HTTPException(409, str(exc)) from exc
 
     @app.get("/api/jobs/{job_id}")
-    def job(job_id: str):
+    async def job(job_id: str):
         result = db.job(job_id)
         if result is None:
             raise HTTPException(404, "Research job not found")
+        if result["request"].get("purpose") == "import_explanation" and result.get("result"):
+            from backend.app.import_learning import ImportLearningRequest
+            try:
+                checked = await app.state.import_learning.lookup(ImportLearningRequest.model_validate(result["request"]))
+                if checked.get("result") != result["result"]:
+                    raise ValueError("Completed result no longer matches its immutable interpretation")
+            except ValueError:
+                raise HTTPException(409, "This document explanation no longer passes its source and integrity checks.") from None
         return result
 
     @app.post("/api/jobs/{job_id}/cancel")

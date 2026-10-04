@@ -223,6 +223,11 @@
           "title": "Retained Imports",
           "type": "integer"
         },
+        "import_explanations": {
+          "default": 0,
+          "title": "Import Explanations",
+          "type": "integer"
+        },
         "attachment_bytes": {
           "default": 0,
           "title": "Attachment Bytes",
@@ -1020,6 +1025,240 @@
       "title": "ImportCell",
       "type": "object"
     },
+    "ImportExplanation": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "document_id": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "level": {
+          "default": "beginner",
+          "enum": [
+            "beginner",
+            "intermediate"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "explanation": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "references": {
+          "items": {
+            "$ref": "#/$defs/ImportReference"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "References",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "interpretation": {
+          "const": true,
+          "default": true,
+          "title": "Interpretation",
+          "type": "boolean"
+        },
+        "verified": {
+          "const": false,
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "document_id",
+        "content_hash",
+        "explanation",
+        "references",
+        "id",
+        "provider"
+      ],
+      "title": "ImportExplanation",
+      "type": "object"
+    },
+    "ImportLearningRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "document_id": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "level": {
+          "default": "beginner",
+          "enum": [
+            "beginner",
+            "intermediate"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "import_explanation",
+          "default": "import_explanation",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "provider": {
+          "default": "codex",
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "transmission_confirmed": {
+          "const": true,
+          "title": "Transmission Confirmed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "document_id",
+        "content_hash",
+        "transmission_confirmed"
+      ],
+      "title": "ImportLearningRequest",
+      "type": "object"
+    },
+    "ImportLearningScope": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "document_id": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "level": {
+          "default": "beginner",
+          "enum": [
+            "beginner",
+            "intermediate"
+          ],
+          "title": "Level",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "content_hash"
+      ],
+      "title": "ImportLearningScope",
+      "type": "object"
+    },
     "ImportPreview": {
       "additionalProperties": false,
       "properties": {
@@ -1085,6 +1324,35 @@
         "checked_at"
       ],
       "title": "ImportPreview",
+      "type": "object"
+    },
+    "ImportReference": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "locator": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        },
+        "quote": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "locator",
+        "quote"
+      ],
+      "title": "ImportReference",
       "type": "object"
     },
     "ParsedDocument": {
@@ -2219,6 +2487,15 @@
     },
     "RetainedImportView": {
       "$ref": "#/$defs/RetainedImportView"
+    },
+    "ImportExplanation": {
+      "$ref": "#/$defs/ImportExplanation"
+    },
+    "ImportLearningRequest": {
+      "$ref": "#/$defs/ImportLearningRequest"
+    },
+    "ImportLearningScope": {
+      "$ref": "#/$defs/ImportLearningScope"
     },
     "ProviderLogin": {
       "$ref": "#/$defs/ProviderLogin"

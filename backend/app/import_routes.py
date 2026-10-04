@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 from backend.app.import_documents import MAX_INPUT, ImportFailure
 from backend.app.import_previews import import_message
 from backend.app.import_storage import ImportStorage, RetainMetadata, RetainURL
+from backend.app.import_learning import ImportLearningScope, ImportLearningRequest
+from backend.app.import_learning_service import ImportLearning
 
 
 async def preview_body(request, limit):
@@ -47,6 +49,34 @@ async def while_connected(request, operation):
 def mount_import_routes(app, previews):
     storage = ImportStorage(previews)
     app.state.import_storage = storage
+    learning = ImportLearning(previews.research, storage)
+    app.state.import_learning = learning
+
+    async def explain_request(request, *, generate):
+        try:
+            raw = await preview_body(request, 4096)
+            model = ImportLearningRequest if generate else ImportLearningScope
+            try:
+                value = model.model_validate_json(raw)
+            except (ValueError, RecursionError):
+                raise HTTPException(400, "Open a retained document and confirm sharing permission before generating an explanation.") from None
+            if generate and app.state.codex_login.snapshot().status == "pending":
+                raise HTTPException(409, "Complete or cancel sign-in before generating an explanation")
+            operation = learning.submit if generate else learning.lookup
+            result = await while_connected(request, lambda: operation(value))
+            return JSONResponse(result, status_code=202 if generate else 200, headers={"Cache-Control": "no-store"})
+        except ImportFailure as exc:
+            raise HTTPException(400, import_message(exc)) from None
+        except ValueError:
+            raise HTTPException(409, "This explanation is unavailable. Check the document, cloud permission and selected connection before retrying.") from None
+
+    @app.post("/api/imports/explanations/lookup")
+    async def lookup_explanation(request: Request):
+        return await explain_request(request, generate=False)
+
+    @app.post("/api/imports/explanations")
+    async def generate_explanation(request: Request):
+        return await explain_request(request, generate=True)
 
     @app.get("/api/imports/retained")
     async def retained_list():

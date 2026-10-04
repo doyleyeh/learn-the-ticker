@@ -69,7 +69,7 @@ class Database:
         if record:
             if record.kind != kind:
                 raise ValueError("Record type cannot change")
-            if kind in ("bundle", "term", "import") and record.payload != payload:
+            if kind in ("bundle", "term", "import", "import_explanation") and record.payload != payload:
                 raise ValueError("Evidence snapshots are immutable")
             record.payload = payload
             record.updated_at = datetime.now(timezone.utc)
@@ -129,6 +129,24 @@ class Database:
             if not session.get(Record, "bundle:" + payload["bundle_id"]):
                 raise ValueError("Explanation evidence no longer exists")
             self._put(session, "term:" + payload["id"], "term", payload, payload["bundle_id"])
+            job.status, job.result, job.error = "completed", payload, None
+
+    def complete_import_explanation(self, job_id: str, payload: dict):
+        from backend.app.import_learning import ImportExplanation, ImportLearningRequest, learning_key, validate_learning
+        from backend.app.import_storage import RetainedImportView, summary
+        from backend.app.retained_imports import RetainedImport
+        with self.session.begin() as session:
+            job = session.get(Job, job_id, with_for_update=True)
+            if not job or job.status != "running":
+                raise ValueError("Only a running job can publish an explanation")
+            request = ImportLearningRequest.model_validate(job.request)
+            value = ImportExplanation.model_validate(payload)
+            source = session.get(Record, "import:" + request.document_id)
+            if not source or value.id != learning_key(request) or (value.provider, value.model) != (request.provider, request.model):
+                raise ValueError("Explanation scope changed")
+            retained = RetainedImport.model_validate(source.payload)
+            validate_learning(value, RetainedImportView(item=summary(retained), document=retained.document))
+            self._put(session, "import_explanation:" + value.id, "import_explanation", payload, value.document_id)
             job.status, job.result, job.error = "completed", payload, None
 
     def expire_conversations(self, retention_days: int, *, at: datetime | None = None) -> int:

@@ -32,7 +32,7 @@ export function LibraryBackup({ onRestored }: { onRestored: () => Promise<void> 
     {preview && <div className="backup-preview">
       <h3>Backup contents</h3>
       <p>Created {new Date(preview.created_at).toLocaleString()}</p>
-      <dl><dt>Assets</dt><dd>{preview.assets}</dd><dt>Evidence versions</dt><dd>{preview.evidence_versions}</dd><dt>Conversations</dt><dd>{preview.conversations}</dd><dt>Saved reports</dt><dd>{preview.saved_reports}</dd><dt>Term explanations</dt><dd>{preview.term_explanations ?? 0}</dd><dt>Retained documents</dt><dd>{preview.retained_imports ?? 0}</dd><dt>Retained document bytes</dt><dd>{preview.attachment_bytes ?? 0}</dd></dl>
+      <dl><dt>Assets</dt><dd>{preview.assets}</dd><dt>Evidence versions</dt><dd>{preview.evidence_versions}</dd><dt>Conversations</dt><dd>{preview.conversations}</dd><dt>Saved reports</dt><dd>{preview.saved_reports}</dd><dt>Term explanations</dt><dd>{preview.term_explanations ?? 0}</dd><dt>Document explanations</dt><dd>{preview.import_explanations ?? 0}</dd><dt>Retained documents</dt><dd>{preview.retained_imports ?? 0}</dd><dt>Retained document bytes</dt><dd>{preview.attachment_bytes ?? 0}</dd></dl>
       <p>Credentials: excluded. Cloud research and start-at-login will remain off. Unfinished runs require an explicit retry.</p>
       {preview.reason && <p role="status">{preview.reason}</p>}
       <button disabled={busy || !file || !preview.can_restore} onClick={() => void run(async () => {

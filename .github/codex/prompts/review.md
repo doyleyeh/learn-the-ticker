@@ -54,6 +54,8 @@ Retained imports require distinct storage/backup permission, original bytes/fing
 
 Retention routes must match the preview fingerprint after reparsing, recheck URL rights/consent and require distinct storage permission. Source reads must reparse original bytes under owned-process/queue limits without fetching or invoking providers; raw bytes stay out of frontend lists. Preserve original checked/retrieved dates and unverified labels when reopening offline. Consume request bodies before disconnect monitoring, including empty GETs, and cover immediate queue failure. A lost/cancelled save response must not claim no write occurred; refresh retained metadata and disclose uncertainty before retry.
 
+Imported-document explanations require separate explicit transmission consent and the selected no-browsing runtime. Keep untrusted context bounded and all generated interpretations outside factual/chart context. Require original ID/hash/page/cell/literal quote validation, current rights and reparsing on both cached and completed-job reads. Preserve language/level and provider provenance, share cancellation/queue limits, reject tools/reviews and publish the interpretation/job atomically. Archive restore must validate source and completed-job references without replaying inference. Quoted text is provenance, not proof of semantic support, source truth or comprehensive safety detection.
+
 Return:
 
 - summary
