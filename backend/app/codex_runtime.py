@@ -78,8 +78,12 @@ class CodexRuntime(AIRuntime):
                 if not subscription_account(await rpc.request("account/read", {"refreshToken": False})):
                     raise RuntimeFailure("Sign in to ChatGPT / Codex in Connections. API-key billing is not enabled.")
                 selected = select_model(await read_models(rpc), model)
+                await rpc.restrict_model(selected)
+                if not subscription_account(await rpc.request("account/read", {"refreshToken": False})):
+                    raise RuntimeFailure("The dedicated ChatGPT authentication changed. No inference was started.")
                 thread_id = await rpc.start_thread(selected)
                 await require_execution_sandbox(rpc)
+                await rpc.verify_generation(selected)
                 require_included_usage(await rpc.request("account/rateLimits/read", {}))
                 response = await rpc.request("turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": prompt}]})
                 turn = response.get("turn")
@@ -126,12 +130,15 @@ class CodexRuntime(AIRuntime):
                         elif kind == "webSearch" and allow_browsing:
                             if method == "item/started":
                                 yield RuntimeEvent(run_id=run_id, kind="tool.started", text="Searching online sources")
+                        elif kind == "functionCallOutput" and allow_browsing:
+                            approvals.permission_output(item, completed=method == "item/completed")
                         elif kind not in ("userMessage", "reasoning"):
                             raise RuntimeFailure("Codex reported activity outside the permitted research tools.")
                     elif method == "turn/completed":
                         if params.get("turn", {}).get("status") != "completed":
                             raise RuntimeFailure("Codex turn did not complete. Check quota, authentication or cancellation.")
                         pending_tools.finish()
+                        approvals.finish()
                         answer = messages.finish()
                         completed = True
                         if answer:

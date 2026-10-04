@@ -59,10 +59,16 @@ async def preflight(profile: Path, model: str | None, *, rpc_factory=CodexRPC) -
         report["model"] = selected
         report["blocker"] = "included_usage_unconfirmed_or_exhausted"
         require_included_usage(await rpc.request("account/rateLimits/read", {}))
+        report["blocker"] = "restricted_catalog"
+        await rpc.restrict_model(selected)
+        if not subscription_account(await rpc.request("account/read", {"refreshToken": False})):
+            report["blocker"] = "dedicated_subscription_sign_in"
+            return report
         report["blocker"] = "thread_isolation"
         await rpc.start_thread(selected)
         report["blocker"] = "windows_sandbox_setup_required"
         await require_execution_sandbox(rpc)
+        await rpc.verify_generation(selected)
         report.update(status="preflight_passed", blocker=None)
         return report
     except (RuntimeFailure, OSError, ValueError, TypeError):

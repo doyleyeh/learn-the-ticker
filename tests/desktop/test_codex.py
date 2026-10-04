@@ -28,6 +28,12 @@ class FakeRPC:
     async def open(self):
         pass
 
+    async def restrict_model(self, selected):
+        self.restricted_model = selected
+
+    async def verify_generation(self, selected):
+        assert self.restricted_model == selected
+
     async def request(self, method, params, **kwargs):
         self.requests.append((method, params))
         if method == "account/read":

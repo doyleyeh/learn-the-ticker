@@ -6,6 +6,8 @@ import json
 from collections import deque
 from pathlib import Path
 
+from backend.app.codex_catalog import RestrictedCatalog, read_metadata
+from backend.app.codex_models import read_models, select_model
 from backend.app.codex_policy import (policy_arguments, prepare_workspace, thread_parameters,
     validate_config, validate_features, validate_thread)
 from backend.app.runtime_base import RuntimeFailure, executable_command, provider_environment
@@ -19,14 +21,16 @@ class CodexRPC:
         self.process = None
         self.sequence = 0
         self.pending = deque()
+        self.catalog = None
 
     async def open(self):
         prepare_workspace(self.profile, self.workspace)
+        if self.catalog: self.catalog.verify()
         environment = {**provider_environment(), "CODEX_HOME": str(self.profile.resolve())}
         try:
             self.process = await launch_owned(
                 *executable_command("codex"), "app-server", "--stdio",
-                *policy_arguments(self.allow_browsing), cwd=self.workspace, env=environment,
+                *policy_arguments(self.allow_browsing, self.catalog.path if self.catalog else None), cwd=self.workspace, env=environment,
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL, limit=2_000_000)
             await self.request("initialize", {"clientInfo": {"name": "learn_the_ticker", "title": "Learn the Ticker", "version": "0.2.0"}})
@@ -37,18 +41,46 @@ class CodexRPC:
             raise
 
     async def verify_policy(self):
-        validate_config(await self.request("config/read", {"cwd": str(self.workspace.resolve()), "includeLayers": True}), self.allow_browsing, self.profile)
-        validate_features(await self.request("experimentalFeature/list", {"limit": 200}))
+        if self.catalog: self.catalog.verify()
+        validate_config(await self.request("config/read", {"cwd": str(self.workspace.resolve()), "includeLayers": True}),
+                        self.allow_browsing, self.profile, self.catalog.path if self.catalog else None)
+        validate_features(await self.request("experimentalFeature/list", {"limit": 200}),
+                          request_permissions=self.allow_browsing and self.catalog is not None)
+
+    async def restrict_model(self, selected: str):
+        """Reopen before thread creation: model_catalog_json is startup-only."""
+        if self.catalog is not None:
+            raise RuntimeFailure("Codex already has a selected restricted catalog.")
+        await self.verify_policy()
+        payload = await read_metadata(self.profile, self.workspace, selected)
+        await self.close()
+        try:
+            self.catalog = RestrictedCatalog(payload, selected)
+            await self.open()
+            models = await read_models(self)
+            if len(models) != 1 or select_model(models, selected) != selected:
+                raise RuntimeFailure("Codex did not retain the selected restricted model. No fallback was permitted.")
+        except BaseException:
+            await self.close()
+            raise
+
+    async def verify_generation(self, model: str):
+        if self.catalog is None or self.catalog.model != model:
+            raise RuntimeFailure("Codex requires a verified restricted model before inference.")
+        await self.verify_policy()
 
     async def start_thread(self, model: str | None = None) -> str:
         # Recheck immediately before creating a thread, without any inference.
         prepare_workspace(self.profile, self.workspace)
         await self.verify_policy()
+        if self.catalog and model != self.catalog.model:
+            raise RuntimeFailure("Codex thread does not match its restricted model.")
         response = await self.request("thread/start", thread_parameters(self.workspace, model))
         thread_id = validate_thread(response, self.workspace)
         if model is not None and response.get("model") != model:
             raise RuntimeFailure("Codex changed the selected model. No inference or fallback was permitted.")
-        validate_features(await self.request("experimentalFeature/list", {"limit": 200, "threadId": thread_id}))
+        validate_features(await self.request("experimentalFeature/list", {"limit": 200, "threadId": thread_id}),
+                          request_permissions=self.allow_browsing and self.catalog is not None)
         return thread_id
 
     async def send(self, message: dict):
@@ -109,4 +141,8 @@ class CodexRPC:
     async def close(self):
         process, self.process = self.process, None
         self.pending.clear()
-        await close_owned(process, grace=1)
+        try:
+            await close_owned(process, grace=1)
+        finally:
+            catalog, self.catalog = self.catalog, None
+            if catalog: catalog.close()

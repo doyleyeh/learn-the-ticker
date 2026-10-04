@@ -25,11 +25,20 @@ DISABLED_FEATURES = (
     "auth_elicitation", "in_app_browser", "in_app_local_automation",
     "workspace_dependencies", "worktrees", "guardian_approval", "guardianv2",
     "memories", "request_permissions_tool", "request_rule", "deferred_executor",
-    "token_budget", "send_message_to_user_async", "api_key_model_discovery",
+    "token_budget", "send_message_to_user_async", "api_key_model_discovery", "current_time_reminder",
 )
 
+TOOL_FLAGS = {"update_plan": {"enabled": False}, "experimental_request_user_input": {"enabled": False}}
 
-def policy_config(allow_browsing: bool) -> dict:
+
+def exact_settings(value, expected):
+    if type(value) is not type(expected): return False
+    if isinstance(expected, dict):
+        return value.keys() == expected.keys() and all(exact_settings(value[k], v) for k, v in expected.items())
+    return value == expected
+
+
+def policy_config(allow_browsing: bool, catalog: Path | None = None) -> dict:
     return {
         **{f"features.{name}": False for name in DISABLED_FEATURES if name not in {"code_mode", "code_mode_host"}},
         # Model metadata can select code_mode_only even when its feature is off.
@@ -41,6 +50,10 @@ def policy_config(allow_browsing: bool) -> dict:
         "features.code_mode_host.enabled": False,
         "features.code_mode_host.disable_in_process_fallback": False,
         "features.skip_host_skill_discovery": True,
+        "agents.enabled": False,
+        "tools.update_plan.enabled": False,
+        "tools.experimental_request_user_input.enabled": False,
+        **({"model_catalog_json": str(catalog), "features.request_permissions_tool": allow_browsing} if catalog else {}),
         "web_search": "live" if allow_browsing else "disabled",
         "forced_login_method": "chatgpt", "cli_auth_credentials_store": "keyring",
         "approval_policy": "on-request", "approvals_reviewer": "user",
@@ -62,9 +75,9 @@ async def require_execution_sandbox(rpc):
             raise RuntimeFailure("The dedicated Windows sandbox needs setup before inference. No setup or fallback was started.")
 
 
-def policy_arguments(allow_browsing: bool) -> list[str]:
+def policy_arguments(allow_browsing: bool, catalog: Path | None = None) -> list[str]:
     args = ["--strict-config"]
-    for key, value in policy_config(allow_browsing).items():
+    for key, value in policy_config(allow_browsing, catalog).items():
         args.extend(["-c", f"{key}={json.dumps(value, separators=(',', ':'))}"])
     return args
 
@@ -119,11 +132,13 @@ def prepare_workspace(profile: Path, workspace: Path):
         raise RuntimeFailure("The isolated Codex workspace could not be verified.") from exc
 
 
-def validate_config(response: dict, allow_browsing: bool, profile: Path | None = None):
+def validate_config(response: dict, allow_browsing: bool, profile: Path | None = None, catalog: Path | None = None):
     config, layers = response.get("config"), response.get("layers")
     if not isinstance(config, dict) or not isinstance(layers, list) or not layers:
         raise RuntimeFailure("Codex did not report its effective configuration.")
-    for key, expected in policy_config(allow_browsing).items():
+    for key, expected in policy_config(allow_browsing, catalog).items():
+        if key.startswith("tools."):
+            continue  # These fields are verified in the strict sessionFlags layer below.
         value = config
         for part in key.split("."):
             value = value.get(part) if isinstance(value, dict) else None
@@ -145,9 +160,21 @@ def validate_config(response: dict, allow_browsing: bool, profile: Path | None =
                 pass
         if layer["name"].get("type") != "sessionFlags" and layer.get("config") != {} and not sandbox_layer:
             raise RuntimeFailure("Codex inherited configuration outside the isolated connection.")
+    flags = [layer for layer in layers if layer["name"].get("type") == "sessionFlags"]
+    if (len(flags) != 1 or not isinstance(flags[0].get("config"), dict)
+            or not exact_settings(flags[0]["config"].get("tools"), TOOL_FLAGS)
+            or not exact_settings(flags[0]["config"].get("agents"), {"enabled": False})):
+        raise RuntimeFailure("Codex strict session tool settings could not be verified.")
+    # Pinned normalized Config contains only legacy tools.web_search=null; the
+    # plan/input switches are absent. If returned they must agree. Agents includes
+    # provider defaults; its effective enabled flag is
+    # checked above and the strict session layer forbids extra agent settings.
+    if not (exact_settings(config.get("tools"), {"web_search": None})
+            or exact_settings(config.get("tools"), TOOL_FLAGS)):
+        raise RuntimeFailure("Codex effective tool settings do not enforce the application policy.")
 
 
-def validate_features(response: dict):
+def validate_features(response: dict, *, request_permissions: bool = False):
     rows = response.get("data")
     if not isinstance(rows, list) or response.get("nextCursor") is not None or len(rows) > 256:
         raise RuntimeFailure("Codex feature policy could not be verified completely.")
@@ -156,7 +183,7 @@ def validate_features(response: dict):
         if not isinstance(row, dict) or not isinstance(row.get("name"), str) or type(row.get("enabled")) is not bool or row["name"] in features:
             raise RuntimeFailure("Codex returned an invalid feature policy.")
         features[row["name"]] = row["enabled"]
-    if any(features.get(name) is not False for name in DISABLED_FEATURES):
+    if any(features.get(name) is not (request_permissions if name == "request_permissions_tool" else False) for name in DISABLED_FEATURES):
         raise RuntimeFailure("Codex reports a prohibited or unrecognized tool capability.")
 
 

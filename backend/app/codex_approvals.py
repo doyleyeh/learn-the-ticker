@@ -1,5 +1,6 @@
 """Translate only correlated v2 access requests; never echo vendor scopes or grants."""
 import asyncio
+import json
 from backend.app.runtime_base import RuntimeFailure
 
 
@@ -62,6 +63,8 @@ class CodexApprovals:
         self.rpc, self.broker, self.run_id = rpc, broker, run_id
         self.thread_id, self.turn_id = thread_id, turn_id
         self.seen = set()
+        self.items = set()
+        self.permission_outputs = {}
 
     async def handle(self, raw: dict):
         method, params, request_id = raw.get("method"), raw.get("params"), raw.get("id")
@@ -72,9 +75,10 @@ class CodexApprovals:
             raise RuntimeFailure("Codex requested unsupported or uncorrelated access. No permission was granted.")
         # Disallow repeated IDs and bound requests per operation, including after denial.
         key = (type(request_id), request_id)
-        if key in self.seen or len(self.seen) >= 3:
+        if key in self.seen or params["itemId"] in self.items or len(self.seen) >= 3:
             raise RuntimeFailure("Codex repeated or exceeded access requests. No permission was granted.")
         self.seen.add(key)
+        self.items.add(params["itemId"])
         if self.broker is None:
             raise RuntimeFailure("Access review is unavailable. No permission was granted.")
         review = asyncio.create_task(self.broker.review(self.run_id, "codex", METHODS[method]))
@@ -95,3 +99,35 @@ class CodexApprovals:
             raise asyncio.CancelledError
         if outcome == "expired":
             raise RuntimeFailure("Access review expired. Research stopped without granting permission; retry explicitly.")
+        if outcome != "deny":
+            raise RuntimeFailure("Access review returned an invalid decision. No permission was granted.")
+        if METHODS[method] == "permissions":
+            self.permission_outputs[params["itemId"]] = "denied"
+
+    def permission_output(self, item, *, completed):
+        """Only a matching empty permission response may be a function output."""
+        item_id = item.get("id")
+        if (not identifier(item_id) or item.get("name") != "request_permissions"
+                or item.get("namespace") not in (None, "functions")
+                or self.permission_outputs.get(item_id) not in ("denied", "started")):
+            raise RuntimeFailure("Codex reported an unmatched permission result.")
+        output = item.get("output")
+        if isinstance(output, list) and len(output) == 1 and isinstance(output[0], dict) and set(output[0]) == {"type", "text"} and output[0]["type"] == "input_text":
+            output = output[0]["text"]
+        try:
+            if not isinstance(output, str) or len(output) > 512: raise ValueError()
+            # Reject duplicates rather than letting JSON's last field win.
+            from backend.app.codex_catalog import unique_object
+            value = json.loads(output, object_pairs_hook=unique_object)
+            if not isinstance(value, dict) or set(value) != {"permissions", "scope"} or value["scope"] != "turn": raise ValueError()
+            permissions = value["permissions"]
+            if not isinstance(permissions, dict) or set(permissions) - {"network", "file_system"} or any(v is not None for v in permissions.values()): raise ValueError()
+        except (ValueError, TypeError, RecursionError) as exc:
+            raise RuntimeFailure("Codex reported a result beyond the denied permissions.") from exc
+        if not completed and self.permission_outputs[item_id] != "denied":
+            raise RuntimeFailure("Codex repeated a permission result.")
+        self.permission_outputs[item_id] = "completed" if completed else "started"
+
+    def finish(self):
+        if "started" in self.permission_outputs.values():
+            raise RuntimeFailure("Codex ended with an incomplete permission result.")
