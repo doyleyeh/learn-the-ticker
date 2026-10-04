@@ -25,7 +25,7 @@ DISABLED_FEATURES = (
     "auth_elicitation", "in_app_browser", "in_app_local_automation",
     "workspace_dependencies", "worktrees", "guardian_approval", "guardianv2",
     "memories", "request_permissions_tool", "request_rule", "deferred_executor",
-    "token_budget", "send_message_to_user_async", "api_key_model_discovery", "current_time_reminder",
+    "token_budget", "send_message_to_user_async", "api_key_model_discovery", "current_time_reminder", "agent_message_board",
 )
 
 TOOL_FLAGS = {"update_plan": {"enabled": False}, "experimental_request_user_input": {"enabled": False}}
@@ -53,6 +53,7 @@ def policy_config(allow_browsing: bool, catalog: Path | None = None) -> dict:
         "agents.enabled": False,
         "tools.update_plan.enabled": False,
         "tools.experimental_request_user_input.enabled": False,
+        "cloud.skills.enabled": False,
         **({"model_catalog_json": str(catalog), "features.request_permissions_tool": allow_browsing} if catalog else {}),
         "web_search": "live" if allow_browsing else "disabled",
         "forced_login_method": "chatgpt", "cli_auth_credentials_store": "keyring",
@@ -137,7 +138,7 @@ def validate_config(response: dict, allow_browsing: bool, profile: Path | None =
     if not isinstance(config, dict) or not isinstance(layers, list) or not layers:
         raise RuntimeFailure("Codex did not report its effective configuration.")
     for key, expected in policy_config(allow_browsing, catalog).items():
-        if key.startswith("tools."):
+        if key.startswith("tools.") or key.startswith("cloud."):
             continue  # These fields are verified in the strict sessionFlags layer below.
         value = config
         for part in key.split("."):
@@ -163,7 +164,8 @@ def validate_config(response: dict, allow_browsing: bool, profile: Path | None =
     flags = [layer for layer in layers if layer["name"].get("type") == "sessionFlags"]
     if (len(flags) != 1 or not isinstance(flags[0].get("config"), dict)
             or not exact_settings(flags[0]["config"].get("tools"), TOOL_FLAGS)
-            or not exact_settings(flags[0]["config"].get("agents"), {"enabled": False})):
+            or not exact_settings(flags[0]["config"].get("agents"), {"enabled": False})
+            or not exact_settings(flags[0]["config"].get("cloud"), {"skills": {"enabled": False}})):
         raise RuntimeFailure("Codex strict session tool settings could not be verified.")
     # Pinned normalized Config contains only legacy tools.web_search=null; the
     # plan/input switches are absent. If returned they must agree. Agents includes
@@ -172,6 +174,8 @@ def validate_config(response: dict, allow_browsing: bool, profile: Path | None =
     if not (exact_settings(config.get("tools"), {"web_search": None})
             or exact_settings(config.get("tools"), TOOL_FLAGS)):
         raise RuntimeFailure("Codex effective tool settings do not enforce the application policy.")
+    if config.get("cloud") is not None and not exact_settings(config["cloud"], {"skills": {"enabled": False}}):
+        raise RuntimeFailure("Codex cloud skill settings do not enforce the application policy.")
 
 
 def validate_features(response: dict, *, request_permissions: bool = False):
