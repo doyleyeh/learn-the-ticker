@@ -165,6 +165,17 @@ class MarketCorporateAction(Contract):
     value: str = Field(max_length=161)
 
 
+class MarketReturn(Contract):
+    period: Literal["ytd", "1y", "3y", "5y", "retained"]
+    source_id: str = Field(max_length=200)
+    requested_start: date
+    start: date | None = None
+    end: date
+    price_percent: str | None = Field(default=None, max_length=90)
+    total_return_estimate_percent: str | None = Field(default=None, max_length=90)
+    reason: Literal["start_boundary_missing", "insufficient_observations", "missing_price_rows", "history_gap"] | None = None
+
+
 class MarketEvidence(Contract):
     """Application-owned daily history; never an LLM output field."""
     provider: Literal["yahoo_yfinance"] = "yahoo_yfinance"
@@ -186,6 +197,8 @@ class MarketEvidence(Contract):
     bars: list[MarketBar] = Field(min_length=1, max_length=2000)
     actions: list[MarketCorporateAction] = Field(default_factory=list, max_length=2000)
     gaps: list[Literal["missing_price_rows", "calendar_completeness_unverified"]] = Field(max_length=2)
+    return_method: Literal["yahoo-adjusted-ratio-v1"] | None = None
+    returns: list[MarketReturn] = Field(default_factory=list, max_length=5)
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 

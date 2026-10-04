@@ -192,6 +192,9 @@ def main():
         assert restored_market.model_dump(mode="json") == market_payload
         assert restored_market.market.bars[0].volume == "9007199254740993"
         assert restored_market.market.actions[0].value == "0.123456789012345678"
+        assert restored_market.market.returns == market.market.returns
+        assert restored_market.market.returns[-1].price_percent == "27.272727"
+        assert restored_market.market.returns[-1].total_return_estimate_percent == "40"
         assert restored_market.sources[-1] == market.sources[-1]
         restored_context = factual_context(restored_market)
         assert restored_context["context_gaps"] and restored_context["financials"]["observations"]
@@ -226,6 +229,7 @@ def main():
         print("PostgreSQL full-library restore, rollback on failure, preserved saved versions, event sequence and restart passed.")
         print("Typed issuer observations, exact decimals, separate identity proofs and conflict/revision references survived actual restore and restart.")
         print("Private market history, exact decimals/actions and original citations survived restore/restart; cloud/export exclusions and reset network opt-in passed.")
+        print("Stored price/provider-adjusted return results, endpoint dates, original source references and missing-window reasons survived restore/restart.")
         print("Financial snapshot originated through production research orchestration with explicit synthetic source/runtime adapters.")
         print("Original conversation facts, version-specific citations, source URLs and dates remain reusable after restore and restart.")
         print("Five retained documents across four formats preserved exact bytes, checksums, locators, original provenance and permission through atomic restore and restart; concurrent capacity enforcement passed.")

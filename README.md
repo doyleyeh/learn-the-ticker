@@ -72,6 +72,8 @@ Append `--check-mapping` to independently check the selected Yahoo listing again
 
 `--check-admission` additionally opts this explicit developer check into DEC-039 private numerical admission, JSON round-trip and cloud/export exclusion checks. It still writes no library data and prints only counts/fingerprints/metadata. The storage layer supports same-user private backups with original citations and resets network opt-in on restore. Page retrieval and installed-app activation remain in progress; this flag does not enable them.
 
+New admitted private snapshots also retain separate price returns and provider-adjusted total-return estimates, with actual dates, method and missing-window reasons. Existing saved versions are not recalculated on opening. See [return-method verification](docs/verification/2026-10-04-market-returns.md); interactive page integration remains pending.
+
 ## Connect Codex
 
 The implemented Codex setup flow is **Connections → Sign in with ChatGPT**, using an installed official Codex runtime and a dedicated provider-owned profile. Follow the provider's device-code flow; cloud research permission is separate. Dedicated native Windows runtime qualification passed on 2026-10-04 for the exact measured binary and gpt-6-astra; see [scoped acceptance](docs/verification/2026-10-04-codex-scoped-qualification.md) and [sandbox prerequisites](docs/verification/2026-10-04-codex-loopback-repair.md). A different executable, WSL runtime, model/catalog or policy requires new qualification. Gemini/Claude onboarding and tool isolation still need qualification. Public v1 requires all three subscription connections; there is no API-billing or automatic provider fallback.

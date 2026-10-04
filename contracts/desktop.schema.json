@@ -1598,6 +1598,27 @@
           "title": "Gaps",
           "type": "array"
         },
+        "return_method": {
+          "anyOf": [
+            {
+              "const": "yahoo-adjusted-ratio-v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Return Method"
+        },
+        "returns": {
+          "items": {
+            "$ref": "#/$defs/MarketReturn"
+          },
+          "maxItems": 5,
+          "title": "Returns",
+          "type": "array"
+        },
         "fingerprint": {
           "pattern": "^[0-9a-f]{64}$",
           "title": "Fingerprint",
@@ -1617,6 +1638,108 @@
         "fingerprint"
       ],
       "title": "MarketEvidence",
+      "type": "object"
+    },
+    "MarketReturn": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "period": {
+          "enum": [
+            "ytd",
+            "1y",
+            "3y",
+            "5y",
+            "retained"
+          ],
+          "title": "Period",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "requested_start": {
+          "format": "date",
+          "title": "Requested Start",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "price_percent": {
+          "anyOf": [
+            {
+              "maxLength": 90,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Percent"
+        },
+        "total_return_estimate_percent": {
+          "anyOf": [
+            {
+              "maxLength": 90,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Return Estimate Percent"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "start_boundary_missing",
+                "insufficient_observations",
+                "missing_price_rows",
+                "history_gap"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "period",
+        "source_id",
+        "requested_start",
+        "end"
+      ],
+      "title": "MarketReturn",
       "type": "object"
     },
     "ParsedDocument": {

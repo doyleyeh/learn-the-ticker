@@ -13,13 +13,7 @@ from backend.app.market_evidence import attach_market
 from backend.app.contracts import EvidenceBundle
 from backend.app.evidence import factual_context
 from backend.app.source_operations import shareable_view
-
-
-def years_before(day, years):
-    try:
-        return day.replace(year=day.year - years)
-    except ValueError:
-        return day.replace(year=day.year - years, day=28)
+from backend.app.market_returns import years_before
 
 
 async def check(*, live=False, symbol="", store=None, retrieve=retrieve_history, at=None,

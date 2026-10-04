@@ -10,6 +10,7 @@ from backend.app.contracts import EvidenceBundle, MarketEvidence, Source, Source
 from backend.app.identity import ResolvedIdentity, identity_hash
 from backend.app.market_history import HistoryCandidate, MarketAction, _bar, _number, _window
 from backend.app.market_mapping import map_yahoo_history
+from backend.app.market_returns import METHOD, returns_for_history
 
 TITLE = "Yahoo Finance daily history (unofficial; experimental personal use only)"
 
@@ -29,6 +30,10 @@ def market_fingerprint(data):
     """Corruption detection, not an authenticity signature or a new source hash."""
     if isinstance(data, MarketEvidence):
         data = data.model_dump(mode="json")
+    if data.get("return_method") is None and not data.get("returns"):
+        # Pre-calculation snapshots retain their original fingerprint and no results
+        # are silently generated when opening an old archive offline.
+        data = {k: v for k, v in data.items() if k not in ("return_method", "returns")}
     return hashlib.sha256(json.dumps({k: v for k, v in data.items() if k != "fingerprint"},
                                     sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -85,6 +90,8 @@ def validate_market(bundle):
         first.isoformat(), last.isoformat(), data.close_basis, tuple(bars), tuple(actions),
         tuple(data.gaps), data.exchange_label, source.retrieved_at)
     map_yahoo_history(history, ResolvedIdentity(bundle.asset, bundle.identity_verification), at=data.checked_at)
+    if (data.return_method is None and data.returns) or (data.return_method == METHOD and data.returns != returns_for_history(data)):
+        raise ValueError("Retained market returns differ from their exact admitted inputs and method")
 
 
 def attach_market(bundle, mapped, *, personal_mode=False, created_at=None):
@@ -111,6 +118,8 @@ def attach_market(bundle, mapped, *, personal_mode=False, created_at=None):
         bars=[asdict(row) for row in history.bars], actions=[asdict(row) for row in history.actions],
         gaps=[gap for gap in history.gaps if gap != "instrument_mapping_unverified"] + ["calendar_completeness_unverified"],
         fingerprint="0" * 64)
+    data.return_method = METHOD
+    data.returns = returns_for_history(data)
     data.fingerprint = market_fingerprint(data)
     return EvidenceBundle.model_validate({**bundle.model_dump(), "created_at": created_at,
         "market": data, "sources": [*bundle.sources, source], "state": "partial"})
