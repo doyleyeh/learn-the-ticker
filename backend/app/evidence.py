@@ -185,13 +185,36 @@ def admit_bundle(asset: AssetIdentity, sources: list[Source], claims: list[Claim
     return EvidenceBundle(asset=asset, sources=list(by_id.values()), claims=admitted, notes=notes, language=language, level=level, identity_verification=identity_verification, created_at=created_at or now(), financials=financials, state="partial")
 
 
+def validate_claim_sources(bundle: EvidenceBundle):
+    """A published fact and its source records form one indivisible snapshot."""
+    sources = {source.id: source for source in bundle.sources}
+    if len(sources) != len(bundle.sources) or any(source.asset_id != bundle.asset.id or source.policy == SourcePolicy.rejected for source in bundle.sources):
+        raise ValueError("Invalid evidence sources")
+    claims = [*bundle.claims, *bundle.notes]
+    if len({claim.id for claim in claims}) != len(claims):
+        raise ValueError("Duplicate claims")
+    for claim in claims:
+        if claim.asset_id != bundle.asset.id or any(sid not in sources for sid in claim.source_ids):
+            raise ValueError("Missing or wrong-asset citation")
+    for claim in bundle.claims:
+        if claim.kind not in ("fact", "calculation") or not claim.source_ids or any(not sources[sid].verified for sid in claim.source_ids):
+            raise ValueError("Facts require verified citations")
+    if any(note.kind != "unverified_note" or note.value is not None or note.input_claim_ids for note in bundle.notes):
+        raise ValueError("Unverified notes cannot contain calculation inputs")
+
+
 def factual_context(bundle: EvidenceBundle) -> dict:
     """Unverified notes and provider raw output never become future factual evidence."""
     from backend.app.financial_evidence import numeric_context
+    validate_claim_sources(bundle)
     observations = numeric_context(bundle)
-    ids = {sid for claim in bundle.claims for sid in claim.source_ids}
+    # Preserve permitted admitted legacy snapshots (including summary rights). New
+    # research admission and historical candidate reuse apply their own current rules.
+    claims = bundle.claims
+    ids = {sid for claim in claims for sid in claim.source_ids}
     ids.update(row["source_id"] for row in observations)
-    context = {"asset": bundle.asset.model_dump(mode="json"), "claims": [c.model_dump(mode="json") for c in bundle.claims], "sources": [s.model_dump(mode="json") for s in bundle.sources if s.id in ids]}
+    context = {"bundle_id": bundle.id, "created_at": bundle.created_at.isoformat(), "asset": bundle.asset.model_dump(mode="json"),
+               "claims": [c.model_dump(mode="json") for c in claims], "sources": [s.model_dump(mode="json") for s in bundle.sources if s.id in ids]}
     if bundle.financials:
         context["financials"] = {"scope": "issuer", "issuer": bundle.financials.issuer.model_dump(mode="json"),
                                  "observations": observations, "gaps": bundle.financials.gaps}

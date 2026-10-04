@@ -6,12 +6,13 @@ import json
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 from backend.app.codex_rpc import CodexRPC
 from backend.app.codex_runtime import CodexRuntime
 from backend.app.contracts import EvidenceBundle, ResearchRequest, now
 from backend.app.db import Database
-from backend.app.evidence import admit_bundle, normalize
+from backend.app.evidence import admit_bundle, normalize, validate_claim_sources
 from backend.app.research import ResearchService
 from backend.app.runtime_base import RuntimeFailure
 from scripts.qualify_codex import failure_reason, preflight, resolve_profile
@@ -33,54 +34,79 @@ def page_key(url):
     return hashlib.sha256(str(url).encode()).hexdigest()
 
 
+def public_reference(value):
+    """Only fingerprint plain public HTTPS references; never retain provider text or queries."""
+    if not isinstance(value, str) or len(value) > 2048:
+        return None
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password and not parsed.query and parsed.port in (None, 443):
+            return page_key(value)
+    except ValueError:
+        pass
+    return None
+
+
 def record_navigation(item, actions, pages):
-    """Keep bounded page results in memory for support comparison; never report their contents."""
+    """Completed actions/results are telemetry, not the separately delivered model page body."""
     if len(actions) >= 100:
         return
     action = item.get("action")
     kind = action.get("type") if isinstance(action, dict) else None
     actions.append(kind if kind in ("search", "openPage", "findInPage") else "other")
-    if kind != "openPage" or not isinstance(action.get("url"), str) or len(action["url"]) > 2048:
-        return
-    pending, strings, remaining, visited = [(item.get("results"), 0)], [], 200_000, 0
-    while pending and remaining > 0 and visited < 10_000:
+    key = public_reference(action.get("url")) if kind == "openPage" else None
+    observation = {"opened_url": key, "returned_urls": set(), "failure_reported": False}
+    pending, visited = [(item.get("results"), 0)], 0
+    while pending and visited < 1000:
         value, depth = pending.pop()
         visited += 1
-        if isinstance(value, str):
-            text = value[:remaining]
-            strings.append(normalize(text))
-            remaining -= len(text)
-        elif depth < 12 and isinstance(value, (dict, list)):
-            pending.extend((child, depth + 1) for child in (value.values() if isinstance(value, dict) else value))
-    pages[page_key(action["url"])] = strings
+        if isinstance(value, dict):
+            # Opaque metadata: only explicit URL fields and structured failure indicators.
+            for field in ("url", "source_url"):
+                reference = public_reference(value.get(field))
+                if reference and len(observation["returned_urls"]) < 100:
+                    observation["returned_urls"].add(reference)
+            if value.get("error") or value.get("status") in ("error", "failed", "blocked"):
+                observation["failure_reported"] = True
+        if depth < 8 and isinstance(value, (dict, list)):
+            children = list(value.values())[:100] if isinstance(value, dict) else value[:100]
+            pending.extend((child, depth + 1) for child in children[:max(0, 1000 - visited - len(pending))])
+    pages[len(actions) - 1] = observation
 
 
 def assess(bundle, actions, pages=None):
-    """A declared web item alone is insufficient: independently supported dated claims are required."""
+    """Separate navigation telemetry from independent source/fact/numeric validation."""
     try:
         bundle = EvidenceBundle.model_validate_json(bundle.model_dump_json())
+        validate_claim_sources(bundle)
     except ValueError:
         return {"status": "blocked", "blocker": "invalid_evidence_references"}
-    opened = actions.index("openPage") if "openPage" in actions else len(actions)
-    followed_up = any(action in ("search", "openPage") for action in actions[opened + 1:])
-    sources = {source.id: source for source in bundle.sources}
-    dated_claims = [claim for claim in bundle.claims if claim.source_ids and all(
-        sid in sources and sources[sid].verified and sources[sid].filing_publication is not None for sid in claim.source_ids)]
     pages = pages or {}
-    read_support = any(any(normalize(claim.text) in text for sid in claim.source_ids
-                          for text in pages.get(page_key(sources[sid].url), [])) for claim in dated_claims)
+    completed_opens = [index for index, row in pages.items() if row["opened_url"] and not row["failure_reported"]]
+    followed_up = any(any(action in ("search", "openPage") and not pages.get(index, {}).get("failure_reported", False)
+                         for index, action in enumerate(actions) if index > opened) for opened in completed_opens)
+    sources = {source.id: source for source in bundle.sources}
+    dated_claims = [claim for claim in bundle.claims if claim.kind == "fact" and claim.value is None and claim.source_ids and all(
+        sid in sources and sources[sid].verified and sources[sid].filing_publication is not None for sid in claim.source_ids)
+        and any(normalize(claim.text) in normalize(sources[sid].excerpt) for sid in claim.source_ids)]
+    cited_urls = {page_key(sources[sid].url) for claim in dated_claims for sid in claim.source_ids}
+    navigated_citation = any(pages[index]["opened_url"] in cited_urls for index in completed_opens)
     disclosed = any(note.section == "freshness" for note in bundle.notes) or any(
         source.verified and source.published_at == now().date() for source in bundle.sources)
-    checks = {"search_observed": "search" in actions, "page_read_observed": "openPage" in actions,
+    checks = {"search_observed": any(action == "search" and not pages.get(index, {}).get("failure_reported", False) for index, action in enumerate(actions)),
+              "page_navigation_observed": bool(completed_opens),
               "follow_up_observed": followed_up, "independent_dated_claim_support": bool(dated_claims),
-              "cited_page_result_support": read_support,
+              "cited_source_navigation_observed": navigated_citation,
               "structured_observations_published": bool(bundle.financials and bundle.financials.observations),
               "freshness_or_unavailability_disclosed": disclosed,
               "model_numeric_fields_not_admitted": all(claim.value is None for claim in bundle.claims)}
     return {"status": "passed" if all(checks.values()) else "blocked",
         "blocker": None if all(checks.values()) else "research_acceptance_checks", "checks": checks,
         "web_actions": actions, "structured_observations": len(bundle.financials.observations) if bundle.financials else 0,
-        "observed_page_results": len(pages), "page_results_with_text": sum(bool(texts) for texts in pages.values()),
+        "completed_page_navigations": len(completed_opens),
+        "returned_url_references": len({url for row in pages.values() for url in row["returned_urls"]}),
+        "reported_retrieval_failures": sum(row["failure_reported"] for row in pages.values()),
+        "page_body_visibility": "Event metadata does not expose the complete model-visible page body; factual support is checked independently.",
         "dated_claim_count": len(dated_claims), "sources": [{"url": str(source.url),
             "published_at": source.published_at.isoformat() if source.published_at else None,
             "as_of": source.as_of.isoformat() if source.as_of else None,

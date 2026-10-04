@@ -9,6 +9,7 @@ from sqlalchemy import event
 from backend.app.backup import BackupError, make_backup, preview_backup, restore_backup
 from backend.app.contracts import AssetIdentity, Conversation, EvidenceBundle, IdentityVerification, RuntimeEvent, SavedResearch, Settings, TermExplanation, TermRequest, now
 from backend.app.identity import identity_hash
+from backend.app.evidence_reuse import conversation_evidence
 from backend.app.db import Database, Event, Job
 from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
@@ -35,6 +36,11 @@ def main():
         source, target = databases
         financial_job = asyncio.run(publish_financial_snapshot(source, roots[0] / "synthetic-research"))
         financial = EvidenceBundle.model_validate(financial_job["result"])
+        cited_chat = Conversation(asset_id=financial.asset.id, bookmarked=True, messages=[
+            {"role": "assistant", "asset_id": financial.asset.id, "bundle_id": financial.id}])
+        source.put("conversation:" + cited_chat.id, "conversation", cited_chat.model_dump(mode="json"))
+        original_context, _ = conversation_evidence(source, financial.asset, cited_chat.model_dump(mode="json")["messages"])
+        assert original_context and original_context[0]["claims"] and original_context[0]["sources"]
         identity = AssetIdentity(id="TEST:RESTORE", symbol="RESTORE", name="Synthetic restored asset", asset_type="other")
         proof = IdentityVerification(authority="synthetic-restore", source_url="https://identity.example/restore",
                                      retrieved_at=now(), content_hash="a" * 64, identity_hash=identity_hash(identity))
@@ -85,6 +91,8 @@ def main():
         assert target.get("settings")["model"] == "synthetic-selected-model"
         assert target.get("bundle:" + financial.id) == financial.model_dump(mode="json")
         assert target.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
+        restored_context, _ = conversation_evidence(target, financial.asset, target.get("conversation:" + cited_chat.id)["messages"])
+        assert restored_context == original_context
         with target.session.begin() as session:
             session.add(Event(job_id="pending", payload=RuntimeEvent(run_id="pending", kind="run.cancelled").model_dump(mode="json")))
         assert len(target.events("pending")) == 2
@@ -110,9 +118,12 @@ def main():
         assert restarted.get("asset:" + financial.asset.id) == financial.model_dump(mode="json")
         assert restarted.get("bundle:" + financial.id)["financials"]["observations"][0]["value"] == "9007199254740993"
         assert restarted.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
+        restarted_context, _ = conversation_evidence(restarted, financial.asset, restarted.get("conversation:" + cited_chat.id)["messages"])
+        assert restarted_context == original_context
         print("PostgreSQL full-library restore, rollback on failure, preserved saved versions, event sequence and restart passed.")
         print("Typed issuer observations, exact decimals, separate identity proofs and conflict/revision references survived actual restore and restart.")
         print("Financial snapshot originated through production research orchestration with explicit synthetic source/runtime adapters.")
+        print("Original conversation facts, version-specific citations, source URLs and dates remain reusable after restore and restart.")
         print("Non-empty restore was rejected; cloud consent reset and no provider calls were made.")
     finally:
         for db in databases:

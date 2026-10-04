@@ -14,8 +14,9 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationErro
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from backend.app.contracts import AssetIdentity, BackupSummary, Conversation, EvidenceBundle, ResearchRequest, RuntimeEvent, SavedResearch, Settings, SourcePolicy, TermExplanation, TermRequest, now
+from backend.app.contracts import AssetIdentity, BackupSummary, Conversation, EvidenceBundle, ResearchRequest, RuntimeEvent, SavedResearch, Settings, TermExplanation, TermRequest, now
 from backend.app.db import Database, Event, Job, Record
+from backend.app.evidence import validate_claim_sources
 from backend.app.identity import identity_hash
 from backend.app.terms import term_key, validate_explanation
 
@@ -104,20 +105,10 @@ def validate_library(data: LibraryData):
                 raise BackupError("Identity verification does not match the evidence scope")
             if value.created_at.tzinfo is None:
                 raise BackupError("Evidence timestamps must include a timezone")
-            sources = {source.id: source for source in value.sources}
-            if len(sources) != len(value.sources) or any(source.asset_id != value.asset.id or source.policy == SourcePolicy.rejected for source in value.sources):
-                raise BackupError("Invalid evidence sources")
-            claim_ids = {claim.id for claim in [*value.claims, *value.notes]}
-            if len(claim_ids) != len(value.claims) + len(value.notes):
-                raise BackupError("Duplicate claims")
-            for claim in [*value.claims, *value.notes]:
-                if claim.asset_id != value.asset.id or any(sid not in sources for sid in claim.source_ids):
-                    raise BackupError("Wrong-asset or missing citation")
-            for claim in value.claims:
-                if claim.kind == "unverified_note" or not claim.source_ids or any(not sources[sid].verified for sid in claim.source_ids):
-                    raise BackupError("Unverified material cannot become canonical evidence")
-            if any(note.kind != "unverified_note" or note.value is not None or note.input_claim_ids for note in value.notes):
-                raise BackupError("Unverified notes cannot contain calculation inputs")
+            try:
+                validate_claim_sources(value)
+            except ValueError as exc:
+                raise BackupError(str(exc)) from exc
             if row.kind == "bundle":
                 bundles[value.id] = value
         # Re-serialize through known models. Unknown fields such as tokens fail validation.

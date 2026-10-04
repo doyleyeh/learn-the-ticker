@@ -22,7 +22,7 @@ P-012: Source candidates require independent validation and permission checks. A
 
 P-013: Keep facts, calculated metrics, interpretations and unverified notes separate. Preserve conflicts and restated versions. Charts use admitted numeric evidence with compatible units, periods and corporate actions. Model prose is not numerical input.
 
-P-014: Cite important facts in pages and conversations. Citation support must match the asset and claim. Include publication, effective/as-of and retrieval dates, provenance, freshness, original URL and permitted supporting text. Explain unavailable or uncertain support.
+P-014: Cite important facts in pages and conversations. Citation support must match the asset and claim. Include publication, effective/as-of and retrieval dates, provenance, freshness, original URL and permitted supporting text. Explain unavailable or uncertain support. Store admitted facts together with their original source references in immutable evidence versions, and supply those references when reusing facts in later conversation rounds. Historical retrieval dates never imply fresh verification.
 
 P-015: Import URLs, PDFs, CSVs and spreadsheets as untrusted material. Parser limits and source permissions apply. No-browsing connections explain cached/imported material only and disclose that limit.
 

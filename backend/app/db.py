@@ -75,6 +75,8 @@ class Database:
 
     def complete_research(self, job_id: str, payload: dict, *, conversation_id: str | None = None):
         """Publish a snapshot and its references together, or leave all of them unchanged."""
+        from backend.app.evidence import validate_claim_sources
+        validate_claim_sources(EvidenceBundle.model_validate(payload))
         with self.session.begin() as session:
             job = session.get(Job, job_id, with_for_update=True)
             if not job or job.status != "running":
