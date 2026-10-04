@@ -16,7 +16,7 @@ P-002: Educational research only. No buy/sell/hold instructions, allocation or p
 
 P-010: Resolve previously uncached symbols/names across asset categories. No fixed universe eligibility gate. Disambiguate listing, exchange, share class and contract. Uncertain type permits research notes but suppresses type-dependent facts.
 
-P-011: Reuse cached evidence, inspect freshness, prefer applicable configured structured adapters, then let the agent investigate gaps. Show partial sections and evidence dates. Never fabricate unavailable history or impute data without explicit labeling.
+P-011: Reuse cached evidence, inspect freshness, prefer applicable configured structured financial/news adapters, then let the agent investigate gaps. With cloud consent and qualified online tools, the agent can autonomously search the live web, open/read public source pages and follow relevant links or run follow-up searches for current market, ticker and news information. These permitted research calls do not require approval per fetch. Requests for latest information require source-appropriate freshness checks and refresh when needed; a recent cache retrieval alone cannot establish that the underlying information is current. Show partial sections and evidence dates. Never fabricate unavailable history or impute data without explicit labeling.
 
 P-012: Source candidates require independent validation and permission checks. Automatically admit only under predefined rules; expose optional review mode. Credibility and storage/display/export permission are separate. Rights limits apply even when the user has a commercial subscription.
 

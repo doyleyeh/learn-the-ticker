@@ -6,6 +6,8 @@ A local, citation-first financial research and learning application using your o
 
 Working preview features include the local library, evidence versions and citations, cached search, conversations and bookmarks, term explanations, personal exports and portable backup/restore. Structured financial retrieval, imports, charts, comparisons and several release features are still being integrated. Codex generation is qualified only for the reviewed native Windows 0.158.0-alpha.2.1 executable and gpt-6-astra model/catalog/tool policy. Drift stops before inference. Gemini/Claude and native installers remain unqualified. Cached features and the synthetic preview remain available. Runtime qualification does not establish full research-pipeline or public release acceptance; see [implementation status](STATUS.md).
 
+Online research must combine configured financial/news APIs with autonomous live web search and reading public source pages for current market and ticker context. Qualified Codex research retains live web search; local browser/computer control remains outside its scope. The complete API/search/page-reading/freshness workflow is still M2 work, and Gemini/Claude must qualify the same online behavior in M8. Latest-information requests must verify source dates and disclose unavailable or stale information; web search alone does not establish real-time market prices.
+
 ## Development on Windows
 
 Use Python 3.12 and Node 22.13+ (22.x) or Node 24+ for development; native builds also need Rust/MSVC and the Windows webview prerequisites. PostgreSQL 17 binaries were used in the local lifecycle tests. Other major versions have not been qualified. The future end-user installer must bundle the core dependencies and handle provider prerequisites explicitly.
