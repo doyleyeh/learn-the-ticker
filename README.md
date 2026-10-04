@@ -20,6 +20,8 @@ Stored facts retain their original source records and evidence version. Follow-u
 
 Use Python 3.12 and Node 22.13+ (22.x) or Node 24+ for development; native builds also need Rust/MSVC and the Windows webview prerequisites. PostgreSQL 17 binaries were used in the local lifecycle tests. Other major versions have not been qualified. The future end-user installer must bundle the core dependencies and handle provider prerequisites explicitly.
 
+On this Windows development machine, user-authorized installation supplied Rust/Cargo 1.99.0, Visual Studio 2022 Build Tools 17.14.41 (C++ workload/MSVC 14.44) and Windows SDK 10.0.26100.0. C++ and Rust compile/link/run probes passed. WebView2 was already installed. Open a new terminal after installation to pick up Cargo's PATH entry. Native builds use the committed Cargo.lock with `--locked`; toolchain installation alone does not qualify the application or installer.
+
 From the repository root:
 
 ```powershell
@@ -28,7 +30,7 @@ $env:LTT_PG_BIN = 'C:/Program Files/PostgreSQL/17/bin'
 npm run desktop
 ```
 
-Setup creates `.venv` and installs Python/frontend dependencies; it does not install Python, Node, Rust/MSVC, PostgreSQL or provider CLIs. `.env.example` is guidance, not an automatically loaded desktop configuration. The supervisor creates its own cluster and does not use an existing PostgreSQL service. The native launcher source still needs Rust/MSVC build and window/tray validation; these commands are not a claim of a verified installer.
+Setup creates `.venv` and installs Python/frontend dependencies; it does not install Python, Node, Rust/MSVC, PostgreSQL or provider CLIs. `.env.example` is guidance, not an automatically loaded desktop configuration. The supervisor creates its own cluster and does not use an existing PostgreSQL service. Native Windows compilation, startup and offline file previews passed the [isolated developer checks](docs/verification/2026-10-04-native-build.md). Full tray/lifecycle and clean-machine installer acceptance remain separate release work.
 
 The developer SEC adapter requires `LTT_SEC_USER_AGENT` in the backend process environment, containing `LearnTheTicker/0.2` and a contact email you control, as requested by [SEC automated-access guidance](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data). This is a contact header sent to SEC, not authentication or a subscription email requirement. Keep the real value out of Git. Without it the adapter performs no SEC request; cached pages remain usable. After deterministic verification, `.venv/Scripts/python.exe -m scripts.qualify_sec_identity --live --query MSFT` performs one bounded public identity check without provider inference or library writes. The query is a probe, not a production eligibility list. Packaged SEC contact/onboarding is still pending; the project does not bundle a personal email, and this developer setup does not decide whether end users must configure one.
 

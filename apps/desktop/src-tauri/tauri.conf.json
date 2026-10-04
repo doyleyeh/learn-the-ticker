@@ -8,5 +8,5 @@
     "windows": [{ "title": "Learn the Ticker", "width": 1280, "height": 850, "minWidth": 640, "minHeight": 480 }],
     "security": { "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:*; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'none'" }
   },
-  "bundle": { "active": true, "targets": ["nsis"], "externalBin": ["binaries/ltt-service"], "resources": ["resources/postgres/**/*"] }
+  "bundle": { "active": true, "targets": ["nsis"], "icon": ["icons/icon.png", "icons/icon.ico"], "externalBin": ["binaries/ltt-service"], "resources": ["resources/postgres/**/*", "licenses/*.txt"] }
 }

@@ -14,7 +14,7 @@
     "lint": "npm --workspace apps/desktop run lint",
     "typecheck": "npm --workspace apps/desktop run typecheck",
     "desktop": "npm --workspace apps/desktop run tauri dev",
-    "desktop:build": "npm --workspace apps/desktop run tauri build"
+    "desktop:build": "npm --workspace apps/desktop run tauri -- build -- --locked"
   },
   "devDependencies": {
     "json-schema-to-typescript": "^16.0.0"

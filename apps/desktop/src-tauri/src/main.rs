@@ -44,7 +44,10 @@ fn start(app: &tauri::AppHandle) -> Result<Service, String> {
         let resource = app.path().resource_dir().map_err(|_| "Cannot locate runtime resources")?;
         let binary = std::env::current_exe().map_err(|_| "Cannot locate application")?.parent().ok_or("Missing application directory")?.join(if cfg!(windows) { "ltt-service.exe" } else { "ltt-service" });
         command = Command::new(binary);
-        pg_bin = resource.join("resources/postgres/bin").to_string_lossy().into_owned();
+        // initdb invokes its sibling postgres through legacy Windows path APIs.
+        // Simplify verbatim paths only when their ordinary spelling is equivalent.
+        let postgres_path = resource.join("resources/postgres/bin");
+        pg_bin = dunce::simplified(&postgres_path).to_str().ok_or("Unsupported PostgreSQL resource path")?.to_owned();
     }
     #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
     let mut pending = PendingChild(Some(command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|_| "Cannot start packaged application service")?));

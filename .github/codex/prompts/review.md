@@ -48,6 +48,8 @@ Filing publication/report dates require independently retrieved SEC index metada
 
 Import parsing must retain literal source locators/decimals without fact admission, reject entities/expansion/active content, and run behind owned process time/memory limits. Do not pass document paths, provider credentials or raw parser errors through its pipes. Verify the frozen worker and authenticated upload as well as source mode. Preview endpoints must enforce local authentication, input limits, registered URL rights/public-address checks and cloud revocation; request cancellation/shutdown must close owned parsing. Link-only results have no fetched content and no retrieval-date claim. Escape imported text/formulas, retain original locators/decimals and keep previews out of persistence/factual context. Browser chooser success is not native file selection or attachment restore acceptance.
 
+Native build changes must retain Cargo.lock/locked builds, preserve safe Windows path meaning and package required icons/notices. A local PostgreSQL resource copy must exclude data/credentials and never alter system services. Distinguish isolated compiled WebView2 file-input checks from browser fixtures, OS-dialog automation and installed clean-machine/tray/update acceptance. Debug listeners belong only to explicit disposable test processes and must close with them; never ship a debugging setting or test identifier.
+
 Return:
 
 - summary
