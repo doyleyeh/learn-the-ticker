@@ -12,6 +12,11 @@ from backend.app.market_history import MAX_BYTES, MarketDataError, _json, _windo
 TRANSPORT_ERRORS = frozenset({"source_access_denied", "source_rate_limited", "source_unavailable",
     "request_not_allowed", "request_limit", "response_size", "source_redirect", "source_not_found"})
 
+# Stable libcurl ABI: HTTP_VERSION=84 / HTTP/1.1=2, HTTPAUTH=107,
+# PROXYAUTH=111. curl_cffi applies these last, after impersonation options.
+# Disable HTTP/2/3 and ambient authentication in the reviewed private worker.
+YAHOO_CURL_OPTIONS = {84: 2, 107: 0, 111: 0}
+
 
 def status_error(status, *, cookie=False):
     # fc.yahoo.com's anonymous cookie bootstrap normally returns 404 + Set-Cookie.
@@ -194,4 +199,5 @@ def yahoo_session(policy, *, _base=None):
                 policy.fail(policy.error or "source_unavailable")
 
     # Anonymous library session only. Never import browser or user login cookies.
-    return BoundedSession(trust_env=False, verify=True, allow_redirects=False, impersonate="chrome")
+    return BoundedSession(trust_env=False, verify=True, allow_redirects=False, impersonate="chrome",
+                          curl_options=dict(YAHOO_CURL_OPTIONS))

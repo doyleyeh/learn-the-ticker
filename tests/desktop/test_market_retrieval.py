@@ -84,7 +84,8 @@ def test_explicit_helper_default_never_accesses_vault_or_network():
     assert report["status"] == "blocked" and "synthetic-secret" not in str(report)
 
 
-def test_worker_uses_private_workspace_allowlisted_environment_and_fixed_errors(monkeypatch):
+@pytest.mark.parametrize("frozen", [False, True])
+def test_worker_uses_private_workspace_allowlisted_environment_and_fixed_errors(monkeypatch, frozen):
     paths, closed = [], []
     class Input:
         def write(self, wire):
@@ -94,7 +95,11 @@ def test_worker_uses_private_workspace_allowlisted_environment_and_fixed_errors(
         def close(self):
             pass
     async def launch(*args, **kwargs):
-        assert "-m" in args and args[-1] == "backend.app.yfinance_worker"
+        if frozen:
+            assert args == (worker.sys.executable, "--retrieve-private-market")
+            assert "PYTHONPATH" not in kwargs["env"]
+        else:
+            assert "-m" in args and args[-1] == "backend.app.yfinance_worker"
         assert "EODHD_API_KEY" not in kwargs["env"] and "HTTP_PROXY" not in kwargs["env"]
         paths.append(Path(kwargs["cwd"]))
         assert paths[-1].is_dir() and not list(paths[-1].iterdir())
@@ -108,6 +113,7 @@ def test_worker_uses_private_workspace_allowlisted_environment_and_fixed_errors(
         closed.append(process)
     monkeypatch.setenv("EODHD_API_KEY", "synthetic-secret")
     monkeypatch.setenv("HTTP_PROXY", "http://untrusted.example")
+    monkeypatch.setattr(worker.sys, "frozen", frozen, raising=False)
     monkeypatch.setattr(worker, "launch_owned", launch)
     monkeypatch.setattr(worker, "close_owned", close)
     with pytest.raises(MarketDataError, match="source_rate_limited"):

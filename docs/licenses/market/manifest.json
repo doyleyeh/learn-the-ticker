@@ -1,0 +1,233 @@
+[
+  {
+    "name": "yfinance",
+    "version": "1.7.0",
+    "source": "https://pypi.org/project/yfinance/1.7.0/",
+    "notice": "yfinance.txt",
+    "sha256": "0984df6581f8ba410832b17260c5200ac9e3d0de118d045745453c65f9d4af33"
+  },
+  {
+    "name": "beautifulsoup4",
+    "version": "4.15.0",
+    "source": "https://pypi.org/project/beautifulsoup4/4.15.0/",
+    "notice": "beautifulsoup4.txt",
+    "sha256": "1de73e6fa3f7243d0333172ad4f910a2a5ec83b7ca55eee613914b1758670152"
+  },
+  {
+    "name": "certifi",
+    "version": "2026.7.22",
+    "source": "https://pypi.org/project/certifi/2026.7.22/",
+    "notice": "certifi.txt",
+    "sha256": "d0a871d5da4c91a8a4acb4194ebce13a48eb5a8b0676062edf35ccab22202d58"
+  },
+  {
+    "name": "cffi",
+    "version": "2.1.1",
+    "source": "https://pypi.org/project/cffi/2.1.1/",
+    "notice": "cffi.txt",
+    "sha256": "259f8503dbe2b182d88c0a02e2e61be36bd15ae65735e056ef658c9ee094249f"
+  },
+  {
+    "name": "charset-normalizer",
+    "version": "3.5.2",
+    "source": "https://pypi.org/project/charset-normalizer/3.5.2/",
+    "notice": "charset-normalizer.txt",
+    "sha256": "ea686104f648ccceb9b610f6372f8f74349a7294fb963012042cefe969ccf9be"
+  },
+  {
+    "name": "curl-cffi",
+    "version": "0.16.3",
+    "source": "https://pypi.org/project/curl-cffi/0.16.3/",
+    "notice": "curl-cffi.txt",
+    "sha256": "6af76b414042ee4a3bb40c1d53e8f6f3a6bfdecd149241d4dfed8a017119b7cb"
+  },
+  {
+    "name": "idna",
+    "version": "3.20",
+    "source": "https://pypi.org/project/idna/3.20/",
+    "notice": "idna.txt",
+    "sha256": "2daf0f9f74bcc5813dd5f7a6f7387fbbafd9bfb23d1ef2cf6709df4824930408"
+  },
+  {
+    "name": "lxml",
+    "version": "6.1.3",
+    "source": "https://pypi.org/project/lxml/6.1.3/",
+    "notice": "lxml.txt",
+    "sha256": "03210d0ce27311e0bdee2a4006a2526fd419014d9eea97c24ae1ffdea7b38b89"
+  },
+  {
+    "name": "multitasking",
+    "version": "0.0.13",
+    "source": "https://pypi.org/project/multitasking/0.0.13/",
+    "notice": "multitasking.txt",
+    "sha256": "b41efac3874829f187d450e2f68d9f2f45780089582a9cb6f58f27dcb49ea562"
+  },
+  {
+    "name": "numpy",
+    "version": "2.5.3",
+    "source": "https://pypi.org/project/numpy/2.5.3/",
+    "notice": "numpy.txt",
+    "sha256": "03d2552c2f547f078786b7754ab4b1952edf2df1e9fc2905528ed115b3418da5"
+  },
+  {
+    "name": "pandas",
+    "version": "3.0.6",
+    "source": "https://pypi.org/project/pandas/3.0.6/",
+    "notice": "pandas.txt",
+    "sha256": "e90637b99ab4031de10602a90dd7d8b6cf0ec5ee26945365286feb29fba623f5"
+  },
+  {
+    "name": "peewee",
+    "version": "4.5.2",
+    "source": "https://pypi.org/project/peewee/4.5.2/",
+    "notice": "peewee.txt",
+    "sha256": "51a465bfd5b721e88ec12810f398a8d94f3dfe28044a9ff8d25c78ad7b85cf7c"
+  },
+  {
+    "name": "platformdirs",
+    "version": "4.12.3",
+    "source": "https://pypi.org/project/platformdirs/4.12.3/",
+    "notice": "platformdirs.txt",
+    "sha256": "3d2dd55f7b9c6bf4700ca75e0859cb10d742b32c07b40c62cf867f139e43c047"
+  },
+  {
+    "name": "protobuf",
+    "version": "7.36.2",
+    "source": "https://pypi.org/project/protobuf/7.36.2/",
+    "notice": "protobuf.txt",
+    "sha256": "0f63068c172668af8cdcb38081581719c179d4c50a007d94e8fb53a34d298322"
+  },
+  {
+    "name": "pycparser",
+    "version": "3.0",
+    "source": "https://pypi.org/project/pycparser/3.0/",
+    "notice": "pycparser.txt",
+    "sha256": "a31c52c019c6284ee1e43e669aabe8f20dfe3be6aac2f6e0c0a45324108109a9"
+  },
+  {
+    "name": "python-dateutil",
+    "version": "2.9.0.post0",
+    "source": "https://pypi.org/project/python-dateutil/2.9.0.post0/",
+    "notice": "python-dateutil.txt",
+    "sha256": "8f03d13223ae87dd8cd18c3967e8e9489d4cb16a18a9d4b3152f45143d622ab0"
+  },
+  {
+    "name": "pytz",
+    "version": "2026.5",
+    "source": "https://pypi.org/project/pytz/2026.5/",
+    "notice": "pytz.txt",
+    "sha256": "ee1789d35e7a50a7e98d64a868861e4357245e9a32a26f4737fd5c37ebc74148"
+  },
+  {
+    "name": "requests",
+    "version": "2.34.2",
+    "source": "https://pypi.org/project/requests/2.34.2/",
+    "notice": "requests.txt",
+    "sha256": "a4a51569a3e6f762ec3baa614fc5b28a649e0c582fb8341130ed2108a3540cce"
+  },
+  {
+    "name": "six",
+    "version": "1.17.0",
+    "source": "https://pypi.org/project/six/1.17.0/",
+    "notice": "six.txt",
+    "sha256": "5ad6fb15c6f5afd34b50209c5c132750263d925d7edac879fe4719d933eb1f9b"
+  },
+  {
+    "name": "soupsieve",
+    "version": "2.10",
+    "source": "https://pypi.org/project/soupsieve/2.10/",
+    "notice": "soupsieve.txt",
+    "sha256": "49e10674f569c07581c420a371c161eca8dfaeee87d84a86739939a997da47d9"
+  },
+  {
+    "name": "typing-extensions",
+    "version": "4.16.0",
+    "source": "https://pypi.org/project/typing-extensions/4.16.0/",
+    "notice": "typing-extensions.txt",
+    "sha256": "8256316d1283c1b07a1fa3a13ac783d7465fce47f9e6c3da4358e8dcc7307ae6"
+  },
+  {
+    "name": "tzdata",
+    "version": "2026.5",
+    "source": "https://pypi.org/project/tzdata/2026.5/",
+    "notice": "tzdata.txt",
+    "sha256": "8396238150ca5c2a8b3adec85d6dfd12d533b681a8b5fe9321f1a5a1748a96eb"
+  },
+  {
+    "name": "urllib3",
+    "version": "2.8.0",
+    "source": "https://pypi.org/project/urllib3/2.8.0/",
+    "notice": "urllib3.txt",
+    "sha256": "d144392899d6da0a20d7cd8a0ebde94f53689377ceb4ff48d38871c21eed141d"
+  },
+  {
+    "name": "websockets",
+    "version": "15.0.1",
+    "source": "https://pypi.org/project/websockets/15.0.1/",
+    "notice": "websockets.txt",
+    "sha256": "8a6c19c49cb057095fc7db0d3192758b4b2e8674d1235dd7ef8466bc92111717"
+  },
+  {
+    "name": "curl-impersonate",
+    "version": "2.2.2",
+    "source": "https://raw.githubusercontent.com/lexiforest/curl-impersonate/v2.2.2/LICENSE",
+    "notice": "curl-impersonate.txt",
+    "sha256": "c25fc35eb1692c95fa1406efca2f08cc14afda2c71d5cb1ae44da60358d1787b"
+  },
+  {
+    "name": "libcurl",
+    "version": "8.21.0",
+    "source": "https://raw.githubusercontent.com/curl/curl/curl-8_21_0/COPYING",
+    "notice": "libcurl.txt",
+    "sha256": "82f2f4427d6545ee5aaac4f0b80428da6cc8ba41c2cf5da3a03680ec327b9681"
+  },
+  {
+    "name": "boringssl",
+    "version": "156c7b75ae9b8c3b3f847acf264f17594c3859fb",
+    "source": "https://raw.githubusercontent.com/google/boringssl/156c7b75ae9b8c3b3f847acf264f17594c3859fb/LICENSE",
+    "notice": "boringssl.txt",
+    "sha256": "827c8d8fc207c2392794eef9e00fe246f9f61fdcc132556c275be3dd8c3cd97f"
+  },
+  {
+    "name": "brotli",
+    "version": "1.2.0",
+    "source": "https://raw.githubusercontent.com/google/brotli/v1.2.0/LICENSE",
+    "notice": "brotli.txt",
+    "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94"
+  },
+  {
+    "name": "zlib",
+    "version": "1.3.1",
+    "source": "https://raw.githubusercontent.com/madler/zlib/v1.3.1/LICENSE",
+    "notice": "zlib.txt",
+    "sha256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243"
+  },
+  {
+    "name": "zstd",
+    "version": "1.5.7",
+    "source": "https://raw.githubusercontent.com/facebook/zstd/v1.5.7/LICENSE",
+    "notice": "zstd.txt",
+    "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+  },
+  {
+    "name": "nghttp2",
+    "version": "1.63.0",
+    "source": "https://raw.githubusercontent.com/nghttp2/nghttp2/v1.63.0/COPYING",
+    "notice": "nghttp2.txt",
+    "sha256": "6b94f3abc1aabd0c72a7c7d92a77f79dda7c8a0cb3df839a97890b4116a2de2a"
+  },
+  {
+    "name": "ngtcp2",
+    "version": "1.20.0",
+    "source": "https://raw.githubusercontent.com/ngtcp2/ngtcp2/v1.20.0/COPYING",
+    "notice": "ngtcp2.txt",
+    "sha256": "542dd526d2ea23565f0571cc68df6f05ed11248a90ff0f32de19d8ba589db513"
+  },
+  {
+    "name": "nghttp3",
+    "version": "1.15.0",
+    "source": "https://raw.githubusercontent.com/ngtcp2/nghttp3/v1.15.0/COPYING",
+    "notice": "nghttp3.txt",
+    "sha256": "58cc3fc8c6d6cb2485ab35eb5918e849b5bf1e56522974e106d7a39a88d61dcd"
+  }
+]

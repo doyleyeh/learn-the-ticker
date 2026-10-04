@@ -82,3 +82,5 @@ Return:
 - high-risk findings
 - suggested fixes
 - merge recommendation and unresolved verification limits; do not perform the merge
+
+Packaged market changes must use the same owned executable with no host-Python fallback, isolate bootloader extraction/cookies, retain the pinned dependency/native notice inventory and verify final HTTP/1.1/no-auth options. Python advisory scans alone do not cover the curl/HTTP native libraries. Require scoped native dependency/shutdown/startup/restore and separate live retrieval evidence; do not promote a developer/private build to public distribution while runtime upgrades, license obligations or clean-machine gates remain unresolved.

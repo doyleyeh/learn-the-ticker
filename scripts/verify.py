@@ -89,6 +89,8 @@ def verify(tier: str):
         run([python, "scripts/package_backend.py"])
         run([python, "scripts/smoke_local_service.py", "--packaged"])
         run([python, "-m", "scripts.smoke_import_worker", "--packaged"])
+        run([python, "-m", "scripts.smoke_market_worker", "--packaged"])
+        run([python, "-m", "scripts.smoke_packaged_restore"])
     if tier in ("native", "full"):
         if not (ROOT / "apps/desktop/src-tauri/binaries/ltt-service-x86_64-pc-windows-msvc.exe").is_file():
             raise PrerequisiteError("Build the Windows sidecar before native verification (verify packaged).")

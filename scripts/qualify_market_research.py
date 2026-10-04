@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import threading
+from unittest.mock import patch
 
 from backend.app.contracts import EvidenceBundle, ResearchRequest, uid
 from backend.app.db import Database, Job
@@ -74,8 +75,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--asset-id", default="")
+    parser.add_argument("--packaged-worker", action="store_true")
     args = parser.parse_args()
-    result = asyncio.run(check(live=args.live, asset_id=args.asset_id))
+    if args.packaged_worker:
+        executable = Path(__file__).resolve().parents[1] / "dist/ltt-service.exe"
+        if not executable.is_file():
+            raise SystemExit("Build the Windows sidecar before packaged market qualification")
+        with patch("sys.frozen", True, create=True), patch("sys.executable", str(executable)):
+            result = asyncio.run(check(live=args.live, asset_id=args.asset_id))
+        result["worker"] = "frozen Windows sidecar; orchestration/test database run from source"
+    else:
+        result = asyncio.run(check(live=args.live, asset_id=args.asset_id))
     print(json.dumps(result, indent=2))
     return 0 if result["status"] == "qualified" else 2
 

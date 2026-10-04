@@ -108,7 +108,8 @@ def test_session_overrides_redirects_timeout_tls_and_bounds_stream_before_buffer
     calls = []
     class FakeBase:
         def __init__(self, **kwargs):
-            assert kwargs == {"trust_env": False, "verify": True, "allow_redirects": False, "impersonate": "chrome"}
+            assert kwargs == {"trust_env": False, "verify": True, "allow_redirects": False,
+                              "impersonate": "chrome", "curl_options": {84: 2, 107: 0, 111: 0}}
         def request(self, method, url, **kwargs):
             calls.append((method, url))
             assert kwargs["timeout"] == 10 and kwargs["verify"] and not kwargs["allow_redirects"]
@@ -136,7 +137,13 @@ def test_malformed_worker_request_never_imports_yfinance(monkeypatch):
             yfinance_worker.retrieve(request)
 
 
-def test_packaged_build_does_not_accidentally_enable_unqualified_adapter(monkeypatch):
+def test_missing_packaged_worker_fails_without_host_python_or_network_fallback(monkeypatch):
     monkeypatch.setattr(yfinance_worker.sys, "frozen", True, raising=False)
-    with pytest.raises(MarketDataError, match="dependency_unavailable"):
+    calls = []
+    async def unavailable(*args, **kwargs):
+        calls.append(args)
+        raise OSError("private diagnostic")
+    monkeypatch.setattr(yfinance_worker, "launch_owned", unavailable)
+    with pytest.raises(MarketDataError, match="^worker_limit$"):
         asyncio.run(yfinance_worker.fetch_yahoo_history("TEST", START, END))
+    assert calls == [(yfinance_worker.sys.executable, "--retrieve-private-market")]

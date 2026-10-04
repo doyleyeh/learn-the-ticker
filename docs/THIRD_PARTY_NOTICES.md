@@ -18,3 +18,19 @@ The local PostgreSQL 17.5 staging directory includes its original `server_licens
 Rust/Cargo and Microsoft C++ Build Tools are developer prerequisites installed with user authorization, not application payloads. The existing Rust dependencies now have a Cargo.lock; their complete transitive notice inventory is still required before public distribution.
 
 The native host directly pins **dunce 1.0.5**, already present in Tauri's resolved graph, to simplify Windows verbatim paths only where ordinary spelling preserves their meaning. Hand-written prefix removal was rejected because reserved names/trailing characters can change path meaning. Its reviewed implementation performs no I/O or network access. Package metadata offers `CC0-1.0 OR MIT-0 OR Apache-2.0`; the supplied [CC0 license text](../apps/desktop/src-tauri/licenses/dunce.txt) is retained with normalized whitespace and included in native resources. No new package version or paid service is introduced; the change adds a small native path-normalization dependency, not a frontend capability.
+
+## Experimental market worker
+
+Reviewed 2026-10-05 for DEC-043. The exact 24-package Windows closure is pinned in [requirements-market-data.txt](../requirements-market-data.txt). The [notice manifest](licenses/market/manifest.json) records package/native component versions, original upstream URLs and SHA-256 of each retained UTF-8/LF notice file. Installed wheel license files were copied without executing downloaded code; only trailing whitespace/newlines were normalized. Nine native notices were read from exact upstream tags/commits identified by [curl_cffi's build](https://github.com/lexiforest/curl_cffi/blob/v0.16.3/scripts/build.py) and [curl-impersonate 2.2.2's CMake inputs](https://github.com/lexiforest/curl-impersonate/blob/v2.2.2/CMakeLists.txt). The build bundles the notices and checks their hashes.
+
+| Components | License considerations | Purpose |
+| --- | --- | --- |
+| yfinance, requests, multitasking | Apache-2.0; requests NOTICE retained | Bounded anonymous history acquisition and library support |
+| NumPy, pandas | BSD plus complete wheel notices; NumPy includes OpenBLAS/LAPACK/GCC runtime exception terms | yfinance's internal frame conversion; original JSON remains numerical admission input |
+| curl_cffi, curl-impersonate and libcurl | MIT/curl terms; native notices retained separately | Verified HTTPS session under application request limits |
+| BoringSSL, brotli, zlib, zstd, nghttp2, ngtcp2, nghttp3 | Original BSD/MIT/zlib/OpenSSL-related notices retained | Native TLS/compression/protocol libraries; this worker explicitly forces HTTP/1.1 |
+| lxml | BSD, PSF, MIT plus bundled iconv LGPL-2.1 notice; public source/relink obligations remain open | Transitive parser dependency; unused Schematron/test resources excluded |
+| certifi | MPL-2.0; unmodified CA data and license; [source](https://github.com/certifi/python-certifi) | TLS root certificates |
+| BeautifulSoup, cffi, charset-normalizer, idna, peewee, platformdirs, protobuf, pycparser, python-dateutil, pytz, six, soupsieve, typing-extensions, tzdata, urllib3, websockets | Exact wheel license texts in the manifest, including BSD/MIT/PSF/dateutil dual terms | Required non-extra dependency closure |
+
+This is a developer/private experimental packaging inventory. It is not the full runtime redistribution review, a claim of Yahoo dataset rights or a vulnerability-free release. Native advisory restrictions and actual packaging evidence are tracked [separately](verification/2026-10-05-private-market-native.md). M11 must update/review the runtime graph, satisfy corresponding-source/relink requirements where applicable and inventory the actual final binaries before public distribution.

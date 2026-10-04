@@ -15,7 +15,7 @@ import sys
 import tempfile
 
 from backend.app.market_history import MAX_BYTES, MarketDataError, _window, parse_yahoo_chart, valid_symbol
-from backend.app.market_transport import TRANSPORT_ERRORS, YahooPolicy, yahoo_session
+from backend.app.market_transport import TRANSPORT_ERRORS, YAHOO_CURL_OPTIONS, YahooPolicy, yahoo_session
 from backend.app.owned_process import close_owned, launch_owned
 
 VERSION = "1.7.0"
@@ -59,14 +59,55 @@ def retrieve(request):
     return {"raw": base64.b64encode(policy.raw).decode("ascii"), "requests": policy.count, "version": VERSION}
 
 
-def main():
+def dependency_report():
+    """Exercise the shipped numerical/native imports without creating a network session."""
+    import yfinance
+    import pandas
+    from curl_cffi import Curl, CurlOpt, CurlHttpVersion
+    from curl_cffi.requests.utils import set_curl_options
+    if importlib.metadata.version("yfinance") != VERSION or yfinance.__version__ != VERSION:
+        raise MarketDataError("dependency_unavailable")
+    expected = {CurlOpt.HTTP_VERSION: CurlHttpVersion.V1_1, CurlOpt.HTTPAUTH: 0, CurlOpt.PROXYAUTH: 0}
+    if YAHOO_CURL_OPTIONS != expected:
+        raise MarketDataError("dependency_unavailable")
+    class CheckedCurl(Curl):
+        def setopt(self, option, value):
+            applied[option] = value
+            return super().setopt(option, value)
+        def perform(self, *args, **kwargs):
+            raise MarketDataError("request_not_allowed")
+    applied = {}
+    curl = CheckedCurl()
+    try:
+        native = curl.version().decode("ascii")
+        # Configure the real native handle, but never perform this request.
+        set_curl_options(curl, "GET", "https://query2.finance.yahoo.com/", impersonate="chrome",
+                         params_list=[None, None], headers_list=[None, None], cookies_list=[None, None],
+                         proxies_list=[None, None], verify_list=[True, True],
+                         allow_redirects=False, curl_options=YAHOO_CURL_OPTIONS)
+        if any(applied.get(key) != value for key, value in expected.items()):
+            raise MarketDataError("dependency_unavailable")
+    finally:
+        curl.close()
+    if pandas.Series([1, 2]).sum() != 3:
+        raise MarketDataError("dependency_unavailable")
+    return {"version": VERSION, "native": native, "network": False}
+
+
+def main(*, check_only=False):
     logging.disable(logging.CRITICAL)
     try:
         wire = sys.stdin.buffer.read(2049)
         if len(wire) > 2048:
             raise MarketDataError("invalid_worker_request")
         with open(os.devnull, "w") as sink, contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
-            result = retrieve(json.loads(wire))
+            request = json.loads(wire)
+            if check_only:
+                if request != {}:
+                    raise MarketDataError("invalid_worker_request")
+                result = dependency_report()
+            else:
+                result = retrieve(request)
         output = json.dumps(result).encode()
         if len(output) > MAX_OUTPUT:
             raise MarketDataError("worker_limit")
@@ -78,22 +119,27 @@ def main():
     sys.stdout.buffer.write(output)
 
 
-async def fetch_yahoo_history(symbol, start, end):
-    valid_symbol(symbol)
-    _window(start, end)
-    # This adapter is not yet a qualified packaged application feature.
+def worker_command(*, check_only=False):
     if getattr(sys, "frozen", False):
-        raise MarketDataError("dependency_unavailable")
+        return [sys.executable, "--check-private-market" if check_only else "--retrieve-private-market"]
+    return [sys.executable, "-m", "backend.app.yfinance_worker", *(["--check-private-market"] if check_only else [])]
+
+
+async def run_worker(request, *, check_only=False):
     root = Path(__file__).resolve().parents[2]
     environment = {key: os.environ[key] for key in ("SYSTEMROOT", "WINDIR", "TEMP", "TMP") if key in os.environ}
-    environment.update({"PYTHONPATH": str(root), "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"})
+    environment.update({"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"})
+    if not getattr(sys, "frozen", False):
+        environment["PYTHONPATH"] = str(root)
     process = None
     with tempfile.TemporaryDirectory(prefix="ltt-yahoo-") as workspace:
+        # A fresh frozen bootloader also extracts inside this owned disposable tree.
+        environment.update({"TEMP": workspace, "TMP": workspace})
         try:
-            process = await launch_owned(sys.executable, "-m", "backend.app.yfinance_worker",
+            process = await launch_owned(*worker_command(check_only=check_only),
                 cwd=workspace, env=environment, memory_limit=MEMORY_LIMIT,
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-            wire = json.dumps({"symbol": symbol, "start": start, "end": end}).encode()
+            wire = json.dumps(request).encode()
             async with asyncio.timeout(TIMEOUT):
                 # Bounded read also protects the parent if a library unexpectedly writes stdout.
                 process.stdin.write(wire)
@@ -111,12 +157,7 @@ async def fetch_yahoo_history(symbol, start, end):
             value = json.loads(b"".join(chunks))
             if isinstance(value, dict) and set(value) == {"error"} and value["error"] in ERRORS:
                 raise MarketDataError(value["error"])
-            if (not isinstance(value, dict) or set(value) != {"raw", "requests", "version"}
-                    or value["version"] != VERSION or type(value["requests"]) is not int
-                    or not 1 <= value["requests"] <= 4):
-                raise MarketDataError("worker_limit")
-            raw = base64.b64decode(value["raw"], validate=True)
-            return replace(parse_yahoo_chart(raw, symbol, start, end), retrieved_at=datetime.now(timezone.utc)), value["requests"]
+            return value
         except MarketDataError:
             raise
         except (OSError, ValueError, TypeError, TimeoutError):
@@ -125,5 +166,29 @@ async def fetch_yahoo_history(symbol, start, end):
             await close_owned(process)
 
 
+async def check_dependencies():
+    result = await run_worker({}, check_only=True)
+    if (not isinstance(result, dict) or set(result) != {"version", "native", "network"}
+            or result["version"] != VERSION or result["network"] is not False
+            or not isinstance(result["native"], str) or not 1 <= len(result["native"]) <= 512):
+        raise MarketDataError("worker_limit")
+    return result
+
+
+async def fetch_yahoo_history(symbol, start, end):
+    valid_symbol(symbol)
+    _window(start, end)
+    value = await run_worker({"symbol": symbol, "start": start, "end": end})
+    try:
+        if (not isinstance(value, dict) or set(value) != {"raw", "requests", "version"}
+                or value["version"] != VERSION or type(value["requests"]) is not int
+                or not 1 <= value["requests"] <= 4):
+            raise MarketDataError("worker_limit")
+        raw = base64.b64decode(value["raw"], validate=True)
+        return replace(parse_yahoo_chart(raw, symbol, start, end), retrieved_at=datetime.now(timezone.utc)), value["requests"]
+    except (ValueError, TypeError):
+        raise MarketDataError("worker_limit") from None
+
+
 if __name__ == "__main__":
-    main()
+    main(check_only=sys.argv[1:] == ["--check-private-market"])
