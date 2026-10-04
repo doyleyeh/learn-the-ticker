@@ -17,6 +17,9 @@ from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
 from backend.app.terms import term_key
 from tests.desktop.financial_fixture import publish_financial_snapshot
+from tests.desktop.market_fixture import market_bundle
+from backend.app.evidence import factual_context
+from backend.app.source_operations import shareable_view
 from tests.desktop.source_review_fixture import backup_during_review, publish_review_snapshot
 from tests.desktop.import_fixture import retain_synthetic_documents, explain_synthetic_document
 from backend.app.import_previews import ImportPreview
@@ -40,6 +43,9 @@ def main():
             databases.append(db)
             migrate(db.engine)
         source, target = databases
+        market = market_bundle()
+        market_payload = market.model_dump(mode="json")
+        source.put("bundle:" + market.id, "bundle", market_payload, market.asset.id)
         reviewed_job = asyncio.run(publish_review_snapshot(source, roots[0] / "synthetic-source-review"))
         reviewed_ids = {row["id"] for row in source.list("bundle")}
         financial_job = asyncio.run(publish_financial_snapshot(source, roots[0] / "synthetic-research"))
@@ -66,7 +72,7 @@ def main():
         source.put("saved:" + saved.id, "saved", saved.model_dump(mode="json"), identity.id)
         chat = Conversation(asset_id=identity.id, bookmarked=True)
         source.put("conversation:" + chat.id, "conversation", chat.model_dump(mode="json"))
-        source.put("settings", "settings", Settings(cloud_enabled=True, language="zh-TW", model="synthetic-selected-model").model_dump(mode="json"))
+        source.put("settings", "settings", Settings(cloud_enabled=True, experimental_yahoo_enabled=True, language="zh-TW", model="synthetic-selected-model").model_dump(mode="json"))
         term_request = TermRequest(term="liquidity", bundle_id=old.id)
         term = TermExplanation(id=term_key(term_request), term=term_request.term, bundle_id=old.id, asset_id=identity.id, language="en", level="beginner", provider="codex", basis="general", explanation="Synthetic general explanation for the restore scenario.")
         with source.session.begin() as session:
@@ -108,7 +114,7 @@ def main():
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
-        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 9 and summary.saved_reports == 1 and summary.term_explanations == 1
+        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 10 and summary.saved_reports == 1 and summary.term_explanations == 1
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
         assert summary.import_explanations == 1
 
@@ -144,6 +150,8 @@ def main():
         assert target.list("term")[0]["bundle_id"] == old.id and target.job("term-job")["result"]["id"] == term.id
         assert target.job("pending")["status"] == "interrupted" and not target.get("settings")["cloud_enabled"]
         assert target.get("settings")["model"] == "synthetic-selected-model"
+        assert not target.get("settings")["experimental_yahoo_enabled"]
+        assert target.get("bundle:" + market.id) == market_payload
         assert target.get("bundle:" + financial.id) == financial.model_dump(mode="json")
         assert target.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
         assert target.job(import_job["id"])["result"] == import_job["result"]
@@ -179,6 +187,17 @@ def main():
         assert len(restarted.events("pending")) == 2
         assert restarted.get("term:" + term.id) == term.model_dump(mode="json")
         assert restarted.get("settings")["model"] == "synthetic-selected-model"
+        assert not restarted.get("settings")["experimental_yahoo_enabled"]
+        restored_market = EvidenceBundle.model_validate(restarted.get("bundle:" + market.id))
+        assert restored_market.model_dump(mode="json") == market_payload
+        assert restored_market.market.bars[0].volume == "9007199254740993"
+        assert restored_market.market.actions[0].value == "0.123456789012345678"
+        assert restored_market.sources[-1] == market.sources[-1]
+        restored_context = factual_context(restored_market)
+        assert restored_context["context_gaps"] and restored_context["financials"]["observations"]
+        assert all(source["id"] != market.market.source_id for source in restored_context["sources"])
+        exported, notice = shareable_view(restored_market)
+        assert notice and exported.market is None and market.sources[-1] not in exported.sources
         assert restarted.get("asset:" + financial.asset.id) == financial.model_dump(mode="json")
         assert restarted.get("bundle:" + financial.id)["financials"]["observations"][0]["value"] == "9007199254740993"
         assert restarted.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
@@ -206,6 +225,7 @@ def main():
             assert restored == document and restored.content() == document.content() and not restored.verified
         print("PostgreSQL full-library restore, rollback on failure, preserved saved versions, event sequence and restart passed.")
         print("Typed issuer observations, exact decimals, separate identity proofs and conflict/revision references survived actual restore and restart.")
+        print("Private market history, exact decimals/actions and original citations survived restore/restart; cloud/export exclusions and reset network opt-in passed.")
         print("Financial snapshot originated through production research orchestration with explicit synthetic source/runtime adapters.")
         print("Original conversation facts, version-specific citations, source URLs and dates remain reusable after restore and restart.")
         print("Five retained documents across four formats preserved exact bytes, checksums, locators, original provenance and permission through atomic restore and restart; concurrent capacity enforcement passed.")

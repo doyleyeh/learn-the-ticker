@@ -600,6 +600,17 @@
             }
           ],
           "default": null
+        },
+        "market": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MarketEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -1364,6 +1375,250 @@
       "title": "ImportReference",
       "type": "object"
     },
+    "MarketBar": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "open": {
+          "maxLength": 80,
+          "title": "Open",
+          "type": "string"
+        },
+        "high": {
+          "maxLength": 80,
+          "title": "High",
+          "type": "string"
+        },
+        "low": {
+          "maxLength": 80,
+          "title": "Low",
+          "type": "string"
+        },
+        "close": {
+          "maxLength": 80,
+          "title": "Close",
+          "type": "string"
+        },
+        "adjusted_close": {
+          "maxLength": 80,
+          "title": "Adjusted Close",
+          "type": "string"
+        },
+        "volume": {
+          "maxLength": 80,
+          "title": "Volume",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adjusted_close",
+        "volume"
+      ],
+      "title": "MarketBar",
+      "type": "object"
+    },
+    "MarketCorporateAction": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "dividends",
+            "splits",
+            "capitalGains"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 161,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "kind",
+        "value"
+      ],
+      "title": "MarketCorporateAction",
+      "type": "object"
+    },
+    "MarketEvidence": {
+      "additionalProperties": false,
+      "description": "Application-owned daily history; never an LLM output field.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "provider": {
+          "const": "yahoo_yfinance",
+          "default": "yahoo_yfinance",
+          "title": "Provider",
+          "type": "string"
+        },
+        "association": {
+          "const": "yahoo-openfigi-common-stock-v1",
+          "default": "yahoo-openfigi-common-stock-v1",
+          "title": "Association",
+          "type": "string"
+        },
+        "usage_scope": {
+          "const": "private_yahoo_v1",
+          "default": "private_yahoo_v1",
+          "title": "Usage Scope",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "checked_at": {
+          "format": "date-time",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "exchange": {
+          "maxLength": 20,
+          "title": "Exchange",
+          "type": "string"
+        },
+        "exchange_label": {
+          "maxLength": 100,
+          "title": "Exchange Label",
+          "type": "string"
+        },
+        "currency": {
+          "const": "USD",
+          "default": "USD",
+          "title": "Currency",
+          "type": "string"
+        },
+        "instrument_type": {
+          "const": "EQUITY",
+          "default": "EQUITY",
+          "title": "Instrument Type",
+          "type": "string"
+        },
+        "timezone": {
+          "const": "America/New_York",
+          "default": "America/New_York",
+          "title": "Timezone",
+          "type": "string"
+        },
+        "requested_start": {
+          "format": "date",
+          "title": "Requested Start",
+          "type": "string"
+        },
+        "requested_end": {
+          "format": "date",
+          "title": "Requested End",
+          "type": "string"
+        },
+        "close_basis": {
+          "const": "split_adjusted",
+          "default": "split_adjusted",
+          "title": "Close Basis",
+          "type": "string"
+        },
+        "adjusted_close_basis": {
+          "const": "splits_and_distributions",
+          "default": "splits_and_distributions",
+          "title": "Adjusted Close Basis",
+          "type": "string"
+        },
+        "volume_basis": {
+          "const": "provider_reported",
+          "default": "provider_reported",
+          "title": "Volume Basis",
+          "type": "string"
+        },
+        "bars": {
+          "items": {
+            "$ref": "#/$defs/MarketBar"
+          },
+          "maxItems": 2000,
+          "minItems": 1,
+          "title": "Bars",
+          "type": "array"
+        },
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/MarketCorporateAction"
+          },
+          "maxItems": 2000,
+          "title": "Actions",
+          "type": "array"
+        },
+        "gaps": {
+          "items": {
+            "enum": [
+              "missing_price_rows",
+              "calendar_completeness_unverified"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Gaps",
+          "type": "array"
+        },
+        "fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "checked_at",
+        "name",
+        "exchange",
+        "exchange_label",
+        "requested_start",
+        "requested_end",
+        "bars",
+        "gaps",
+        "fingerprint"
+      ],
+      "title": "MarketEvidence",
+      "type": "object"
+    },
     "ParsedDocument": {
       "additionalProperties": false,
       "properties": {
@@ -2121,6 +2376,11 @@
           "title": "Cloud Enabled",
           "type": "boolean"
         },
+        "experimental_yahoo_enabled": {
+          "default": false,
+          "title": "Experimental Yahoo Enabled",
+          "type": "boolean"
+        },
         "provider": {
           "default": "codex",
           "enum": [
@@ -2290,10 +2550,20 @@
           "enum": [
             "agent_candidate",
             "structured_adapter",
+            "market_adapter",
             "verified_retrieval",
             "user_import"
           ],
           "title": "Provenance",
+          "type": "string"
+        },
+        "usage_scope": {
+          "default": "standard",
+          "enum": [
+            "standard",
+            "private_yahoo_v1"
+          ],
+          "title": "Usage Scope",
           "type": "string"
         },
         "filing_publication": {

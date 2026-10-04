@@ -346,8 +346,13 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     @app.get("/api/export/{bundle_id}")
     def export(bundle_id: str, format: str = "json"):
         value = EvidenceBundle.model_validate(bundle(bundle_id))
+        from backend.app.source_operations import shareable_view
+        value, notice = shareable_view(value)
         # Export normalized app data only; never provider transcripts or unrestricted source bodies.
         payload = value.model_dump(mode="json")
+        if notice:
+            payload.pop("market", None)
+            payload["export_notice"] = notice
         for source in payload["sources"]:
             source.pop("excerpt", None)
         if format == "json":
@@ -357,6 +362,8 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
         def clean(text):
             return text.replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]")
         lines = ["# " + clean(value.asset.name), "", f"Research snapshot: {value.created_at.isoformat()}", "", "Educational research; not investment advice.", "", "## Source-backed claims"]
+        if notice:
+            lines[4:4] = [notice, ""]
         if value.completion == "section_checkpoint":
             lines[4:4] = ["Incomplete research: independently checked section checkpoint. The overall run may still be active or may have stopped.", ""]
         for claim in value.claims:

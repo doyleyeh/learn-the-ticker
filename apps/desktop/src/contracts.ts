@@ -74,7 +74,9 @@ export type SourcePolicy = "full_text_allowed" | "summary_allowed" | "metadata_o
 export type Official = boolean;
 export type Verified = boolean;
 export type Excerpt = string;
-export type Provenance = "agent_candidate" | "structured_adapter" | "verified_retrieval" | "user_import";
+export type Provenance =
+  "agent_candidate" | "structured_adapter" | "market_adapter" | "verified_retrieval" | "user_import";
+export type UsageScope = "standard" | "private_yahoo_v1";
 export type SchemaVersion9 = "1";
 export type Authority = "sec-submissions-v1";
 export type Cik = string;
@@ -132,9 +134,58 @@ export type Observations = FinancialObservation[];
  */
 export type Gaps = string[];
 export type SchemaVersion13 = "1";
+export type Provider1 = "yahoo_yfinance";
+export type Association1 = "yahoo-openfigi-common-stock-v1";
+export type UsageScope1 = "private_yahoo_v1";
+export type SourceId1 = string;
+export type CheckedAt1 = string;
+export type Name1 = string;
+export type Exchange1 = string;
+export type ExchangeLabel = string;
+export type Currency1 = "USD";
+export type InstrumentType = "EQUITY";
+export type Timezone = "America/New_York";
+export type RequestedStart = string;
+export type RequestedEnd = string;
+export type CloseBasis = "split_adjusted";
+export type AdjustedCloseBasis = "splits_and_distributions";
+export type VolumeBasis = "provider_reported";
+/**
+ * @minItems 1
+ * @maxItems 2000
+ */
+export type Bars = [MarketBar, ...MarketBar[]];
+export type SchemaVersion14 = "1";
+export type Date = string;
+export type Open = string;
+export type High = string;
+export type Low = string;
+export type Close = string;
+export type AdjustedClose = string;
+export type Volume = string;
+export type SchemaVersion15 = "1";
+export type Date1 = string;
+export type Kind2 = "dividends" | "splits" | "capitalGains";
+export type Value2 = string;
+/**
+ * @maxItems 2000
+ */
+export type Actions = MarketCorporateAction[];
+/**
+ * @maxItems 2
+ */
+export type Gaps1 =
+  | []
+  | ["missing_price_rows" | "calendar_completeness_unverified"]
+  | [
+      "missing_price_rows" | "calendar_completeness_unverified",
+      "missing_price_rows" | "calendar_completeness_unverified"
+    ];
+export type Fingerprint1 = string;
+export type SchemaVersion16 = "1";
 export type State1 = "unverified" | "link_only";
 export type Origin = "local_file" | "public_url";
-export type CheckedAt1 = string;
+export type CheckedAt2 = string;
 export type Format = "csv" | "xlsx" | "pdf" | "html";
 export type ContentHash2 = string;
 export type Verified1 = false;
@@ -142,7 +193,7 @@ export type Locator = string;
 export type Text2 = string;
 export type Locator1 = string;
 export type Text3 = string;
-export type Kind2 = "text" | "number" | "date" | "boolean" | "error" | "formula";
+export type Kind3 = "text" | "number" | "date" | "boolean" | "error" | "formula";
 export type NumberFormat = string | null;
 export type RawValue = string | null;
 /**
@@ -161,18 +212,18 @@ export type Limitations = (
   | "merged_cells_not_expanded"
 )[];
 export type Saved = false;
-export type SchemaVersion14 = "1";
+export type SchemaVersion17 = "1";
 export type Id7 = string;
 export type Title1 = string;
 export type Format1 = "csv" | "xlsx" | "pdf" | "html";
 export type Origin1 = "local_file" | "public_url";
-export type CheckedAt2 = string;
+export type CheckedAt3 = string;
 export type RetainedAt = string;
 export type ByteCount = number;
 export type ContentHash3 = string;
 export type Verified2 = false;
-export type SchemaVersion15 = "1";
-export type SchemaVersion16 = "1";
+export type SchemaVersion18 = "1";
+export type SchemaVersion19 = "1";
 export type DocumentId = string;
 export type ContentHash4 = string;
 export type Language1 = "en" | "zh-TW";
@@ -208,50 +259,50 @@ export type References =
       ImportReference,
       ImportReference
     ];
-export type SchemaVersion17 = "1";
+export type SchemaVersion20 = "1";
 export type Locator2 = string;
 export type Quote = string;
 export type Id8 = string;
-export type Provider1 = "codex" | "gemini" | "claude";
+export type Provider2 = "codex" | "gemini" | "claude";
 export type Model = string | null;
 export type CreatedAt3 = string;
 export type Interpretation = true;
 export type Verified3 = false;
-export type SchemaVersion18 = "1";
+export type SchemaVersion21 = "1";
 export type DocumentId1 = string;
 export type ContentHash5 = string;
 export type Language2 = "en" | "zh-TW";
 export type Level2 = "beginner" | "intermediate";
 export type Purpose = "import_explanation";
-export type Provider2 = "codex" | "gemini" | "claude";
+export type Provider3 = "codex" | "gemini" | "claude";
 export type Model1 = string | null;
 export type TransmissionConfirmed = true;
-export type SchemaVersion19 = "1";
+export type SchemaVersion22 = "1";
 export type DocumentId2 = string;
 export type ContentHash6 = string;
 export type Language3 = "en" | "zh-TW";
 export type Level3 = "beginner" | "intermediate";
-export type SchemaVersion20 = "1";
-export type Provider3 = "codex";
+export type SchemaVersion23 = "1";
+export type Provider4 = "codex";
 export type Status = "idle" | "pending" | "authenticated" | "cancelled" | "expired" | "failed";
 export type VerificationUrl = "https://auth.openai.com/codex/device" | null;
 export type UserCode = string | null;
 export type ExpiresAt1 = string | null;
 export type Message1 = string;
-export type SchemaVersion21 = "1";
+export type SchemaVersion24 = "1";
 export type Id9 = string;
 export type Status1 = "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted" | "needs_identity";
-export type SchemaVersion22 = "1";
+export type SchemaVersion25 = "1";
 export type Query = string;
 export type AssetId4 = string | null;
-export type Provider4 = "codex" | "gemini" | "claude";
+export type Provider5 = "codex" | "gemini" | "claude";
 export type Model2 = string | null;
 export type Language4 = "en" | "zh-TW";
 export type Level4 = "beginner" | "intermediate";
 export type Refresh = boolean;
 export type ConversationId = string | null;
 export type CreatedAt4 = string;
-export type SchemaVersion23 = "1";
+export type SchemaVersion26 = "1";
 /**
  * @maxItems 20
  */
@@ -480,8 +531,8 @@ export type Sources1 = Source[];
  * @maxItems 200
  */
 export type Claims1 = Claim[];
-export type SchemaVersion24 = "1";
-export type Provider5 = "codex" | "gemini" | "claude";
+export type SchemaVersion27 = "1";
+export type Provider6 = "codex" | "gemini" | "claude";
 export type Installed = boolean;
 export type Authentication = "unknown" | "authenticated" | "required" | "unsupported";
 export type Version = string | null;
@@ -492,10 +543,10 @@ export type Streaming = boolean;
 export type Cancellation = boolean;
 export type Approvals = boolean;
 export type Reason1 = string | null;
-export type SchemaVersion25 = "1";
+export type SchemaVersion28 = "1";
 export type Sequence = number;
 export type RunId1 = string;
-export type Kind3 =
+export type Kind4 =
   | "run.started"
   | "message.delta"
   | "tool.started"
@@ -506,26 +557,27 @@ export type Kind3 =
   | "run.cancelled";
 export type Timestamp = string;
 export type Text4 = string;
-export type SchemaVersion26 = "1";
+export type SchemaVersion29 = "1";
 export type Id10 = string;
-export type Name1 = string;
+export type Name2 = string;
 export type IsDefault = boolean;
-export type SchemaVersion27 = "1";
-export type Provider6 = "codex" | "gemini" | "claude";
+export type SchemaVersion30 = "1";
+export type Provider7 = "codex" | "gemini" | "claude";
 export type Status2 = "available" | "authentication_required" | "unavailable";
 /**
  * @maxItems 200
  */
 export type Models = RuntimeModel[];
 export type Message2 = string;
-export type SchemaVersion28 = "1";
+export type SchemaVersion31 = "1";
 export type Id11 = string;
 export type BundleId1 = string;
 export type Title2 = string;
 export type CreatedAt5 = string;
-export type SchemaVersion29 = "1";
+export type SchemaVersion32 = "1";
 export type CloudEnabled = boolean;
-export type Provider7 = "codex" | "gemini" | "claude";
+export type ExperimentalYahooEnabled = boolean;
+export type Provider8 = "codex" | "gemini" | "claude";
 export type Model3 = string | null;
 export type Language5 = "en" | "zh-TW";
 export type ManualSourceReview = boolean;
@@ -533,7 +585,7 @@ export type UpdateMode = "notify" | "manual" | "automatic";
 export type StartAtLogin = boolean;
 export type RetentionDays = number;
 export type CacheGb = number;
-export type SchemaVersion30 = "1";
+export type SchemaVersion33 = "1";
 export type Explanation1 = string;
 export type Basis = "general" | "snapshot";
 /**
@@ -678,19 +730,19 @@ export type BundleId2 = string;
 export type AssetId5 = string;
 export type Language6 = "en" | "zh-TW";
 export type Level5 = "beginner" | "intermediate";
-export type Provider8 = "codex" | "gemini" | "claude";
+export type Provider9 = "codex" | "gemini" | "claude";
 export type Model4 = string | null;
 export type CreatedAt6 = string;
 export type Interpretation1 = true;
-export type SchemaVersion31 = "1";
+export type SchemaVersion34 = "1";
 export type Purpose1 = "term_explanation";
 export type Term1 = string;
 export type BundleId3 = string;
 export type Language7 = "en" | "zh-TW";
 export type Level6 = "beginner" | "intermediate";
-export type Provider9 = "codex" | "gemini" | "claude";
+export type Provider10 = "codex" | "gemini" | "claude";
 export type Model5 = string | null;
-export type SchemaVersion32 = "1";
+export type SchemaVersion35 = "1";
 export type Explanation2 = string;
 export type Basis1 = "general" | "snapshot";
 /**
@@ -829,13 +881,13 @@ export type SourceIds2 =
       string,
       string
     ];
-export type SchemaVersion33 = "1";
+export type SchemaVersion36 = "1";
 export type Cancel = boolean;
 /**
  * @maxItems 100
  */
 export type SourceIds3 = string[];
-export type SchemaVersion34 = "1";
+export type SchemaVersion37 = "1";
 export type Id13 = string;
 export type RunId2 = string;
 export type AssetId6 = string;
@@ -844,7 +896,7 @@ export type AssetId6 = string;
  * @maxItems 100
  */
 export type Sources2 = [ReviewSource, ...ReviewSource[]];
-export type SchemaVersion35 = "1";
+export type SchemaVersion38 = "1";
 export type Id14 = string;
 export type Url1 = string;
 export type Publisher1 = string;
@@ -975,6 +1027,7 @@ export interface EvidenceBundle {
   level?: Level;
   identity_verification?: IdentityVerification | null;
   financials?: FinancialEvidence | null;
+  market?: MarketEvidence | null;
 }
 export interface Source {
   schema_version?: SchemaVersion8;
@@ -992,6 +1045,7 @@ export interface Source {
   verified?: Verified;
   excerpt?: Excerpt;
   provenance?: Provenance;
+  usage_scope?: UsageScope;
   filing_publication?: FilingPublication | null;
 }
 export interface FilingPublication {
@@ -1044,12 +1098,54 @@ export interface FinancialObservation {
   revision: Revision;
   supersedes?: Supersedes;
 }
-export interface ImportPreview {
+/**
+ * Application-owned daily history; never an LLM output field.
+ */
+export interface MarketEvidence {
   schema_version?: SchemaVersion13;
+  provider?: Provider1;
+  association?: Association1;
+  usage_scope?: UsageScope1;
+  source_id: SourceId1;
+  checked_at: CheckedAt1;
+  name: Name1;
+  exchange: Exchange1;
+  exchange_label: ExchangeLabel;
+  currency?: Currency1;
+  instrument_type?: InstrumentType;
+  timezone?: Timezone;
+  requested_start: RequestedStart;
+  requested_end: RequestedEnd;
+  close_basis?: CloseBasis;
+  adjusted_close_basis?: AdjustedCloseBasis;
+  volume_basis?: VolumeBasis;
+  bars: Bars;
+  actions?: Actions;
+  gaps: Gaps1;
+  fingerprint: Fingerprint1;
+}
+export interface MarketBar {
+  schema_version?: SchemaVersion14;
+  date: Date;
+  open: Open;
+  high: High;
+  low: Low;
+  close: Close;
+  adjusted_close: AdjustedClose;
+  volume: Volume;
+}
+export interface MarketCorporateAction {
+  schema_version?: SchemaVersion15;
+  date: Date1;
+  kind: Kind2;
+  value: Value2;
+}
+export interface ImportPreview {
+  schema_version?: SchemaVersion16;
   state: State1;
   origin: Origin;
   source?: Source | null;
-  checked_at: CheckedAt1;
+  checked_at: CheckedAt2;
   document?: ParsedDocument | null;
   saved?: Saved;
 }
@@ -1068,30 +1164,30 @@ export interface ImportBlock {
 export interface ImportCell {
   locator: Locator1;
   text: Text3;
-  kind?: Kind2;
+  kind?: Kind3;
   number_format?: NumberFormat;
   raw_value?: RawValue;
 }
 export interface RetainedImportSummary {
-  schema_version?: SchemaVersion14;
+  schema_version?: SchemaVersion17;
   id: Id7;
   title: Title1;
   format: Format1;
   origin: Origin1;
   source: Source | null;
-  checked_at: CheckedAt2;
+  checked_at: CheckedAt3;
   retained_at: RetainedAt;
   byte_count: ByteCount;
   content_hash: ContentHash3;
   verified?: Verified2;
 }
 export interface RetainedImportView {
-  schema_version?: SchemaVersion15;
+  schema_version?: SchemaVersion18;
   item: RetainedImportSummary;
   document: ParsedDocument;
 }
 export interface ImportExplanation {
-  schema_version?: SchemaVersion16;
+  schema_version?: SchemaVersion19;
   document_id: DocumentId;
   content_hash: ContentHash4;
   language?: Language1;
@@ -1099,30 +1195,30 @@ export interface ImportExplanation {
   explanation: Explanation;
   references: References;
   id: Id8;
-  provider: Provider1;
+  provider: Provider2;
   model?: Model;
   created_at?: CreatedAt3;
   interpretation?: Interpretation;
   verified?: Verified3;
 }
 export interface ImportReference {
-  schema_version?: SchemaVersion17;
+  schema_version?: SchemaVersion20;
   locator: Locator2;
   quote: Quote;
 }
 export interface ImportLearningRequest {
-  schema_version?: SchemaVersion18;
+  schema_version?: SchemaVersion21;
   document_id: DocumentId1;
   content_hash: ContentHash5;
   language?: Language2;
   level?: Level2;
   purpose?: Purpose;
-  provider?: Provider2;
+  provider?: Provider3;
   model?: Model1;
   transmission_confirmed: TransmissionConfirmed;
 }
 export interface ImportLearningScope {
-  schema_version?: SchemaVersion19;
+  schema_version?: SchemaVersion22;
   document_id: DocumentId2;
   content_hash: ContentHash6;
   language?: Language3;
@@ -1132,8 +1228,8 @@ export interface ImportLearningScope {
  * Ephemeral connection UI state. Never stored in the library or exports.
  */
 export interface ProviderLogin {
-  schema_version?: SchemaVersion20;
-  provider?: Provider3;
+  schema_version?: SchemaVersion23;
+  provider?: Provider4;
   status?: Status;
   verification_url?: VerificationUrl;
   user_code?: UserCode;
@@ -1144,17 +1240,17 @@ export interface ProviderLogin {
  * Read-only recovery metadata; no raw events, provider output or credentials.
  */
 export interface ResearchJobSummary {
-  schema_version?: SchemaVersion21;
+  schema_version?: SchemaVersion24;
   id: Id9;
   status: Status1;
   request: ResearchRequest;
   created_at: CreatedAt4;
 }
 export interface ResearchRequest {
-  schema_version?: SchemaVersion22;
+  schema_version?: SchemaVersion25;
   query: Query;
   asset_id?: AssetId4;
-  provider?: Provider4;
+  provider?: Provider5;
   model?: Model2;
   language?: Language4;
   level?: Level4;
@@ -1165,14 +1261,14 @@ export interface ResearchRequest {
  * Provider output is a proposal; admission happens separately.
  */
 export interface ResearchResult {
-  schema_version?: SchemaVersion23;
+  schema_version?: SchemaVersion26;
   candidates?: Candidates;
   sources?: Sources1;
   claims?: Claims1;
 }
 export interface RuntimeCapabilities {
-  schema_version?: SchemaVersion24;
-  provider: Provider5;
+  schema_version?: SchemaVersion27;
+  provider: Provider6;
   installed?: Installed;
   authentication?: Authentication;
   version?: Version;
@@ -1185,10 +1281,10 @@ export interface RuntimeCapabilities {
   reason?: Reason1;
 }
 export interface RuntimeEvent {
-  schema_version?: SchemaVersion25;
+  schema_version?: SchemaVersion28;
   sequence?: Sequence;
   run_id: RunId1;
-  kind: Kind3;
+  kind: Kind4;
   timestamp?: Timestamp;
   text?: Text4;
   data?: Data;
@@ -1197,29 +1293,30 @@ export interface Data {
   [k: string]: unknown;
 }
 export interface RuntimeModel {
-  schema_version?: SchemaVersion26;
+  schema_version?: SchemaVersion29;
   id: Id10;
-  name: Name1;
+  name: Name2;
   is_default?: IsDefault;
 }
 export interface RuntimeModelCatalog {
-  schema_version?: SchemaVersion27;
-  provider: Provider6;
+  schema_version?: SchemaVersion30;
+  provider: Provider7;
   status?: Status2;
   models?: Models;
   message?: Message2;
 }
 export interface SavedResearch {
-  schema_version?: SchemaVersion28;
+  schema_version?: SchemaVersion31;
   id?: Id11;
   bundle_id: BundleId1;
   title: Title2;
   created_at?: CreatedAt5;
 }
 export interface Settings {
-  schema_version?: SchemaVersion29;
+  schema_version?: SchemaVersion32;
   cloud_enabled?: CloudEnabled;
-  provider?: Provider7;
+  experimental_yahoo_enabled?: ExperimentalYahooEnabled;
+  provider?: Provider8;
   model?: Model3;
   language?: Language5;
   manual_source_review?: ManualSourceReview;
@@ -1229,7 +1326,7 @@ export interface Settings {
   cache_gb?: CacheGb;
 }
 export interface TermExplanation {
-  schema_version?: SchemaVersion30;
+  schema_version?: SchemaVersion33;
   explanation: Explanation1;
   basis: Basis;
   source_ids?: SourceIds1;
@@ -1239,34 +1336,34 @@ export interface TermExplanation {
   asset_id: AssetId5;
   language: Language6;
   level: Level5;
-  provider: Provider8;
+  provider: Provider9;
   model?: Model4;
   created_at?: CreatedAt6;
   interpretation?: Interpretation1;
 }
 export interface TermRequest {
-  schema_version?: SchemaVersion31;
+  schema_version?: SchemaVersion34;
   purpose?: Purpose1;
   term: Term1;
   bundle_id: BundleId3;
   language?: Language7;
   level?: Level6;
-  provider?: Provider9;
+  provider?: Provider10;
   model?: Model5;
 }
 export interface TermResult {
-  schema_version?: SchemaVersion32;
+  schema_version?: SchemaVersion35;
   explanation: Explanation2;
   basis: Basis1;
   source_ids?: SourceIds2;
 }
 export interface SourceReviewDecision {
-  schema_version?: SchemaVersion33;
+  schema_version?: SchemaVersion36;
   cancel?: Cancel;
   source_ids?: SourceIds3;
 }
 export interface SourceReviewRequest {
-  schema_version?: SchemaVersion34;
+  schema_version?: SchemaVersion37;
   id?: Id13;
   run_id: RunId2;
   asset_id: AssetId6;
@@ -1274,7 +1371,7 @@ export interface SourceReviewRequest {
   expires_at: ExpiresAt2;
 }
 export interface ReviewSource {
-  schema_version?: SchemaVersion35;
+  schema_version?: SchemaVersion38;
   id?: Id14;
   url: Url1;
   publisher: Publisher1;

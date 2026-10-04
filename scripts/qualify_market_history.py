@@ -9,6 +9,10 @@ from backend.app.data_credentials import DataCredentialStore
 from backend.app.market_history import valid_symbol
 from backend.app.market_retrieval import covers_boundaries, retrieve_history
 from backend.app.market_mapping import resolve_yahoo_listing
+from backend.app.market_evidence import attach_market
+from backend.app.contracts import EvidenceBundle
+from backend.app.evidence import factual_context
+from backend.app.source_operations import shareable_view
 
 
 def years_before(day, years):
@@ -19,7 +23,7 @@ def years_before(day, years):
 
 
 async def check(*, live=False, symbol="", store=None, retrieve=retrieve_history, at=None,
-                check_mapping=False, resolve=resolve_yahoo_listing):
+                check_mapping=False, check_admission=False, resolve=resolve_yahoo_listing):
     if not live:
         return {"status": "not_run", "reason": "Pass --live and --symbol after deterministic verification."}
     try:
@@ -44,8 +48,8 @@ async def check(*, live=False, symbol="", store=None, retrieve=retrieve_history,
                 "close_basis": candidate.close_basis, "gaps": list(candidate.gaps),
                 "retrieved_at": candidate.retrieved_at.isoformat() if candidate.retrieved_at else None}
     covered = value.selected is not None and covers_boundaries(value.selected, start.isoformat(), end.isoformat())
-    mapping = None
-    if covered and check_mapping:
+    mapping, admission = None, None
+    if covered and (check_mapping or check_admission):
         try:
             mapped = resolve(value.selected, at=at or datetime.now(timezone.utc))
             mapping = {"status": "matched", "association": mapped.association,
@@ -53,13 +57,27 @@ async def check(*, live=False, symbol="", store=None, retrieve=retrieve_history,
                 "identity_hash": mapped.instrument.verification.identity_hash,
                 "identity_source_hash": mapped.instrument.verification.content_hash,
                 "checked_at": mapped.checked_at.isoformat()}
+            if check_admission:
+                base = EvidenceBundle(asset=mapped.instrument.asset, identity_verification=mapped.instrument.verification)
+                bundle = attach_market(base, mapped, personal_mode=True, created_at=at or datetime.now(timezone.utc))
+                restored = EvidenceBundle.model_validate_json(bundle.model_dump_json())
+                context = factual_context(restored)
+                exported, notice = shareable_view(restored)
+                if (restored != bundle or context["claims"] or context["sources"]
+                        or not context.get("context_gaps") or exported.market or exported.sources or not notice):
+                    raise ValueError
+                admission = {"status": "passed", "rows": len(bundle.market.bars), "actions": len(bundle.market.actions),
+                    "source_id": bundle.market.source_id, "fingerprint": bundle.market.fingerprint,
+                    "usage_scope": bundle.market.usage_scope, "cloud_excluded": True, "shareable_export_excluded": True,
+                    "gaps": bundle.market.gaps}
         except Exception:
             mapping = {"status": "unverified"}
-    passed = covered and (not check_mapping or mapping["status"] == "matched")
+    passed = (covered and (not (check_mapping or check_admission) or mapping["status"] == "matched")
+              and (not check_admission or admission is not None))
     return {"status": "retrieval_passed" if passed else "blocked", "start": start.isoformat(), "end": end.isoformat(),
             "primary": summary(value.primary), "selected": summary(value.selected),
-            "gaps": list(value.gaps), "yahoo_requests": value.yahoo_requests, "mapping": mapping,
-            "scope": "Candidate retrieval and optional independent listing match only; not calendar completeness, numerical admission, storage rights or installed-app qualification."}
+            "gaps": list(value.gaps), "yahoo_requests": value.yahoo_requests, "mapping": mapping, "admission": admission,
+            "scope": "Optional DEC-039 private numerical admission/serialization/operation checks only; no library write, calendar-completeness claim, model call or installed-app qualification."}
 
 
 def main():
@@ -67,8 +85,9 @@ def main():
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--symbol", default="")
     parser.add_argument("--check-mapping", action="store_true")
+    parser.add_argument("--check-admission", action="store_true", help="Explicit DEC-039 private-mode opt-in for this in-memory check")
     args = parser.parse_args()
-    report = asyncio.run(check(live=args.live, symbol=args.symbol, check_mapping=args.check_mapping))
+    report = asyncio.run(check(live=args.live, symbol=args.symbol, check_mapping=args.check_mapping, check_admission=args.check_admission))
     print(json.dumps(report, indent=2))
     return 0 if report["status"] == "retrieval_passed" else 2
 

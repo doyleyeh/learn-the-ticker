@@ -11,7 +11,7 @@ def reusable(bundle: EvidenceBundle, request: ResearchRequest, *, at=None) -> bo
     at = at or now()
     # Financial reuse needs a structured refresh policy (M2-T03). No fresh prose
     # claim may make a separate old numeric series appear current.
-    if bundle.financials is not None or bundle.completion != "complete":
+    if bundle.financials is not None or bundle.market is not None or bundle.completion != "complete":
         return False
     if (request.refresh or request.conversation_id or bundle.asset.id != request.asset_id
             or bundle.language != request.language or bundle.level != request.level

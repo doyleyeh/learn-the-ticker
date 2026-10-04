@@ -21,7 +21,7 @@ def now() -> datetime:
 def public_reference_url(value: HttpUrl) -> HttpUrl:
     if value.username is not None or value.password is not None:
         raise ValueError("Source references cannot contain credentials")
-    if any(key.casefold().replace("-", "_") in {"token", "access_token", "api_key", "apikey", "password", "secret", "authorization", "signature"}
+    if any(key.casefold().replace("-", "_") in {"token", "access_token", "api_key", "apikey", "api_token", "access_key", "crumb", "password", "secret", "authorization", "signature"}
            for key, _ in parse_qsl(value.query or "")):
         raise ValueError("Source references cannot contain authentication parameters")
     return value
@@ -80,7 +80,8 @@ class Source(Contract):
     verified: bool = False
     # This excerpt is set by an application-owned retriever, never trusted from a model.
     excerpt: str = Field(default="", max_length=20000)
-    provenance: Literal["agent_candidate", "structured_adapter", "verified_retrieval", "user_import"] = "agent_candidate"
+    provenance: Literal["agent_candidate", "structured_adapter", "market_adapter", "verified_retrieval", "user_import"] = "agent_candidate"
+    usage_scope: Literal["standard", "private_yahoo_v1"] = "standard"
     filing_publication: FilingPublication | None = None
 
     _public_url = field_validator("url")(public_reference_url)
@@ -148,6 +149,46 @@ class FinancialEvidence(Contract):
     gaps: list[str] = Field(default_factory=list, max_length=100)
 
 
+class MarketBar(Contract):
+    date: date
+    open: str = Field(max_length=80)
+    high: str = Field(max_length=80)
+    low: str = Field(max_length=80)
+    close: str = Field(max_length=80)
+    adjusted_close: str = Field(max_length=80)
+    volume: str = Field(max_length=80)
+
+
+class MarketCorporateAction(Contract):
+    date: date
+    kind: Literal["dividends", "splits", "capitalGains"]
+    value: str = Field(max_length=161)
+
+
+class MarketEvidence(Contract):
+    """Application-owned daily history; never an LLM output field."""
+    provider: Literal["yahoo_yfinance"] = "yahoo_yfinance"
+    association: Literal["yahoo-openfigi-common-stock-v1"] = "yahoo-openfigi-common-stock-v1"
+    usage_scope: Literal["private_yahoo_v1"] = "private_yahoo_v1"
+    source_id: str = Field(max_length=200)
+    checked_at: AwareDatetime
+    name: str = Field(min_length=1, max_length=300)
+    exchange: str = Field(max_length=20)
+    exchange_label: str = Field(max_length=100)
+    currency: Literal["USD"] = "USD"
+    instrument_type: Literal["EQUITY"] = "EQUITY"
+    timezone: Literal["America/New_York"] = "America/New_York"
+    requested_start: date
+    requested_end: date
+    close_basis: Literal["split_adjusted"] = "split_adjusted"
+    adjusted_close_basis: Literal["splits_and_distributions"] = "splits_and_distributions"
+    volume_basis: Literal["provider_reported"] = "provider_reported"
+    bars: list[MarketBar] = Field(min_length=1, max_length=2000)
+    actions: list[MarketCorporateAction] = Field(default_factory=list, max_length=2000)
+    gaps: list[Literal["missing_price_rows", "calendar_completeness_unverified"]] = Field(max_length=2)
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class EvidenceBundle(Contract):
     id: str = Field(default_factory=uid)
     asset: AssetIdentity
@@ -162,9 +203,12 @@ class EvidenceBundle(Contract):
     level: Literal["beginner", "intermediate"] | None = None
     identity_verification: IdentityVerification | None = None
     financials: FinancialEvidence | None = None
+    market: MarketEvidence | None = None
 
     @model_validator(mode="after")
     def financial_references(self):
+        from backend.app.market_evidence import validate_market
+        validate_market(self)
         if self.financials is not None:
             # Delayed import keeps wire definitions independent of adapter initialization.
             from backend.app.financial_evidence import validate_financials
@@ -321,6 +365,7 @@ class TermExplanation(TermResult):
 
 class Settings(Contract):
     cloud_enabled: bool = False
+    experimental_yahoo_enabled: bool = Field(default=False, strict=True)
     provider: Literal["codex", "gemini", "claude"] = "codex"
     model: str | None = Field(default=None, min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
     language: Literal["en", "zh-TW"] = "en"

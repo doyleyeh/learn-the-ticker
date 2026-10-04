@@ -55,7 +55,7 @@ def conversation_evidence(db, asset, history):
             context["financials"]["observations"] = [row for row in context["financials"]["observations"] if row["source_id"] in allowed]
         used = {sid for claim in context["claims"] for sid in claim["source_ids"]}
         used.update(row["source_id"] for row in context.get("financials", {}).get("observations", []))
-        if not used:
+        if not used and not context.get("context_gaps"):
             continue
         aliases = {sid: citation_id(version, sid) for sid in used}
         context["sources"] = [{**source, "id": aliases[source["id"]], "original_source_id": source["id"]}

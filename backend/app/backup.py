@@ -348,7 +348,7 @@ def restore_backup(db: Database, raw: bytes, fingerprint: str) -> BackupSummary:
             payload = row.payload
             if row.kind == "settings":
                 has_settings = True
-                payload = {**payload, "cloud_enabled": False, "start_at_login": False}
+                payload = {**payload, "cloud_enabled": False, "experimental_yahoo_enabled": False, "start_at_login": False}
             session.add(Record(id=row.id, kind=row.kind, parent_id=row.parent_id, payload=payload, updated_at=row.updated_at))
         if not has_settings:
             session.add(Record(id="settings", kind="settings", payload=Settings().model_dump(mode="json")))
