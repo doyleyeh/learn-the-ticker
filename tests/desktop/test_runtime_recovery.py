@@ -14,6 +14,7 @@ from backend.app.db import Database, Job
 from backend.app.runtime_base import RuntimeFailure
 from tests.desktop.test_approvals import ReviewRPC, access, pending
 from tests.desktop.test_codex import FakeRPC
+from tests.desktop.test_application import StaticIdentityResolver
 
 
 @pytest.mark.parametrize("method,params", [
@@ -88,12 +89,12 @@ def test_consumer_failure_or_cancellation_closes_generator_before_return(tmp_pat
                 finally:
                     closed.set()
         db = Database("sqlite://", testing=True)
-        app = create_app(db, "x" * 40, tmp_path, adapters={"codex": Runtime()})
+        app = create_app(db, "x" * 40, tmp_path, adapters={"codex": Runtime()}, identity_resolver=StaticIdentityResolver())
         service = app.state.service
         db.put("settings", "settings", {"cloud_enabled": True})
         job = await service.submit(ResearchRequest(query="Explain an example business"))
         task = service.tasks[job["id"]]
-        await entered.wait()
+        await asyncio.wait_for(entered.wait(), 2)
         if mode == "cancel": await service.cancel(job["id"])
         else: await task
         assert closed.is_set()

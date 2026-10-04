@@ -12,6 +12,7 @@ from backend.app.contracts import ApprovalDecision, ResearchRequest, RuntimeCapa
 from backend.app.db import Database
 from backend.app.runtime_base import RuntimeFailure
 from tests.desktop.test_codex import FakeRPC
+from tests.desktop.test_application import StaticIdentityResolver
 
 
 def access(method="item/fileChange/requestApproval", **params):
@@ -126,7 +127,7 @@ def test_authenticated_app_reviews_active_run_only_and_excludes_requests_from_li
             return RuntimeCapabilities(provider="codex", installed=True, authentication="authenticated", qualification="live", generation=True, browsing=True)
         monkeypatch.setattr(CodexRuntime, "check", qualified)
         db = Database("sqlite://", testing=True)
-        app = create_app(db, "x" * 40, tmp_path, adapters={"codex": CodexRuntime(tmp_path)})
+        app = create_app(db, "x" * 40, tmp_path, adapters={"codex": CodexRuntime(tmp_path)}, identity_resolver=StaticIdentityResolver())
         service = app.state.service
         db.put("settings", "settings", {"cloud_enabled": True})
         job = await service.submit(ResearchRequest(query="Explain this example business"))

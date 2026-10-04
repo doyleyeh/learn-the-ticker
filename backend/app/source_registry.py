@@ -25,6 +25,9 @@ class SourceRule:
 
 SEC_RIGHTS = "https://www.sec.gov/about/privacy-information#website-dissemination"
 SOURCE_RULES = (
+    SourceRule("openfigi-v3", "api.openfigi.com", r"/v3/(?:mapping|search)",
+               "OpenFIGI / Bloomberg Finance L.P.", SourcePolicy.metadata, False,
+               date(2026, 10, 4), "https://www.openfigi.com/docs/terms-of-service", timedelta(days=1)),
     SourceRule("sec-filings-v1", "www.sec.gov", r"/Archives/edgar/data/[0-9]+/[0-9]{18}/[A-Za-z0-9_.-]+\.(?:htm|html|txt)",
                "U.S. Securities and Exchange Commission", SourcePolicy.full_text, True,
                date(2026, 10, 4), SEC_RIGHTS, timedelta(days=1)),

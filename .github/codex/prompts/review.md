@@ -34,6 +34,8 @@ Do not nitpick style unless it affects correctness, trust, safety, source rights
 
 For M2 identity/admission changes, reject same-ID changes in listing, issuer, class, contract, type or currency without independent re-resolution. Model flags and a source-name mention cannot certify identity. Require document-scoped rights, issuer-bound SEC filing paths, cleared model dates/hashes on failure/manual review and no restricted derivatives in notes. A newly created bundle cannot make old/undated source data current. Preserve saved scopes, language/level and unknown legacy fields through actual restore. Synthetic all-category tests do not qualify live category coverage; the initial SEC listing map must not be described as a complete asset resolver. Normal CI must clear live SEC contact configuration.
 
+OpenFIGI identity changes must preserve separate listing/composite/share-class IDs, check digits, exact scope and incomplete-page ambiguity. An ETP label cannot certify ETF type, generic futures cannot certify a dated contract and fresh metadata cannot certify active trading status. Do not merge SEC and FIGI records or attach a CIK by name/ticker resemblance. Metadata permission does not admit financial facts or arbitrary website text. Keep lookup POST requests on the two registered endpoints, below anonymous limits and outside deterministic CI. A verified model proposal after an unresolved request still needs user scope confirmation before source admission.
+
 Return:
 
 - summary

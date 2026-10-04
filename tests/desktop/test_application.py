@@ -151,7 +151,7 @@ def test_ambiguity_and_malformed_output_never_create_facts(tmp_path):
         value = payload()
         value["candidates"].append(IDENTITY.model_copy(update={"id": "OTHER:ALPHA"}).model_dump(mode="json"))
         runtime = FakeRuntime(value)
-        service = create_app(db, TOKEN, tmp_path, adapters={"codex": runtime}).state.service
+        service = create_app(db, TOKEN, tmp_path, adapters={"codex": runtime}, identity_resolver=StaticIdentityResolver()).state.service
         db.put("settings", "settings", {"cloud_enabled": True})
         job = await service.submit(ResearchRequest(query="ALPHA"))
         await service.tasks[job["id"]]
@@ -168,7 +168,7 @@ def test_cancellation_recovery_and_no_subscription_replay(tmp_path):
     async def scenario():
         db = Database("sqlite://", testing=True)
         runtime = FakeRuntime(payload(), wait=True)
-        service = create_app(db, TOKEN, tmp_path, adapters={"codex": runtime}).state.service
+        service = create_app(db, TOKEN, tmp_path, adapters={"codex": runtime}, identity_resolver=StaticIdentityResolver()).state.service
         db.put("settings", "settings", {"cloud_enabled": True})
         job = await service.submit(ResearchRequest(query="ALPHA"))
         await asyncio.wait_for(runtime.started.wait(), 2)

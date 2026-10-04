@@ -9,6 +9,8 @@ from backend.app.research_cache import reusable
 from backend.app.source_registry import SOURCE_RULES, source_rule
 from tests.desktop.test_application import IDENTITY, StaticIdentityResolver, source
 
+SEC_FILING_RULE = next(rule for rule in SOURCE_RULES if rule.id == "sec-filings-v1")
+
 
 @pytest.mark.parametrize("url", [
     "https://www.sec.gov/example", "https://www.sec.gov.evil.example/Archives/edgar/data/1/000000000100000001/a.htm",
@@ -28,7 +30,7 @@ def test_unregistered_paths_do_not_inherit_domain_rights(url):
 
 
 def test_overlapping_rules_fail_closed():
-    assert source_rule(str(source().url), [SOURCE_RULES[0], SOURCE_RULES[0]]) is None
+    assert source_rule(str(source().url), [SEC_FILING_RULE, SEC_FILING_RULE]) is None
 
 
 @pytest.mark.parametrize("url", ["https://user:private@www.sec.gov/a", "https://example.com/a?api_key=private", "https://example.com/a?access-token=private"])
@@ -42,7 +44,7 @@ def test_source_credentials_never_enter_candidate_or_identity_contracts(url):
 
 @pytest.mark.parametrize("policy", [SourcePolicy.link, SourcePolicy.metadata, SourcePolicy.summary, SourcePolicy.rejected])
 def test_non_full_text_rules_do_not_cache_raw_text_or_derived_notes(policy):
-    rules = [replace(SOURCE_RULES[0], policy=policy)]
+    rules = [replace(SEC_FILING_RULE, policy=policy)]
     clean = verify_candidate(source(verified=True, policy=SourcePolicy.full_text, excerpt="PRIVATE_TEXT"), IDENTITY,
                              lambda _: pytest.fail("Permission does not cover raw text"), rules=rules)
     assert not clean.excerpt and not clean.verified and clean.policy == policy
@@ -67,7 +69,7 @@ def test_provider_hash_dates_and_publisher_are_discarded_in_manual_or_failure_pa
                        publisher="Impersonated issuer", published_at=now().date(), as_of=now().date())
     clean = candidate_metadata(candidate)
     assert not clean.content_hash and not clean.excerpt and not clean.verified
-    assert clean.publisher == SOURCE_RULES[0].publisher and clean.as_of is None and clean.published_at is None
+    assert clean.publisher == SEC_FILING_RULE.publisher and clean.as_of is None and clean.published_at is None
 
 
 def fresh_bundle():

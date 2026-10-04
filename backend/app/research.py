@@ -9,7 +9,8 @@ from backend.app.approvals import ApprovalBroker
 from backend.app.contracts import AssetIdentity, EvidenceBundle, ResearchRequest, ResearchResult, RuntimeEvent, Settings, now, uid
 from backend.app.db import Database, Event, Job
 from backend.app.evidence import admit_bundle, candidate_metadata, factual_context, verify_candidate
-from backend.app.identity import SecIdentityResolver, identity_hash, normalized
+from backend.app.figi_identity import IdentityChoiceRequired, RegisteredIdentityResolver
+from backend.app.identity import identity_hash, normalized
 from backend.app.research_cache import reusable
 from backend.app.runtimes import RuntimeFailure
 from backend.app.runtime_base import AIRuntime
@@ -41,7 +42,7 @@ def research_prompt(request: ResearchRequest, cached: dict | None, history: list
 class ResearchService:
     def __init__(self, db: Database, adapters: dict, workspace: Path, verifier=verify_candidate, identity_resolver=None):
         self.db, self.adapters, self.workspace, self.verifier = db, adapters, workspace, verifier
-        self.identity_resolver = identity_resolver if identity_resolver is not None else SecIdentityResolver()
+        self.identity_resolver = identity_resolver if identity_resolver is not None else RegisteredIdentityResolver()
         self.inference = asyncio.Semaphore(1)
         self.retrieval = asyncio.Semaphore(2)
         self.tasks: dict[str, asyncio.Task] = {}
@@ -126,6 +127,8 @@ class ResearchService:
             if len(rows) > 20 or len({row.asset.id for row in rows}) != len(rows):
                 return []
             return [row for row in rows if row.valid(now())]
+        except IdentityChoiceRequired:
+            raise
         except (ValueError, OSError):
             return []
 
@@ -149,6 +152,7 @@ class ResearchService:
                 text = ""
                 previous = self.cached(request.asset_id)
                 identities = await self.resolve(request.asset_id or request.query)
+                initial_identities = identities
                 self.require_consent()
                 if len(identities) > 1:
                     self.db.transition(job_id, "needs_identity", result={"candidates": [row.asset.model_dump(mode="json") for row in identities]})
@@ -193,6 +197,12 @@ class ResearchService:
                         or (previous and identity_hash(AssetIdentity.model_validate(previous["asset"])) != identity_hash(asset))):
                     self.db.transition(job_id, "needs_identity", result={"candidates": [row.asset.model_dump(mode="json") for row in identities], "message": "Independent identity verification is unavailable or disagrees with the proposed listing, contract or share class. No facts were stored."})
                     return
+                if not previous and not any(identity_hash(row.asset) == identity_hash(asset) for row in initial_identities):
+                    # Verifying a model's proposed instrument does not prove that
+                    # it is the instrument intended by an unresolved user query.
+                    self.db.transition(job_id, "needs_identity", result={"candidates": [asset.model_dump(mode="json")],
+                        "message": "Confirm this independently verified listing or contract, then submit its identity. No facts were stored."})
+                    return
                 sources = []
                 for source in result.sources:
                     if source.asset_id != asset.id:
@@ -219,6 +229,9 @@ class ResearchService:
             self.db.transition(job_id, "cancelled")
             self.emit(RuntimeEvent(run_id=job_id, kind="run.cancelled"))
             raise
+        except IdentityChoiceRequired as exc:
+            self.db.transition(job_id, "needs_identity", result={"candidates": [row.asset.model_dump(mode="json") for row in exc.candidates],
+                "message": "Identity lookup is incomplete or needs a more specific listing or contract. Choose a verified result or enter an exact FIGI; if the source is temporarily unavailable, retry later. No facts were stored."})
         except (RuntimeFailure, asyncio.TimeoutError) as exc:
             self.db.transition(job_id, "failed", error=str(exc) or "Provider timed out. Retry explicitly.")
         except Exception:

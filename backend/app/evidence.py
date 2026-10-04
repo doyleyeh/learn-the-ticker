@@ -57,11 +57,14 @@ def public_address(host: str) -> str:
     return sorted(addresses)[0]
 
 
-def fetch_public_bytes(url: str, *, accept="text/html,text/plain", user_agent="LearnTheTicker/0.2 (personal educational research)") -> bytes:
+def fetch_public_bytes(url: str, *, accept="text/html,text/plain", user_agent="LearnTheTicker/0.2 (personal educational research)", json_body: bytes | None = None) -> bytes:
     global _SEC_LAST_REQUEST
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.port not in (None, 443):
         raise ValueError("Only public HTTPS sources on port 443 are allowed")
+    if json_body is not None and (url not in ("https://api.openfigi.com/v3/mapping", "https://api.openfigi.com/v3/search")
+                                  or not isinstance(json_body, bytes) or not 0 < len(json_body) <= 4096):
+        raise ValueError("Only bounded registered identity lookups may use POST")
     if parsed.hostname in ("www.sec.gov", "data.sec.gov"):
         if user_agent == "LearnTheTicker/0.2 (personal educational research)":
             user_agent = os.environ.get("LTT_SEC_USER_AGENT", "")
@@ -78,7 +81,10 @@ def fetch_public_bytes(url: str, *, accept="text/html,text/plain", user_agent="L
     connection = http.client.HTTPSConnection(parsed.hostname, timeout=15)
     try:
         connection.sock = ssl.create_default_context().wrap_socket(socket.create_connection((address, 443), timeout=15), server_hostname=parsed.hostname)
-        connection.request("GET", parsed.path + ("?" + parsed.query if parsed.query else ""), headers={"User-Agent": user_agent, "Accept": accept})
+        headers = {"User-Agent": user_agent, "Accept": accept}
+        if json_body is not None:
+            headers["Content-Type"] = "application/json"
+        connection.request("POST" if json_body is not None else "GET", parsed.path + ("?" + parsed.query if parsed.query else ""), body=json_body, headers=headers)
         response = connection.getresponse()
         if response.status != 200 or response.getheader("Content-Type", "").split(";")[0].strip() not in accept.split(","):
             raise ValueError("Source cannot be verified as a readable document")

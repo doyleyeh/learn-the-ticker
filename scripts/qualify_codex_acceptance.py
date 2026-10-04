@@ -56,6 +56,12 @@ async def service_probe(profile, workspace, model, version, *, disconnect=False,
     """Real provider lifecycle through app service/API; isolated in-memory test library."""
     started, instances = asyncio.Event(), []
 
+    class NoAssetLookup:
+        # This synthetic lifecycle request has no asset. It cannot certify or
+        # publish identity evidence, and must not contact public registries.
+        def resolve(self, query):
+            return []
+
     class TrackingRPC(rpc_base):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
@@ -74,7 +80,7 @@ async def service_probe(profile, workspace, model, version, *, disconnect=False,
     db = Database("sqlite://", testing=True)
     token = secrets.token_urlsafe(48)
     runtime = ProbeRuntime(profile, version)
-    app = create_app(db, token, workspace, adapters={"codex": runtime})
+    app = create_app(db, token, workspace, adapters={"codex": runtime}, identity_resolver=NoAssetLookup())
     service = app.state.service
     db.put("settings", "settings", {"cloud_enabled": True, "provider": "codex", "model": model})
     waiter = None

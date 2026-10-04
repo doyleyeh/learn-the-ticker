@@ -132,6 +132,25 @@ def test_unverified_model_identity_is_never_saved(tmp_path):
     asyncio.run(run())
 
 
+def test_verified_model_proposal_still_requires_confirmation_of_unresolved_request(tmp_path):
+    class InitiallyUnresolved(StaticIdentityResolver):
+        def resolve(self, query):
+            return [] if query == "An unclear user query" else super().resolve(query)
+    async def run():
+        db = Database("sqlite://", testing=True)
+        db.put("settings", "settings", {"cloud_enabled": True})
+        runtime = FakeRuntime(payload())
+        service = create_app(db, TOKEN, tmp_path, adapters={"codex": runtime}, identity_resolver=InitiallyUnresolved(),
+                             verifier=lambda *a: pytest.fail("Unconfirmed scope cannot fetch claims")).state.service
+        result = await service.submit(ResearchRequest(query="An unclear user query"))
+        await service.tasks[result["id"]]
+        job = db.job(result["id"])
+        assert job["status"] == "needs_identity" and runtime.calls == 1
+        assert job["result"]["candidates"][0]["id"] == IDENTITY.id
+        assert "Confirm" in job["result"]["message"] and not db.list("asset") and not db.list("bundle")
+    asyncio.run(run())
+
+
 def test_registered_record_must_bind_full_identity_and_freshness():
     row = StaticIdentityResolver().resolve("ALPHA")[0]
     assert row.valid(now())
