@@ -120,6 +120,14 @@ Run `python -m pytest tests/desktop/test_figi_identity.py -q` for FIGI checksums
 
 ## Structured SEC financial observations
 
+### Market history retrieval
+
+Run `python -m pytest tests/desktop/test_market_history.py tests/desktop/test_market_transport.py tests/desktop/test_market_retrieval.py -q` for original-response decimal/hash preservation, bounded dates/arrays/JSON, currency/timezone metadata, split ratios, no imputation, provider-specific adjustment bases, header-only EODHD authentication, fixed diagnostics, no redirects/consent POSTs, sticky denial/quota handling, explicit gap fallback without vendor splicing and worker cancellation/environment/cache cleanup. These synthetic checks never retrieve data and do not require the optional yfinance dependency.
+
+After Q, the developer-only `python -m scripts.qualify_market_history --live --symbol SYMBOL` uses the optional `requirements-market-data.txt` installation and the current Windows vault. It requests the entitled last year from EODHD and, only for missing history, the separate five-year Yahoo series. No flag means no vault/network access. Inspect the selected provider, original hash, date boundaries, venue/type/currency metadata, action counts and adjustment basis; seven-day boundary tolerance is a coverage heuristic, not a trading-calendar completeness claim. It does not admit facts, persist payloads, transmit to a model or qualify public distribution. Before production activation require independent listing concordance, per-operation rights, immutable source references, calculations and actual D/B/native integration checks. No live check may be retried to bypass access denial or quotas.
+
+### Issuer observations
+
 Run `python -m pytest tests/desktop/test_sec_financials.py tests/desktop/test_structured_financials.py -q`. Require exact independent issuer/instrument concordance, wrong CIK/concept rejection, decimal precision, malformed/deep/oversized inputs, unit separation, annual/quarter/YTD distinctions, comparative fiscal labels, duplicates, superseded values, simultaneous conflicts, bounded revisions, missing-period windows and cancellation. Rate/access/server failures stop remaining requests; a missing concept may leave other registered concepts available. No corporate-action adjustment, derived quarter, price or valuation is permitted without independent inputs.
 
 Run `python -m pytest tests/desktop/test_financial_evidence.py -q` for typed publication, exact decimal round trips, changed scope/units/dates/rights, revision references and conflicts, exclusion of model values/notes, immutable versions, exports and archive corruption. Run D for actual typed-data PostgreSQL restore/restart, including failure rollback alongside legacy snapshots. Regenerate schema/types only when deliberately changing contracts, then run C/Q.
