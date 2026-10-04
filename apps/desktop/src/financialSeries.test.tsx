@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { FinancialHistory } from "./FinancialHistory";
 import { KeyStatistics } from "./TickerDashboard";
 import { FinancialRatios } from "./FinancialRatios";
+import { ValuationAvailability } from "./ValuationAvailability";
 import { chartGeometry, decimalInteger, displayNumber, financialSeries } from "./financialSeries";
 import type { EvidenceBundle, FinancialObservation } from "./contracts";
 
@@ -154,7 +155,10 @@ describe("admitted financial presentation", () => {
     expect(html).toContain("Filed 2026-02-01");
     expect(html).toContain("Synthetic fixture");
     expect(html).toContain("bundle=saved%2Fversion&amp;source=source1");
-    expect(html).toContain("P/E and dividend yield: unavailable");
+    expect(html).toContain("Historical P/E");
+    expect(html).toContain("no single current, unconflicted annual diluted EPS");
+    expect(html).toContain("shares outstanding for the same listing and price date have not been verified");
+    expect(html).toContain("a complete compatible dividend period");
   });
   it("statistics do not replace a conflicted latest period with an older observation", () => {
     const html = renderToStaticMarkup(<KeyStatistics bundle={bundle([
@@ -173,5 +177,11 @@ describe("admitted financial presentation", () => {
     expect(html).toContain("no independently admitted financial statistics");
     expect(html).not.toContain("unverified-statistic");
     expect(html).not.toContain("model-statistic");
+  });
+  it("retained EPS does not establish split/share-class compatibility for P/E", () => {
+    const data = bundle([observation({ concept: "us-gaap:EarningsPerShareDiluted", unit: "USD/shares" })]);
+    expect(renderToStaticMarkup(<ValuationAvailability bundle={data}/>)).toContain("share class and stock-split basis have not been independently matched");
+    data.financials!.observations!.push(observation({ id: "newer", concept: "us-gaap:EarningsPerShareDiluted", unit: "USD/shares", start: "2026-01-01", end: "2026-12-31", revision: "conflict" }));
+    expect(renderToStaticMarkup(<ValuationAvailability bundle={data}/>)).toContain("no single current, unconflicted annual diluted EPS");
   });
 });

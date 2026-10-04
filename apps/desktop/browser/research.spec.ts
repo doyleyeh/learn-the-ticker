@@ -183,6 +183,17 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await expect(market.getByText("27.272727%", { exact: true })).toBeVisible();
     await expect(market.getByText("40%", { exact: true })).toBeVisible();
     await expect(market.getByText(/No observation at or before the required start boundary/)).toHaveCount(4);
+    const quote = market.getByRole("region", { name: "Retained daily quote fields" });
+    await expect(quote.getByRole("heading", { name: "Daily snapshot · 2026-01-05" })).toBeVisible();
+    await expect(quote.getByText("10–15 USD", { exact: true })).toBeVisible();
+    await expect(quote.getByText(/may not be the previous trading session/)).toBeVisible();
+    await quote.screenshot({ path: testInfo.outputPath("daily-quote-narrow.png") });
+    await quote.locator("dd").first().evaluate((node) => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+      node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    await expect(page.locator(".term-selection-bar")).toHaveCount(0);
     await market.getByRole("combobox", { name: "Chart period" }).selectOption("1m");
     await expect(market.getByText(/2 retained daily observations/)).toBeVisible();
     await market.getByText("Exact daily values (2)", { exact: true }).click();

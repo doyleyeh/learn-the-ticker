@@ -17,6 +17,7 @@ function PrivateHistory({ bundle, market, source }: { bundle: EvidenceBundle; ma
   const [page, setPage] = useState(0), [actionPage, setActionPage] = useState(0);
   const rows = useMemo(() => chartRows(market.bars, window), [market.bars, window]);
   const latest = market.bars.at(-1)!;
+  const previous = market.bars.at(-2);
   const descending = [...rows].reverse(), actions = [...(market.actions ?? [])].reverse();
   const pages = Math.max(1, Math.ceil(rows.length / 20)), actionPages = Math.max(1, Math.ceil(actions.length / 20));
   return <div className="plain-panel market-history" data-local-only="true" data-evidence-layer="numeric">
@@ -27,6 +28,16 @@ function PrivateHistory({ bundle, market, source }: { bundle: EvidenceBundle; ma
     <p className="ticker-meta">Yahoo Finance via unofficial yfinance · Retrieved {source.retrieved_at} · Publication date {source.published_at ?? "unknown"}</p>
     <p>Personal use only. Values, returns and derived content stay on this computer and in your same-user private backups; cloud explanations and shareable exports omit them. Automatic term selection is disabled for this panel.</p>
     <CitationChip href={`#${sourceRoute(bundle.id!, source.id!)}`} label="Inspect original price evidence" citation={{ citationId: source.id!, sourceDocumentId: source.id!, title: source.title, publisher: source.publisher, freshnessState: "unknown" }}/>
+    <section aria-label="Retained daily quote fields">
+      <h3>Daily snapshot · {latest.date}</h3>
+      <dl className="ticker-facts">
+        <div><dt>Open</dt><dd>{displayNumber(latest.open)} {market.currency}</dd></div>
+        <div><dt>Low–high</dt><dd>{displayNumber(latest.low)}–{displayNumber(latest.high)} {market.currency}</dd></div>
+        <div><dt>Volume (provider-reported)</dt><dd>{displayNumber(latest.volume)}</dd></div>
+        <div><dt>Preceding retained close</dt><dd>{previous ? <>{displayNumber(previous.close)} {market.currency}<br/>{previous.date}</> : "Unavailable — no earlier observation retained."}</dd></div>
+      </dl>
+      <p className="ticker-meta">Prices use the same split-adjusted basis as the chart. The preceding observation may not be the previous trading session. Bid/ask, live and after-hours quotes are unavailable in daily history.</p>
+    </section>
     <label className="financial-period">Chart period<select value={window} onChange={(event) => { setWindow(event.target.value as ChartWindow); setPage(0); }}>{Object.entries(chartWindows).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <p>{rows.length} retained daily observations · {rows[0]?.date ?? "Unavailable"} through {rows.at(-1)?.date ?? "Unavailable"}. Windows end at the latest retained date, not today.</p>
     <PriceChart rows={rows} missingRows={market.gaps.some((gap) => gap === "missing_price_rows")}/>

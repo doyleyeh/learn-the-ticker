@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { EvidenceBundle } from "./contracts";
 import fixture from "./fixtures/privateMarket.json";
 import { MarketHistory } from "./MarketHistory";
+import { ValuationAvailability } from "./ValuationAvailability";
 import { Connections } from "./Connections";
 import { admittedMarket, chartRows, priceGeometry, privateClaims, privateSource } from "./marketPresentation";
 
@@ -35,6 +36,10 @@ describe("private market presentation", () => {
     expect(html).toContain("data-local-only=\"true\"");
     expect(html).toContain("Historical snapshot, not a current quote");
     expect(html).toContain("reinvestment proxy");
+    expect(html).toContain("Daily snapshot · 2026-01-05");
+    expect(html).toContain("Preceding retained close");
+    expect(html).toContain("11 USD<br/>2026-01-02");
+    expect(html).toContain("may not be the previous trading session");
   });
   it.each(["verified", "asset_id", "policy", "usage_scope", "provenance"])("withholds prices detached from original source %s", (field) => {
     const data = bundle();
@@ -54,6 +59,18 @@ describe("private market presentation", () => {
     data.market = null;
     data.notes = [{ asset_id: data.asset.id, text: "Unverified price 8888888" }];
     expect(renderToStaticMarkup(<MarketHistory bundle={data}/>)).not.toContain("8888888");
+  });
+  it("does not invent a preceding session or valuation when history is partial", () => {
+    const data = bundle();
+    data.market!.bars = [data.market!.bars[0]];
+    expect(renderToStaticMarkup(<MarketHistory bundle={data}/>)).toContain("no earlier observation retained");
+    const html = renderToStaticMarkup(<ValuationAvailability bundle={data}/>);
+    expect(html).toContain("Historical daily prices are retained");
+    expect(html).toContain("data-local-only=\"true\"");
+    data.sources = [];
+    expect(renderToStaticMarkup(<ValuationAvailability bundle={data}/>)).toContain("verified daily price snapshot is unavailable");
+    data.asset.asset_type = "unknown";
+    expect(renderToStaticMarkup(<ValuationAvailability bundle={data}/>)).toContain("until its identity is confirmed");
   });
   it("withholds a detached or incomplete stored return without recomputation", () => {
     const data = bundle(), row = data.market!.returns!.at(-1)!;

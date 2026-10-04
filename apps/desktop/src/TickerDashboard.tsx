@@ -5,6 +5,7 @@ import { EvidenceSections, contextSections } from "./EvidenceSections";
 import { FinancialHistory, ObservationCitation } from "./FinancialHistory";
 import { MarketHistory } from "./MarketHistory";
 import { FinancialRatios } from "./FinancialRatios";
+import { ValuationAvailability } from "./ValuationAvailability";
 import { privateClaims, privateSource } from "./marketPresentation";
 import { concepts, displayNumber, financialSeries } from "./financialSeries";
 import { sourceRoute } from "./routes";
@@ -72,7 +73,7 @@ export function EvidenceView({ bundle }: { bundle: EvidenceBundle }) {
 export function KeyStatistics({ bundle }: { bundle: EvidenceBundle }) {
   const { series, sources, excluded } = useMemo(() => financialSeries(bundle), [bundle]);
   return <div className="plain-panel"><p>Reported issuer figures by concept, unit and period. These are historical observations, not a current quote, trailing-twelve-month estimate or forecast.</p>
-    <p className="source-gap-note">Market capitalization, P/E and dividend yield: unavailable without compatible market data.</p>
+    <ValuationAvailability bundle={bundle}/>
     {excluded > 0 && <p className="error">Some figures are hidden because their numeric source references could not be validated.</p>}
     {!series.length && <p className="source-gap-note">Unavailable — no independently admitted financial statistics.</p>}
     <div className="ticker-statistics">{series.map((value) => {
