@@ -1,5 +1,6 @@
 """Explicit, no-inference local App Server handshake with a new isolated profile."""
 import asyncio
+import os
 import tempfile
 from pathlib import Path
 
@@ -26,6 +27,21 @@ async def main():
             print("Codex effective configuration/features, account-read and isolated thread-start passed with browsing disabled. No inherited account, login or inference requested.")
         finally:
             await rpc.close()
+        browsing_rpc = CodexRPC(profile, Path(directory) / "workspace", allow_browsing=True)
+        try:
+            await browsing_rpc.open()
+            await browsing_rpc.start_thread()
+            print("Browsing configuration and isolated thread-start passed with code-mode execution disabled. No inference requested.")
+        finally:
+            await browsing_rpc.close()
+        if os.name == "nt":
+            (profile / "config.toml").write_text('[windows]\nsandbox="elevated"\n', encoding="utf-8")
+            try:
+                await rpc.open()
+                await rpc.start_thread()
+                print("Provider-persisted minimal elevated-sandbox configuration passed strict profile/layer validation. No OS setup or inference requested.")
+            finally:
+                await rpc.close()
         capabilities = await CodexRuntime(profile).check()
         assert capabilities.installed and capabilities.authentication == "required"
         assert capabilities.qualification == "protocol_only"

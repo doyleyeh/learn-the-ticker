@@ -1,4 +1,5 @@
 import asyncio
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -36,6 +37,10 @@ def thread_response(workspace):
 @pytest.mark.parametrize("key,value", [
     ("features.shell_tool", True), ("features.hooks", True), ("features.apps", True),
     ("features.browser_use", True), ("features.code_mode", True),
+    ("features.code_mode.enabled", True),
+    ("features.code_mode.direct_only_tool_namespaces", ["functions"]),
+    ("features.code_mode_host.enabled", True),
+    ("features.code_mode_host.disable_in_process_fallback", True),
     ("cli_auth_credentials_store", "auto"), ("forced_login_method", "api"),
     ("sandbox_mode", "danger-full-access"), ("approvals_reviewer", "auto_review"),
     ("analytics.enabled", True), ("otel.exporter", "statsig"), ("project_doc_max_bytes", False),
@@ -52,6 +57,45 @@ def test_effective_policy_drift_is_rejected_without_sensitive_values(key, value)
     with pytest.raises(RuntimeFailure) as exc:
         validate_config(response, False)
     assert "private-command" not in str(exc.value) and "untrusted.example" not in str(exc.value)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows sandbox policy")
+@pytest.mark.parametrize("mode", [None, "unelevated", "mxc"])
+def test_windows_mode_cannot_fall_back(mode):
+    response = config_response()
+    response["config"]["windows"]["sandbox"] = mode
+    with pytest.raises(RuntimeFailure): validate_config(response, False)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="provider Windows setup configuration")
+@pytest.mark.parametrize("variant", ["exact", "extra", "wrong_mode", "malformed", "oversized"])
+def test_provider_setup_config_allows_only_exact_elevated_setting(tmp_path, monkeypatch, variant):
+    monkeypatch.setattr("backend.app.codex_policy.system_config_directory", lambda: tmp_path / "system")
+    profile = tmp_path / "profile"; profile.mkdir()
+    payload = '[windows]\nsandbox="elevated"\n'
+    if variant == "extra": payload += '[hooks]\ncommand="never-run"\n'
+    if variant == "wrong_mode": payload = payload.replace("elevated", "unelevated")
+    if variant == "malformed": payload += '['
+    if variant == "oversized": payload += '#' + 'x' * 4096
+    config = profile / "config.toml"; config.write_text(payload, encoding="utf-8")
+    if variant == "exact": prepare_workspace(profile, tmp_path / "workspace")
+    else:
+        with pytest.raises(RuntimeFailure): prepare_workspace(profile, tmp_path / "workspace")
+    assert config.read_text(encoding="utf-8") == payload
+
+
+@pytest.mark.skipif(os.name != "nt", reason="provider Windows setup configuration")
+@pytest.mark.parametrize("variant", ["exact", "foreign_path", "system", "extra"])
+def test_setup_config_layer_is_bound_to_profile_and_minimal_setting(tmp_path, variant):
+    response = config_response()
+    layer = {"name": {"type": "user", "file": str(tmp_path / "config.toml")}, "config": {"windows": {"sandbox": "elevated"}}}
+    if variant == "foreign_path": layer["name"]["file"] = str(tmp_path / "other" / "config.toml")
+    if variant == "system": layer["name"]["type"] = "system"
+    if variant == "extra": layer["config"]["notify"] = ["never-run"]
+    response["layers"].append(layer)
+    if variant == "exact": validate_config(response, False, tmp_path)
+    else:
+        with pytest.raises(RuntimeFailure): validate_config(response, False, tmp_path)
 
 
 @pytest.mark.parametrize("layer", ["project", "user", "system", "unknown"])

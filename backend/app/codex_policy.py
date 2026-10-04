@@ -5,11 +5,13 @@ import ctypes
 import json
 import os
 from pathlib import Path
+import tomllib
 
 from backend.app.runtime_base import RuntimeFailure
 
 
 ROOT_MARKER = ".ltt-runtime-root"
+SANDBOX_CONFIG = {"windows": {"sandbox": "elevated"}}
 # Exact-version source confirms shell_tool controls both exec_command and write_stdin.
 # unified_exec=false alone is NOT an execution restriction in this runtime.
 DISABLED_FEATURES = (
@@ -29,12 +31,21 @@ DISABLED_FEATURES = (
 
 def policy_config(allow_browsing: bool) -> dict:
     return {
-        **{f"features.{name}": False for name in DISABLED_FEATURES},
+        **{f"features.{name}": False for name in DISABLED_FEATURES if name not in {"code_mode", "code_mode_host"}},
+        # Model metadata can select code_mode_only even when its feature is off.
+        # Expose only the permitted web namespace directly; keep the execution
+        # service disabled. In this pinned version, setting disable_in_process_fallback
+        # true also selects a process-owned execution service, so require false.
+        "features.code_mode.enabled": False,
+        "features.code_mode.direct_only_tool_namespaces": ["web"] if allow_browsing else [],
+        "features.code_mode_host.enabled": False,
+        "features.code_mode_host.disable_in_process_fallback": False,
         "features.skip_host_skill_discovery": True,
         "web_search": "live" if allow_browsing else "disabled",
         "forced_login_method": "chatgpt", "cli_auth_credentials_store": "keyring",
         "approval_policy": "on-request", "approvals_reviewer": "user",
         "sandbox_mode": "read-only", "allow_login_shell": False,
+        **({"windows.sandbox": "elevated"} if os.name == "nt" else {}),
         "project_root_markers": [ROOT_MARKER], "project_doc_max_bytes": 0,
         "skills.include_instructions": False, "skills.bundled.enabled": False,
         "mcp_servers": {}, "plugins": {}, "model_providers": {}, "model_provider": "openai",
@@ -42,6 +53,13 @@ def policy_config(allow_browsing: bool) -> dict:
         "otel.exporter": "none", "otel.trace_exporter": "none", "otel.metrics_exporter": "none",
         "otel.log_user_prompt": False, "check_for_update_on_startup": False,
     }
+
+
+async def require_execution_sandbox(rpc):
+    if os.name == "nt":
+        response = await rpc.request("windowsSandbox/readiness", {})
+        if response.get("status") != "ready":
+            raise RuntimeFailure("The dedicated Windows sandbox needs setup before inference. No setup or fallback was started.")
 
 
 def policy_arguments(allow_browsing: bool) -> list[str]:
@@ -72,8 +90,17 @@ def prepare_workspace(profile: Path, workspace: Path):
     try:
         for directory in (profile, workspace):
             require_plain_path(directory.absolute())
+        sandbox_config = profile / "config.toml"
+        require_plain_path(sandbox_config.absolute())
+        if sandbox_config.exists():
+            try:
+                if (os.name != "nt" or not sandbox_config.is_file() or sandbox_config.stat().st_size > 4096
+                        or tomllib.loads(sandbox_config.read_text(encoding="utf-8")) != SANDBOX_CONFIG):
+                    raise ValueError()
+            except (ValueError, UnicodeError):
+                raise RuntimeFailure("Custom Codex configuration is unsupported in the isolated connection. No files were changed.") from None
         system = system_config_directory()
-        candidates = [profile / "config.toml", profile / "hooks.json", profile / "auth.json",
+        candidates = [profile / "hooks.json", profile / "auth.json",
                       workspace / "config.toml", workspace / ".codex" / "config.toml",
                       workspace / ".codex" / "hooks.json"]
         candidates += [system / name for name in ("config.toml", "requirements.toml", "managed_config.toml", "hooks.json")]
@@ -92,7 +119,7 @@ def prepare_workspace(profile: Path, workspace: Path):
         raise RuntimeFailure("The isolated Codex workspace could not be verified.") from exc
 
 
-def validate_config(response: dict, allow_browsing: bool):
+def validate_config(response: dict, allow_browsing: bool, profile: Path | None = None):
     config, layers = response.get("config"), response.get("layers")
     if not isinstance(config, dict) or not isinstance(layers, list) or not layers:
         raise RuntimeFailure("Codex did not report its effective configuration.")
@@ -107,7 +134,16 @@ def validate_config(response: dict, allow_browsing: bool):
     for layer in layers:
         if not isinstance(layer, dict) or not isinstance(layer.get("name"), dict):
             raise RuntimeFailure("Codex returned an invalid configuration layer.")
-        if layer["name"].get("type") != "sessionFlags" and layer.get("config") != {}:
+        # Provider setup persists exactly this setting. It cannot contribute tools,
+        # credentials, instructions, or settings from another profile.
+        sandbox_layer = False
+        if os.name == "nt" and profile and layer["name"].get("type") == "user" and layer.get("config") == SANDBOX_CONFIG:
+            try:
+                file = layer["name"].get("file")
+                sandbox_layer = isinstance(file, str) and Path(file).resolve() == (profile / "config.toml").resolve()
+            except (OSError, ValueError):
+                pass
+        if layer["name"].get("type") != "sessionFlags" and layer.get("config") != {} and not sandbox_layer:
             raise RuntimeFailure("Codex inherited configuration outside the isolated connection.")
 
 

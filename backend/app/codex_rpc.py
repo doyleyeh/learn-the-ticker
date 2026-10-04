@@ -37,7 +37,7 @@ class CodexRPC:
             raise
 
     async def verify_policy(self):
-        validate_config(await self.request("config/read", {"cwd": str(self.workspace.resolve()), "includeLayers": True}), self.allow_browsing)
+        validate_config(await self.request("config/read", {"cwd": str(self.workspace.resolve()), "includeLayers": True}), self.allow_browsing, self.profile)
         validate_features(await self.request("experimentalFeature/list", {"limit": 200}))
 
     async def start_thread(self, model: str | None = None) -> str:

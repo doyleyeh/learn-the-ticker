@@ -1,4 +1,7 @@
 import asyncio
+import json
+import os
+from collections import deque
 from pathlib import Path
 
 import pytest
@@ -8,8 +11,33 @@ from backend.app.codex_usage import require_included_usage
 from backend.app.contracts import RuntimeCapabilities, RuntimeEvent
 from backend.app.runtime_base import AIRuntime, RuntimeFailure
 from backend.app.runtime_policy import QUALIFICATIONS
-from scripts.qualify_codex import preflight, live_probes, collect, ProbeRuntime, resolve_profile
+from scripts.qualify_codex import preflight, live_probes, collect, ProbeRuntime, resolve_profile, observed_rpc
+from backend.app.codex_rpc import CodexRPC
 from tests.desktop.test_codex import FakeRPC
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows sandbox policy")
+@pytest.mark.parametrize("status", ["notConfigured", "updateRequired", None, "unknown"])
+def test_windows_sandbox_not_ready_stops_preflight_and_generation(tmp_path, monkeypatch, status):
+    async def run():
+        rpc = FakeRPC(); rpc.account = {"type": "chatgpt"}
+        request = rpc.request
+        async def observed_request(method, params, **kwargs):
+            if method == "windowsSandbox/readiness": return {"status": status}
+            return await request(method, params, **kwargs)
+        rpc.request = observed_request
+        async def discovery(self):
+            return RuntimeCapabilities(provider="codex", installed=True, version="synthetic", qualification="protocol_only")
+        monkeypatch.setattr(AIRuntime, "check", discovery)
+        report = await preflight(tmp_path, None, rpc_factory=lambda *args, **kwargs: rpc)
+        assert report["blocker"] == "windows_sandbox_setup_required"
+        assert not report["generation_requested"] and report["status"] == "blocked"
+        monkeypatch.setattr("backend.app.codex_runtime.CodexRPC", lambda *args, **kwargs: rpc)
+        with pytest.raises(RuntimeFailure, match="Windows sandbox needs setup"):
+            await collect(ProbeRuntime(tmp_path, "synthetic"), "synthetic", tmp_path, None)
+        assert rpc.closed
+        assert all(method not in ("turn/start", "windowsSandbox/setupStart") for method, _ in rpc.requests)
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("permission", [None, False, 0, 1, "true"])
@@ -116,3 +144,60 @@ def test_sign_in_helper_refuses_redirected_device_code_output(monkeypatch, capsy
     monkeypatch.setattr(connect_codex, "connect", forbidden)
     assert connect_codex.main() == 2
     assert "interactive terminal" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("failure,reason", [
+    (json.JSONDecodeError("private-provider-message", "private-provider-output", 0), "invalid_json"),
+    (RuntimeFailure("Codex reported activity outside the permitted research tools."), "prohibited_tool_activity"),
+    (RuntimeFailure("private-provider-diagnostic"), "runtime_or_probe_check_failed"),
+])
+def test_live_failure_records_stage_without_text_or_retry(tmp_path, monkeypatch, failure, reason):
+    calls = []
+    async def collector(runtime, prompt, workspace, model, **kwargs):
+        calls.append(Path(workspace).name)
+        if calls[-1] == "cached": return "100 [fixture-1]", 0
+        raise failure
+    monkeypatch.setattr("scripts.qualify_codex.collect", collector)
+    report = asyncio.run(live_probes(tmp_path, {"status": "preflight_passed", "version": "synthetic", "model": "synthetic", "live_qualified": False}))
+    assert calls == ["cached", "source"]
+    assert report["stage"] == "source" and report["failure_reason"] == reason
+    assert report["status"] == "blocked" and not report["live_qualified"]
+    assert "private-provider" not in json.dumps(report)
+
+
+def test_live_observations_allow_only_fixed_categories(tmp_path, monkeypatch):
+    observations = {}
+    payloads = deque([
+        {"method": "item/started", "params": {"item": {"type": "agentMessage", "phase": "commentary", "text": "private-provider-text"}, "threadId": "private-thread"}},
+        {"method": "item/completed", "params": {"item": {"type": "agentMessage", "phase": "final_answer", "text": "private-provider-text"}}},
+        {"method": "item/started", "params": {"item": {"type": {"private": "provider"}}}},
+        {"method": "error", "params": {"error": {"codexErrorInfo": "usageLimitExceeded", "message": "private-provider-error"}}},
+        {"method": "turn/completed", "params": {"turn": {"status": "failed", "error": {"message": "private-later-error"}}}},
+    ])
+    async def receive(self): return payloads.popleft()
+    monkeypatch.setattr(CodexRPC, "receive", receive)
+    rpc = observed_rpc(observations)(tmp_path, tmp_path / "source")
+    async def run():
+        while payloads: await rpc.receive()
+    asyncio.run(run())
+    assert observations["source"] == {
+        "item_types": ["agentMessage", "other"], "message_phases": ["commentary", "final_answer"],
+        "provider_error": "usageLimitExceeded", "turn_started": False, "turn_completed": False,
+    }
+    assert "private" not in json.dumps(observations)
+
+
+@pytest.mark.parametrize("installed,version,expected", [
+    (False, None, "could not be found or started"),
+    (True, None, "version could not be verified"),
+    (True, "0.0.1", "0.0.1"),
+])
+def test_sign_in_distinguishes_missing_unverified_and_unsupported_runtime(tmp_path, monkeypatch, capsys, installed, version, expected):
+    from scripts import connect_codex
+    async def discover(self):
+        return RuntimeCapabilities(provider="codex", installed=installed, version=version)
+    def forbidden(*args): pytest.fail("sign-in started without a reviewed runtime")
+    monkeypatch.setattr(AIRuntime, "check", discover)
+    monkeypatch.setattr(connect_codex, "CodexLogin", forbidden)
+    assert asyncio.run(connect_codex.connect(tmp_path)) == 2
+    assert expected in capsys.readouterr().out

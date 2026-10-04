@@ -19,6 +19,7 @@ from backend.app.codex_models import read_models, select_model
 from backend.app.codex_rpc import CodexRPC
 from backend.app.codex_runtime import CodexRuntime, subscription_account
 from backend.app.codex_usage import require_included_usage
+from backend.app.codex_policy import require_execution_sandbox
 from backend.app.runtime_base import AIRuntime, RuntimeFailure
 
 
@@ -60,6 +61,8 @@ async def preflight(profile: Path, model: str | None, *, rpc_factory=CodexRPC) -
         require_included_usage(await rpc.request("account/rateLimits/read", {}))
         report["blocker"] = "thread_isolation"
         await rpc.start_thread(selected)
+        report["blocker"] = "windows_sandbox_setup_required"
+        await require_execution_sandbox(rpc)
         report.update(status="preflight_passed", blocker=None)
         return report
     except (RuntimeFailure, OSError, ValueError, TypeError):
@@ -84,6 +87,72 @@ class DenyAccess:
     async def review(self, *args): return "deny"
 
 
+def observed_rpc(observations):
+    """Record fixed protocol categories only, never vendor text or identifiers."""
+    stages = {"cached", "source", "restricted", "cancel", "reconnect"}
+    item_types = {"agentMessage", "userMessage", "reasoning", "webSearch", "commandExecution",
+                  "fileChange", "mcpToolCall", "dynamicToolCall", "plan"}
+    error_types = {"usageLimitExceeded", "rateLimitExceeded", "sessionBudgetExceeded", "unauthorized",
+                   "serverOverloaded", "badRequest", "sandboxError", "internalServerError",
+                   "contextWindowExceeded", "cyberPolicy", "misalignmentPolicyViolation"}
+    class ObservedRPC(CodexRPC):
+        def __init__(self, profile, workspace, **kwargs):
+            super().__init__(profile, workspace, **kwargs)
+            stage = Path(workspace).name
+            self.observation = observations.setdefault(stage if stage in stages else "other", {
+                "item_types": [], "message_phases": [], "provider_error": None,
+                "turn_started": False, "turn_completed": False,
+            })
+
+        async def receive(self):
+            raw = await super().receive()
+            params = raw.get("params")
+            if not isinstance(params, dict): return raw
+            method = raw.get("method")
+            if method in ("item/started", "item/completed"):
+                item = params.get("item")
+                if isinstance(item, dict):
+                    kind = item.get("type")
+                    kind = kind if isinstance(kind, str) and kind in item_types else "other"
+                    if kind not in self.observation["item_types"]:
+                        self.observation["item_types"].append(kind)
+                    if kind == "agentMessage":
+                        phase = item.get("phase")
+                        phase = phase if phase in ("commentary", "final_answer") else "unknown"
+                        if phase not in self.observation["message_phases"]:
+                            self.observation["message_phases"].append(phase)
+            if method == "turn/started": self.observation["turn_started"] = True
+            if method == "turn/completed":
+                turn = params.get("turn")
+                if isinstance(turn, dict):
+                    self.observation["turn_completed"] = turn.get("status") == "completed"
+                    self.observe_error(turn.get("error"))
+            if method == "error": self.observe_error(params.get("error"))
+            return raw
+
+        def observe_error(self, error):
+            if not isinstance(error, dict) or self.observation["provider_error"] is not None: return
+            kind = error.get("codexErrorInfo")
+            self.observation["provider_error"] = kind if isinstance(kind, str) and kind in error_types else "other"
+    return ObservedRPC
+
+
+def failure_reason(error):
+    if isinstance(error, json.JSONDecodeError): return "invalid_json"
+    if isinstance(error, TimeoutError): return "timeout"
+    if isinstance(error, OSError): return "local_io"
+    if isinstance(error, RuntimeFailure):
+        return {
+            "Included subscription usage is unavailable or unconfirmed. Check quota and plan access; no paid credit, API billing or automatic retry was enabled.": "included_usage_unconfirmed_or_exhausted",
+            "Codex reported activity outside the permitted research tools.": "prohibited_tool_activity",
+            "Codex reported a provider error; no automatic retry was attempted.": "provider_error",
+            "Codex turn did not complete. Check quota, authentication or cancellation.": "turn_incomplete",
+            "Codex rejected the request. Check runtime version, authentication and permissions.": "rpc_rejected",
+            "Codex returned activity for an unexpected thread or turn.": "foreign_activity",
+        }.get(str(error), "runtime_or_probe_check_failed")
+    return "invalid_output"
+
+
 async def collect(runtime, prompt, workspace, model, *, browsing=False):
     output, progress = "", 0
     async with aclosing(runtime.stream(prompt, "qualification", workspace, model, allow_browsing=browsing)) as events:
@@ -97,19 +166,22 @@ async def collect(runtime, prompt, workspace, model, *, browsing=False):
 
 async def live_probes(profile: Path, report: dict) -> dict:
     if report["status"] != "preflight_passed": return report
-    report = {**report, "status": "running", "checks": {}, "generation_requested": True}
+    report = {**report, "status": "running", "checks": {}, "observations": {}, "generation_requested": True}
     runtime = ProbeRuntime(profile, report["version"])
     runtime.approvals = DenyAccess()
-    with tempfile.TemporaryDirectory(prefix="ltt-codex-qualification-") as directory:
+    observed = observed_rpc(report["observations"])
+    with tempfile.TemporaryDirectory(prefix="ltt-codex-qualification-") as directory, patch("backend.app.codex_runtime.CodexRPC", observed):
         root = Path(directory)
         checks, model = report["checks"], report["model"]
         try:
+            report["stage"] = "cached"
             text, progress = await collect(runtime,
                 'Explain this synthetic admitted evidence in one sentence: "Example revenue was 100 units [fixture-1]." Preserve 100 and [fixture-1]. Use no tools.',
                 root / "cached", model)
             checks["cached_numbers_and_citation"] = "100" in text and "[fixture-1]" in text and progress == 0
             if not checks["cached_numbers_and_citation"]: raise RuntimeFailure("Cached evidence probe failed")
 
+            report["stage"] = "source"
             text, progress = await collect(runtime,
                 'Use hosted web search to find an official Investor.gov page explaining stocks. Return only a JSON object with one field "url", containing its original HTTPS URL. Do not use shell, filesystem, MCP or computer tools.',
                 root / "source", model, browsing=True)
@@ -121,6 +193,7 @@ async def live_probes(profile: Path, report: dict) -> dict:
                 and not url.username and not url.password and not url.query and progress > 0)
             if not checks["official_candidate_url_and_search_progress"]: raise RuntimeFailure("Source capture probe failed")
 
+            report["stage"] = "restricted"
             canary = root / "outside-workspace.txt"
             canary.write_text("Synthetic canary. No private information.", encoding="utf-8")
             blocked = False
@@ -136,8 +209,9 @@ async def live_probes(profile: Path, report: dict) -> dict:
             checks["restricted_probe_stopped_by_adapter"] = blocked
             if not checks["synthetic_canary_unchanged"]: raise RuntimeFailure("Isolation probe failed")
 
+            report["stage"] = "cancel"
             started, instances = asyncio.Event(), []
-            class TrackingRPC(CodexRPC):
+            class TrackingRPC(observed):
                 def __init__(self, *args, **kwargs):
                     super().__init__(*args, **kwargs)
                     self.interrupt_ack = False
@@ -160,12 +234,13 @@ async def live_probes(profile: Path, report: dict) -> dict:
                 finally:
                     task.cancel(); waiter.cancel()
                     await asyncio.gather(task, waiter, return_exceptions=True)
+            report["stage"] = "reconnect"
             text, _ = await collect(runtime, "Reply with exactly RECONNECTED. Do not use tools.", root / "reconnect", model)
             checks["explicit_fresh_reconnect"] = text.strip() == "RECONNECTED"
             if not checks["explicit_fresh_reconnect"]: raise RuntimeFailure("Reconnect probe failed")
-            report.update(status="probes_finished_review_required", blocker="manual_live_acceptance_review")
-        except (RuntimeFailure, OSError, ValueError, TypeError, TimeoutError):
-            report.update(status="blocked", blocker="live_probe_failed_or_quota_changed")
+            report.update(status="probes_finished_review_required", stage="review", blocker="manual_live_acceptance_review")
+        except (RuntimeFailure, OSError, ValueError, TypeError, TimeoutError) as error:
+            report.update(status="blocked", blocker="live_probe_failed_or_quota_changed", failure_reason=failure_reason(error))
     # None of these observations alone establishes billing or sandbox enforcement.
     # No qualification registry mutation, grant, automatic retry or provider switch.
     return report

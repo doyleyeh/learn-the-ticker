@@ -16,8 +16,14 @@ from scripts.qualify_codex import resolve_profile
 
 async def connect(profile):
     version = await AIRuntime.check(CodexRuntime(profile))
-    if not version.installed or version.qualification == "unqualified":
-        print("The installed Codex version is unsupported. No sign-in was started.")
+    if not version.installed:
+        print("Codex could not be found or started in this terminal. Check its PATH and installation. No sign-in was started.")
+        return 2
+    if version.version is None:
+        print("The Codex version could not be verified. Check the runtime installation. No sign-in was started.")
+        return 2
+    if version.qualification == "unqualified":
+        print(f"The installed Codex version ({version.version}) is not reviewed for this project. No sign-in was started.")
         return 2
     login = CodexLogin(profile)
     try:

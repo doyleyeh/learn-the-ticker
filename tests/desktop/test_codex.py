@@ -42,6 +42,8 @@ class FakeRPC:
             return {"turn": {"id": "turn-1"}}
         if method == "account/rateLimits/read":
             return {"ordinaryUsageAllowed": True}
+        if method == "windowsSandbox/readiness":
+            return {"status": "ready"}
         return {}
 
     async def event(self):
