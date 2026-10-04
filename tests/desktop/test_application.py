@@ -140,7 +140,8 @@ def test_dynamic_research_persistence_reuse_and_saved_versions(tmp_path, kind):
         db.put("settings", "settings", {"cloud_enabled": True})
         refresh = await service.submit(ResearchRequest(query="Refresh", asset_id=IDENTITY.id, refresh=True))
         await service.tasks[refresh["id"]]
-        assert db.get("bundle:" + old_id) and len(db.list("bundle", IDENTITY.id)) == 2
+        assert db.get("bundle:" + old_id) and len(db.list("bundle", IDENTITY.id)) == 4
+        assert sum(row["completion"] == "section_checkpoint" for row in db.list("bundle", IDENTITY.id)) == 2
         assert all("test services" not in event["text"] for event in db.events(result["id"]))
     asyncio.run(scenario())
 

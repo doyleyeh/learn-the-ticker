@@ -119,6 +119,21 @@ if __name__ == "__main__":
                 session.add(Job(id="synthetic-" + state, status=state, request={"query": "Synthetic previous " + state}))
             session.add(Job(id="synthetic-completed", status="running", request={"query": "Synthetic saved response"}))
         db.complete_research("synthetic-completed", value)
+    if "--progressive-demo" in sys.argv:
+        from tests.desktop.financial_fixture import AT, financial_result
+        result = financial_result()
+        class ProgressiveResolver:
+            def resolve(self, query):
+                return [result.instrument]
+        class ProgressiveFinancial:
+            def retrieve(self, *args, **kwargs):
+                return result
+        app.state.service.identity_resolver = ProgressiveResolver()
+        app.state.service.financial_adapter = ProgressiveFinancial()
+        app.state.service.filing_adapter = type("NoFilings", (), {"retrieve": lambda *a, **kw: []})()
+        app.state.service.clock = lambda: AT
+        app.state.service.adapters = {"codex": PreviewRecoveryRuntime(result.instrument.asset)}
+        db.put("settings", "settings", {"cloud_enabled": True})
     if "--approvals-demo" in sys.argv:
         adapter = PreviewAccessRuntime(asset)
         adapter.approvals = app.state.service.approvals

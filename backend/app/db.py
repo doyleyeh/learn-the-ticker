@@ -61,7 +61,9 @@ class Database:
     @staticmethod
     def _put(session, record_id, kind, payload, parent_id=None):
         if kind in ("asset", "bundle"):
-            EvidenceBundle.model_validate(payload)
+            bundle = EvidenceBundle.model_validate(payload)
+            if kind == "asset" and bundle.completion != "complete":
+                raise ValueError("An incomplete run cannot replace the asset page")
         if kind == "import":
             from backend.app.retained_imports import validate_import_write
             validate_import_write(session, record_id, payload, parent_id)
@@ -79,7 +81,10 @@ class Database:
     def complete_research(self, job_id: str, payload: dict, *, conversation_id: str | None = None):
         """Publish a snapshot and its references together, or leave all of them unchanged."""
         from backend.app.evidence import validate_claim_sources
-        validate_claim_sources(EvidenceBundle.model_validate(payload))
+        bundle = EvidenceBundle.model_validate(payload)
+        validate_claim_sources(bundle)
+        if bundle.completion != "complete":
+            raise ValueError("A section checkpoint cannot complete a research run")
         with self.session.begin() as session:
             job = session.get(Job, job_id, with_for_update=True)
             if not job or job.status != "running":
@@ -100,6 +105,24 @@ class Database:
                 self._put(session, "asset:" + asset_id, "asset", payload)
             job.status, job.result, job.error = "completed", payload, None
             session.add(Event(job_id=job_id, payload=RuntimeEvent(run_id=job_id, kind="evidence.registered", data={"bundle_id": bundle_id}).model_dump(mode="json")))
+
+    def checkpoint_research(self, job_id: str, bundle: EvidenceBundle):
+        value = EvidenceBundle.model_validate(bundle.model_dump())
+        if value.completion != "section_checkpoint":
+            raise ValueError("Progress requires a section checkpoint")
+        with self.session.begin() as session:
+            job = session.get(Job, job_id, with_for_update=True)
+            if not job or job.status != "running" or job.request.get("purpose"):
+                raise ValueError("Only active research can admit a section")
+            if job.request.get("asset_id") not in (None, value.asset.id):
+                raise ValueError("Section scope differs from the request")
+            if (job.request.get("language", "en"), job.request.get("level", "beginner")) != (value.language, value.level):
+                raise ValueError("Section language or reader level differs from the request")
+            payload = value.model_dump(mode="json")
+            self._put(session, "bundle:" + value.id, "bundle", payload, value.asset.id)
+            job.result = payload
+            session.add(Event(job_id=job_id, payload=RuntimeEvent(run_id=job_id, kind="evidence.registered",
+                text="Independently checked evidence is available; research is still incomplete.", data={"bundle_id": value.id}).model_dump(mode="json")))
 
     def update_conversation(self, conversation_id: str, *, asset_id=None, bookmarked=None) -> dict:
         with self.session.begin() as session:
@@ -199,6 +222,8 @@ class Database:
         with self.session.begin() as session:
             row = session.get(Job, job_id)
             if row and row.status not in ("cancelled", "completed", "failed"):
+                if result is None and status in ("cancelled", "failed", "interrupted") and (row.result or {}).get("completion") == "section_checkpoint":
+                    result = row.result
                 row.status, row.result, row.error = status, result, error
 
     def recover(self):

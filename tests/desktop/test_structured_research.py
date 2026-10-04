@@ -82,7 +82,8 @@ def test_structured_first_context_and_atomic_publication_survive_restore(tmp_pat
         # A later refresh preserves the first immutable version.
         refreshed = await finish(service, ResearchRequest(query="Latest history", asset_id=result["asset"]["id"], refresh=True))
         assert refreshed["status"] == "completed" and financial.calls == 2
-        assert service.db.get("bundle:" + result["id"]) == result and len(service.db.list("bundle")) == 2
+        assert service.db.get("bundle:" + result["id"]) == result and len(service.db.list("bundle")) == 4
+        assert sum(row["completion"] == "section_checkpoint" for row in service.db.list("bundle")) == 2
         await service.close()
     asyncio.run(scenario())
 

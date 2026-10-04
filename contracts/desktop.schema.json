@@ -545,6 +545,15 @@
           "title": "State",
           "type": "string"
         },
+        "completion": {
+          "default": "complete",
+          "enum": [
+            "complete",
+            "section_checkpoint"
+          ],
+          "title": "Completion",
+          "type": "string"
+        },
         "language": {
           "default": "en",
           "enum": [

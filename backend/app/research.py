@@ -209,6 +209,17 @@ class ResearchService:
         except (ValueError, OSError):
             return None, "Financial history is unavailable from the permitted source."
 
+    def checkpoint(self, job_id, bundle):
+        self.require_consent()
+        if self.settings().manual_source_review:
+            return
+        # Revalidate after stripping notes/candidates; no raw model output is stored.
+        if not bundle.claims and not (bundle.financials and bundle.financials.observations):
+            return
+        permitted = [source for source in bundle.sources if source.verified and source.policy == SourcePolicy.full_text]
+        value = EvidenceBundle.model_validate({**bundle.model_dump(), "id": uid(), "completion": "section_checkpoint", "notes": [], "sources": permitted})
+        self.db.checkpoint_research(job_id, value)
+
     async def run(self, job_id: str, request: ResearchRequest):
         try:
             cancelled = self.stop_events.get(job_id) or threading.Event()
@@ -248,6 +259,8 @@ class ResearchService:
             self.emit(RuntimeEvent(run_id=job_id, kind="tool.started", text="Checking available financial history and its sources"))
             financial, financial_gap = await self.structured(resolved, request, cancelled)
             self.require_consent()
+            if financial:
+                self.checkpoint(job_id, financial)
             issuer = (ResolvedIdentity(financial.financials.issuer, financial.financials.issuer_verification) if financial
                       else resolved if resolved and resolved.verification.authority == "sec-listings-v1" else None)
             filings = []
@@ -344,6 +357,7 @@ class ResearchService:
             candidates.extend(historical_sources[sid] for sid in sorted(requested_history))
             if len(candidates) > 100:
                 raise RuntimeFailure("The response cites too many sources. Ask a narrower follow-up.")
+            narrative_checkpoint = False
             for source in candidates:
                 if source.asset_id != asset.id:
                     continue
@@ -374,6 +388,15 @@ class ResearchService:
                     except (ValueError, OSError):
                         source = candidate_metadata(source)
                 sources.append(source)
+                # At most one narrative checkpoint plus the earlier financial checkpoint.
+                # Later evidence remains in the final immutable version.
+                if not narrative_checkpoint and not self.settings().manual_source_review:
+                    partial = admit_bundle(asset, [*sources, *filing_sources.values(), *financial_sources.values()], result.claims,
+                        language=request.language, level=request.level, identity_verification=resolved.verification,
+                        created_at=self.clock(), financials=financial.financials if financial else None)
+                    if partial.claims:
+                        self.checkpoint(job_id, partial)
+                        narrative_checkpoint = True
             self.require_consent()
             if self.settings().manual_source_review:
                 financial = None

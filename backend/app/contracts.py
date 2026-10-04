@@ -156,6 +156,7 @@ class EvidenceBundle(Contract):
     claims: list[Claim] = Field(default_factory=list)
     notes: list[Claim] = Field(default_factory=list)
     state: Literal["partial", "available", "stale", "unavailable"] = "partial"
+    completion: Literal["complete", "section_checkpoint"] = "complete"
     language: Literal["en", "zh-TW"] = "en"
     # Missing on older snapshots: keep readable, never infer independent verification.
     level: Literal["beginner", "intermediate"] | None = None
@@ -171,6 +172,9 @@ class EvidenceBundle(Contract):
         if any(source.filing_publication is not None for source in self.sources):
             from backend.app.sec_filings import validate_publications
             validate_publications(self)
+        if self.completion == "section_checkpoint":
+            from backend.app.research_progress import validate_checkpoint
+            validate_checkpoint(self)
         return self
 
 

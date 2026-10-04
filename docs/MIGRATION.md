@@ -42,6 +42,8 @@ Document interpretations add `import_explanation` records and `import_explanatio
 
 Research-job recovery reads existing job IDs, bounded request metadata and statuses through the authenticated API. No SQL/archive revision changes: restored active jobs remain interrupted, and completed jobs refer to their original immutable evidence. Browser reconnection requires its temporary session credential again; native bootstrap stays automatic. Neither reopening nor polling replays a provider turn.
 
+Evidence versions now carry `completion`, defaulting to `complete` for older records. New `section_checkpoint` versions contain independently admitted sections from an unfinished run and cannot replace a current asset or be marked completed. They use existing bundle/job/event tables and archive versions; restore preserves the original section references while interrupting active jobs. Older binaries that do not understand this field are not qualified rollback targets. A completed response may still have partial data availability; completion does not certify comprehensive coverage.
+
 ## Native packaging and platforms
 
 The current source setup installs Python/frontend dependencies after the developer provides Python and Node. Native launch additionally requires Rust/MSVC, webview prerequisites and an explicit `LTT_PG_BIN` directory. The optional Docker Compose database is not the private desktop cluster. The public installer must remove the need for users to install or operate core Python, Node, Docker or PostgreSQL dependencies themselves.

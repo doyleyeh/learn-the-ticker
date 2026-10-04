@@ -18,6 +18,8 @@ Stored facts retain their original source records and evidence version. Follow-u
 
 Recent research jobs lets you reopen progress or an original saved response after reconnecting. Opening a job performs no new research. Dropped progress connections fall back to reading the existing job; restart/restore marks unfinished work interrupted, requiring an explicit new request. The list shows up to 50 jobs with active work first; original evidence remains in the library.
 
+Independently checked financial history and supported sections can appear while research continues. These versions are labeled incomplete and preserve their original source links. Cancellation or failure keeps checked sections available without replacing earlier completed research. Final answers remain separate versions; missing information stays explicit.
+
 The Sources screen can retain bounded original documents with checksums, provenance and separate storage/backup permission. Reopening preserves original dates and references, works offline and keeps the content unverified. With separate sharing permission, your selected compatible provider can explain a retained document with browsing disabled. Saved interpretations retain original page/cell quotations, work offline and never become facts or chart inputs. Backups include permitted copies and their explanations and read older archives. See [archive compatibility](docs/MIGRATION.md#database-and-library-compatibility).
 
 ## Development on Windows

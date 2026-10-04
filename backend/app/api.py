@@ -341,6 +341,8 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
         def clean(text):
             return text.replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]")
         lines = ["# " + clean(value.asset.name), "", f"Research snapshot: {value.created_at.isoformat()}", "", "Educational research; not investment advice.", "", "## Source-backed claims"]
+        if value.completion == "section_checkpoint":
+            lines[4:4] = ["Incomplete research: independently checked section checkpoint. The overall run may still be active or may have stopped.", ""]
         for claim in value.claims:
             lines += ["", clean(claim.text) + " Sources: " + ", ".join(claim.source_ids)]
         if value.financials is not None:

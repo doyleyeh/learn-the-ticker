@@ -74,9 +74,14 @@ export function App() {
   useEffect(() => {
     if (!job?.id || !busy) return;
     let active = true;
+    let shownBundle = job.result?.id;
     const close = observeResearch<Job>(job.id, (next) => {
       if (!active) return;
       setJob(next);
+      if (next.result?.asset && next.result.completion === "section_checkpoint" && next.result.id !== shownBundle) {
+        shownBundle = next.result.id;
+        setAsset(next.result); location.hash = bundleRoute(next.result.id!);
+      }
       if (next.status === "completed" && next.result?.asset) {
         setAsset(next.result); location.hash = bundleRoute(next.result.id!);
         void reload().catch(fail);
@@ -91,7 +96,7 @@ export function App() {
     setJob(next); setProgress(""); setError(next.error ?? ""); setNotice("");
     if (next.request) { setQuery(next.request.query); setLevel(next.request.level ?? "beginner"); }
     setConversation(next.request?.conversation_id ? conversations.find((item) => item.id === next.request?.conversation_id) : undefined);
-    if (next.status === "completed" && next.result?.asset) { setAsset(next.result); location.hash = bundleRoute(next.result.id!); }
+    if (next.result?.asset) { setAsset(next.result); location.hash = bundleRoute(next.result.id!); }
   }
 
   async function research(event?: FormEvent, refresh = false, question?: string) {
@@ -127,7 +132,7 @@ export function App() {
         <ResearchJobs currentId={job?.id} revision={`${job?.id}:${job?.status}`} onOpen={reopenResearch}/>
         {job?.id && <section aria-live="polite" className="plain-panel research-job-status"><h2>Viewed research job</h2><p>{job.request?.query}</p><p>Status: {job.status.replaceAll("_", " ")}</p>
           {busy ? <><p>{progress || "Reading existing research progress"}</p><button onClick={() => api<Job>(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, { method: "POST" }).then(setJob).catch(fail)}>Cancel research</button></>
-            : ["failed", "cancelled", "interrupted"].includes(job.status) && <p>This job has stopped. Existing saved research is unchanged. Review the request and connection before explicitly starting new research.</p>}
+            : ["failed", "cancelled", "interrupted"].includes(job.status) && <p>This job has stopped. Earlier saved research is unchanged. Any independently checked section remains labeled incomplete. Review the request and connection before explicitly starting new research.</p>}
         </section>}
         {job?.status === "needs_identity" && <section className="plain-panel"><h2>Choose a more specific identity</h2><p>{job.result?.message ?? "Choose a listing or contract, then submit the selected identity. Cached matches reuse their saved evidence."}</p>{job.result?.candidates?.map((item) => <button key={item.id} onClick={() => setQuery(item.id)}>{item.name} · {item.symbol} · {item.exchange ?? item.asset_type}</button>)}</section>}
         {job?.result?.educational_redirect && <p>{job.result.educational_redirect}</p>}
@@ -138,9 +143,10 @@ export function App() {
         {page === "conversations" && <section><h1>Persistent conversations</h1><p>Unbookmarked conversations expire after {settings?.retention_days ?? 180} days without activity. Bookmark a conversation to keep it.</p>{conversations.map((chat) => <button key={chat.id} onClick={() => api<EvidenceBundle>(`/api/assets/${encodeURIComponent(chat.asset_id)}`).then((bundle) => { openAsset(bundle); setConversation(chat); }).catch(fail)}>{chat.asset_id} · {chat.messages.length} messages{chat.bookmarked ? " · Bookmarked" : ""}</button>)}</section>}
         {page === "connections" && <><CodexConnection/><LibraryBackup onRestored={async () => { setConversation(undefined); setAsset(undefined); setJob(undefined); await reload(); }}/></>}
         {page === "asset" && asset && <>
-          <section className="plain-panel"><p className="eyebrow">{asset.asset.asset_type} · {asset.asset.exchange ?? "Listing details unconfirmed"}</p><h1>{asset.asset.name} <small>{asset.asset.symbol}</small></h1><FreshnessLabel label="Research snapshot" value={new Date(asset.created_at!).toLocaleString()} state={Date.now() - Date.parse(asset.created_at!) > 86400000 ? "stale" : "partial"}/><p>Scope: {asset.asset.id} · {asset.level ? `${asset.level} explanations` : "Reader level not recorded"} · {asset.language}</p><div className="actions"><button disabled={busy || !settings?.cloud_enabled} onClick={() => void research(undefined, true, `Refresh research for ${asset.asset.name}`)}>Refresh evidence</button><button onClick={() => api("/api/saved", { method: "POST", body: JSON.stringify({ bundle_id: asset.id, title: asset.asset.name }) }).then(async () => { await reload(); setNotice("Research version bookmarked."); }).catch(fail)}>Bookmark this version</button><button onClick={() => download(asset.id!, "markdown").catch(fail)}>Export Markdown</button><button onClick={() => download(asset.id!, "json").catch(fail)}>Export JSON</button></div></section>
+          <CheckpointNotice completion={asset.completion}/>
+          <section className="plain-panel"><p className="eyebrow">{asset.asset.asset_type} · {asset.asset.exchange ?? "Listing details unconfirmed"}</p><h1>{asset.asset.name} <small>{asset.asset.symbol}</small></h1><FreshnessLabel label="Research snapshot" value={new Date(asset.created_at!).toLocaleString()} state={Date.now() - Date.parse(asset.created_at!) > 86400000 ? "stale" : "partial"}/><p>Scope: {asset.asset.id} · {asset.level ? `${asset.level} explanations` : "Reader level not recorded"} · {asset.language}</p><div className="actions"><button disabled={busy || !settings?.cloud_enabled || asset.completion === "section_checkpoint"} onClick={() => void research(undefined, true, `Refresh research for ${asset.asset.name}`)}>Refresh evidence</button><button onClick={() => api("/api/saved", { method: "POST", body: JSON.stringify({ bundle_id: asset.id, title: asset.asset.name }) }).then(async () => { await reload(); setNotice("Research version bookmarked."); }).catch(fail)}>Bookmark this version</button><button onClick={() => download(asset.id!, "markdown").catch(fail)}>Export Markdown</button><button onClick={() => download(asset.id!, "json").catch(fail)}>Export JSON</button></div></section>
           <TermLearning key={`${asset.id}:${level}:${settings?.language}`} bundle={asset} level={level} settings={settings}><EvidenceView bundle={asset}/></TermLearning>
-          <section className="plain-panel"><h2>Continue learning</h2><p>Conversation scope starts with {asset.asset.name}. Resolve a new asset through research before changing scope.</p>{!activeConversation ? <button onClick={() => api<Conversation>("/api/conversations", { method: "POST", body: JSON.stringify({ asset_id: asset.asset.id }) }).then(setConversation).catch(fail)}>Start a conversation</button> : <><p>Conversation {activeConversation.id.slice(0, 8)} · Current scope: {activeConversation.asset_id}</p><button onClick={() => void updateConversation({ bookmarked: !activeConversation.bookmarked })}>{activeConversation.bookmarked ? "Remove conversation bookmark" : "Bookmark conversation"}</button><label>Conversation asset<select disabled={busy} value={activeConversation.asset_id} onChange={(event) => void updateConversation({ asset_id: event.target.value })}>{library.map((entry) => <option key={entry.asset.id} value={entry.asset.id}>{entry.asset.name} · {entry.asset.symbol}</option>)}</select></label>{activeConversation.messages.map((message, i) => <p key={i}>{message.role}: {message.bundle_id ? <a href={`#${bundleRoute(message.bundle_id)}`}>Open cited response</a> : message.text}{message.asset_id && <small> · {message.asset_id}</small>}</p>)}<FollowUp busy={!!busy || !settings?.cloud_enabled} onAsk={(question) => void research(undefined, false, question)}/></>}</section>
+          {asset.completion !== "section_checkpoint" && <section className="plain-panel"><h2>Continue learning</h2><p>Conversation scope starts with {asset.asset.name}. Resolve a new asset through research before changing scope.</p>{!activeConversation ? <button onClick={() => api<Conversation>("/api/conversations", { method: "POST", body: JSON.stringify({ asset_id: asset.asset.id }) }).then(setConversation).catch(fail)}>Start a conversation</button> : <><p>Conversation {activeConversation.id.slice(0, 8)} · Current scope: {activeConversation.asset_id}</p><button onClick={() => void updateConversation({ bookmarked: !activeConversation.bookmarked })}>{activeConversation.bookmarked ? "Remove conversation bookmark" : "Bookmark conversation"}</button><label>Conversation asset<select disabled={busy} value={activeConversation.asset_id} onChange={(event) => void updateConversation({ asset_id: event.target.value })}>{library.map((entry) => <option key={entry.asset.id} value={entry.asset.id}>{entry.asset.name} · {entry.asset.symbol}</option>)}</select></label>{activeConversation.messages.map((message, i) => <p key={i}>{message.role}: {message.bundle_id ? <a href={`#${bundleRoute(message.bundle_id)}`}>Open cited response</a> : message.text}{message.asset_id && <small> · {message.asset_id}</small>}</p>)}<FollowUp busy={!!busy || !settings?.cloud_enabled} onAsk={(question) => void research(undefined, false, question)}/></>}</section>}
         </>}
       </>}
     </main></div>;
@@ -171,4 +177,8 @@ export function EvidenceView({ bundle }: { bundle: EvidenceBundle }) {
 
 function SourceDetails({ source }: { source: Source }) {
   return <details className="source-drawer" id={`source-${source.id}`}><summary>{source.title} · {source.verified ? "Verified retrieval" : "Unverified candidate"}</summary><p>{source.publisher}</p><a href={source.url} target="_blank" rel="noopener noreferrer">Inspect original source</a><p>Published: {source.published_at ?? "Unknown"} · As of: {source.as_of ?? "Unknown"} · Retrieved: {source.retrieved_at}</p><p>Source-use policy: {source.policy} · Provenance: {source.provenance}</p>{source.excerpt && <blockquote>{source.excerpt}</blockquote>}</details>;
+}
+
+export function CheckpointNotice({ completion }: { completion: EvidenceBundle["completion"] }) {
+  return completion === "section_checkpoint" ? <section className="plain-panel" role="status"><h2>Incomplete research — checked sections</h2><p>This version contains only independently admitted evidence available before the overall run finished. The run may still be active or may have stopped. Missing sections remain unavailable. Earlier completed research is unchanged.</p></section> : null;
 }

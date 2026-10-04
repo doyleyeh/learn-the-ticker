@@ -90,6 +90,7 @@ export type Sources = Source[];
 export type Claims = Claim[];
 export type Notes = Claim[];
 export type State = "partial" | "available" | "stale" | "unavailable";
+export type Completion = "complete" | "section_checkpoint";
 export type Language = "en" | "zh-TW";
 export type Level = ("beginner" | "intermediate") | null;
 export type SchemaVersion10 = "1";
@@ -944,6 +945,7 @@ export interface EvidenceBundle {
   claims?: Claims;
   notes?: Notes;
   state?: State;
+  completion?: Completion;
   language?: Language;
   level?: Level;
   identity_verification?: IdentityVerification | null;

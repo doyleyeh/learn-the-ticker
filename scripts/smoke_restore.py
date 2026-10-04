@@ -9,7 +9,7 @@ from threading import Barrier
 from sqlalchemy import event
 
 from backend.app.backup import BackupError, make_backup, preview_backup, restore_backup
-from backend.app.contracts import AssetIdentity, Conversation, EvidenceBundle, IdentityVerification, RuntimeEvent, SavedResearch, Settings, TermExplanation, TermRequest, now
+from backend.app.contracts import AssetIdentity, Conversation, EvidenceBundle, IdentityVerification, RuntimeEvent, SavedResearch, Settings, TermExplanation, TermRequest, now, uid
 from backend.app.identity import identity_hash
 from backend.app.evidence_reuse import conversation_evidence
 from backend.app.db import Database, Event, Job
@@ -41,6 +41,12 @@ def main():
         source, target = databases
         financial_job = asyncio.run(publish_financial_snapshot(source, roots[0] / "synthetic-research"))
         financial = EvidenceBundle.model_validate(financial_job["result"])
+        sections = [row for row in source.list("bundle") if row["completion"] == "section_checkpoint"]
+        assert len(sections) == 2
+        progress = EvidenceBundle.model_validate({**sections[0], "id": uid()})
+        with source.session.begin() as session:
+            session.add(Job(id="progressive-pending", status="running", request={"query": "Synthetic unfinished research", "asset_id": progress.asset.id}))
+        source.checkpoint_research("progressive-pending", progress)
         cited_chat = Conversation(asset_id=financial.asset.id, bookmarked=True, messages=[
             {"role": "assistant", "asset_id": financial.asset.id, "bundle_id": financial.id}])
         source.put("conversation:" + cited_chat.id, "conversation", cited_chat.model_dump(mode="json"))
@@ -99,7 +105,7 @@ def main():
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
-        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 3 and summary.saved_reports == 1 and summary.term_explanations == 1
+        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 6 and summary.saved_reports == 1 and summary.term_explanations == 1
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
         assert summary.import_explanations == 1
 
@@ -123,6 +129,8 @@ def main():
         restored_jobs = {row["id"]: row for row in target.research_jobs()}
         assert restored_jobs["pending"]["status"] == "interrupted"
         assert restored_jobs["pending"]["request"] == original_jobs["pending"]["request"]
+        assert target.job("progressive-pending")["status"] == "interrupted"
+        assert target.job("progressive-pending")["result"] == progress.model_dump(mode="json")
         assert restored_jobs[financial_job["id"]] == original_jobs[financial_job["id"]]
         assert target.get("bundle:" + old.id) and target.get("asset:" + identity.id)["id"] == latest.id
         assert target.list("saved")[0]["bundle_id"] == old.id
@@ -153,6 +161,8 @@ def main():
         restarted = Database(clusters[1].url())
         databases.append(restarted)
         assert {row["id"]: row for row in restarted.research_jobs()} == restored_jobs
+        assert restarted.job("progressive-pending")["result"] == progress.model_dump(mode="json")
+        assert restarted.get("bundle:" + progress.id) == progress.model_dump(mode="json")
         assert restarted.list("saved")[0]["bundle_id"] == old.id
         assert restarted.get("asset:" + identity.id)["id"] == latest.id
         assert restarted.get("asset:" + identity.id)["identity_verification"] == proof.model_dump(mode="json")

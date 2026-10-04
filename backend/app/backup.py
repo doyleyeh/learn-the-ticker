@@ -135,6 +135,8 @@ def validate_library(data: LibraryData):
             if row.parent_id is not None or attachment_bytes > MAX_ATTACHMENT_BYTES:
                 raise BackupError("Retained document references or aggregate size are invalid")
         if isinstance(value, EvidenceBundle):
+            if row.kind == "asset" and value.completion != "complete":
+                raise BackupError("An incomplete run cannot be the current asset snapshot")
             if value.identity_verification and value.identity_verification.identity_hash != identity_hash(value.asset):
                 raise BackupError("Identity verification does not match the evidence scope")
             if value.created_at.tzinfo is None:
@@ -203,6 +205,8 @@ def validate_library(data: LibraryData):
             raise BackupError("Job conversation is missing")
         if job.result and "asset" in job.result:
             bundle = EvidenceBundle.model_validate(job.result)
+            if bundle.completion == "section_checkpoint" and job.status not in ("running", "failed", "cancelled", "interrupted"):
+                raise BackupError("Section checkpoint has an invalid job status")
             if bundle.id not in bundles or bundles[bundle.id].model_dump(mode="json") != bundle.model_dump(mode="json"):
                 raise BackupError("Completed job evidence is missing or inconsistent")
         elif job.result:
