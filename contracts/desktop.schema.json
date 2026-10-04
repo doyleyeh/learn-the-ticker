@@ -174,8 +174,11 @@
           "type": "string"
         },
         "format_version": {
-          "const": "1",
           "default": "1",
+          "enum": [
+            "1",
+            "2"
+          ],
           "title": "Format Version",
           "type": "string"
         },
@@ -213,6 +216,16 @@
         "term_explanations": {
           "default": 0,
           "title": "Term Explanations",
+          "type": "integer"
+        },
+        "retained_imports": {
+          "default": 0,
+          "title": "Retained Imports",
+          "type": "integer"
+        },
+        "attachment_bytes": {
+          "default": 0,
+          "title": "Attachment Bytes",
           "type": "integer"
         },
         "jobs": {

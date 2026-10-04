@@ -18,7 +18,7 @@ export type AssetType =
 export type Exchange = string | null;
 export type Currency = string | null;
 export type SchemaVersion3 = "1";
-export type FormatVersion = "1";
+export type FormatVersion = "1" | "2";
 export type DatabaseRevision = "0001";
 export type CreatedAt = string;
 export type Fingerprint = string;
@@ -27,6 +27,8 @@ export type EvidenceVersions = number;
 export type Conversations = number;
 export type SavedReports = number;
 export type TermExplanations = number;
+export type RetainedImports = number;
+export type AttachmentBytes = number;
 export type Jobs = number;
 export type CredentialsIncluded = false;
 export type CanRestore = boolean;
@@ -815,6 +817,8 @@ export interface BackupSummary {
   conversations: Conversations;
   saved_reports: SavedReports;
   term_explanations?: TermExplanations;
+  retained_imports?: RetainedImports;
+  attachment_bytes?: AttachmentBytes;
   jobs: Jobs;
   credentials_included?: CredentialsIncluded;
   can_restore: CanRestore;

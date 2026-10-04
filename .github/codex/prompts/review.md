@@ -50,6 +50,8 @@ Import parsing must retain literal source locators/decimals without fact admissi
 
 Native build changes must retain Cargo.lock/locked builds, preserve safe Windows path meaning and package required icons/notices. A local PostgreSQL resource copy must exclude data/credentials and never alter system services. Distinguish isolated compiled WebView2 file-input checks from browser fixtures, OS-dialog automation and installed clean-machine/tray/update acceptance. Debug listeners belong only to explicit disposable test processes and must close with them; never ship a debugging setting or test identifier.
 
+Retained imports require distinct storage/backup permission, original bytes/fingerprint/locators and unverified state. They cannot become factual/chart context or imply cloud permission. Format-2 archives require exact member-to-record references, bounded individual/aggregate sizes, current registered URL rights and atomic byte/record restore without filesystem extraction. Preserve format-1 compatibility and reject orphaned/duplicate/traversal members, inline replacement bytes and changed checksums. Test actual PostgreSQL capacity races and rollback/restart with attachments; a new format or unit round trip alone is insufficient. Old binaries remain unqualified rollback targets, and larger-cache work is still required.
+
 Return:
 
 - summary

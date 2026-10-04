@@ -351,7 +351,7 @@ class SavedResearch(Contract):
 
 
 class BackupSummary(Contract):
-    format_version: Literal["1"] = "1"
+    format_version: Literal["1", "2"] = "1"
     database_revision: Literal["0001"] = "0001"
     created_at: AwareDatetime
     fingerprint: str
@@ -360,6 +360,8 @@ class BackupSummary(Contract):
     conversations: int
     saved_reports: int
     term_explanations: int = 0
+    retained_imports: int = 0
+    attachment_bytes: int = 0
     jobs: int
     credentials_included: Literal[False] = False
     can_restore: bool

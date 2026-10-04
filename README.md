@@ -16,6 +16,8 @@ SEC filing-event candidates now carry independently checked original filing/repo
 
 Stored facts retain their original source records and evidence version. Follow-up conversations can reuse the last five cited versions within the current asset scope, including original URLs and dates; earlier explanations are excluded from factual context. A new fact still needs independent source verification. Refresh preserves the old answer and its citations even if a page later changes or becomes unavailable. Browsing observation and factual admission are checked separately; provider navigation metadata is not treated as the complete page text seen by the model.
 
+Retained-import backup infrastructure supports bounded original documents with checksums, provenance and explicit storage/backup permission. It preserves unverified state and reads older archives. The Sources screen still provides ephemeral previews; durable storage controls and provider use remain in progress. See [archive compatibility](docs/MIGRATION.md#database-and-library-compatibility).
+
 ## Development on Windows
 
 Use Python 3.12 and Node 22.13+ (22.x) or Node 24+ for development; native builds also need Rust/MSVC and the Windows webview prerequisites. PostgreSQL 17 binaries were used in the local lifecycle tests. Other major versions have not been qualified. The future end-user installer must bundle the core dependencies and handle provider prerequisites explicitly.

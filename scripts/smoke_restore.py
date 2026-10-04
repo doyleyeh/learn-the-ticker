@@ -2,7 +2,9 @@
 import os
 import asyncio
 import secrets
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 
 from sqlalchemy import event
 
@@ -15,6 +17,9 @@ from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
 from backend.app.terms import term_key
 from tests.desktop.financial_fixture import publish_financial_snapshot
+from tests.desktop.import_fixture import retain_synthetic_documents
+from backend.app.import_previews import ImportPreview
+from backend.app.retained_imports import RetainedImport, retain_import
 
 
 def main():
@@ -62,11 +67,36 @@ def main():
             session.add(Job(id="pending", status="running", request={"query": "Synthetic pending turn", "conversation_id": chat.id, "asset_id": identity.id}))
         with source.session.begin() as session:
             session.add(Event(job_id="pending", payload=RuntimeEvent(run_id="pending", kind="run.started").model_dump(mode="json")))
+        imports = asyncio.run(retain_synthetic_documents(source))
+        # The real PostgreSQL lock must serialize two final-slot admissions.
+        import backend.app.retained_imports as retained_module
+        original_limit = retained_module.MAX_ATTACHMENTS
+        retained_module.MAX_ATTACHMENTS = len(imports) + 1
+        barrier = Barrier(2)
+        original = imports[0]
+        preview = ImportPreview(state="unverified", origin="local_file", document=original.document, checked_at=original.checked_at)
+        def retain_final_slot():
+            barrier.wait(timeout=10)
+            try:
+                return retain_import(source, original.content(), preview, title="Synthetic concurrent document", storage_and_backup_confirmed=True)
+            except ValueError as exc:
+                if "capacity" not in str(exc):
+                    raise
+                return None
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                attempts = [pool.submit(retain_final_slot) for _ in range(2)]
+                admitted = [result for attempt in attempts if (result := attempt.result(timeout=20)) is not None]
+            assert len(admitted) == 1
+            imports.extend(admitted)
+        finally:
+            retained_module.MAX_ATTACHMENTS = original_limit
         archive = make_backup(source)
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
         assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 3 and summary.saved_reports == 1 and summary.term_explanations == 1
+        assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
 
         def fail_event(*args):
             raise RuntimeError("Simulated restored-event write failure")
@@ -82,6 +112,7 @@ def main():
         finally:
             event.remove(Event, "before_insert", fail_event)
         assert not target.list("asset") and not target.list("settings") and not target.job("pending")
+        assert not target.list("import")
         restore_backup(target, archive, summary.fingerprint)
         assert target.get("bundle:" + old.id) and target.get("asset:" + identity.id)["id"] == latest.id
         assert target.list("saved")[0]["bundle_id"] == old.id
@@ -93,6 +124,8 @@ def main():
         assert target.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
         restored_context, _ = conversation_evidence(target, financial.asset, target.get("conversation:" + cited_chat.id)["messages"])
         assert restored_context == original_context
+        for document in imports:
+            assert RetainedImport.model_validate(target.get("import:" + document.id)) == document
         with target.session.begin() as session:
             session.add(Event(job_id="pending", payload=RuntimeEvent(run_id="pending", kind="run.cancelled").model_dump(mode="json")))
         assert len(target.events("pending")) == 2
@@ -120,10 +153,14 @@ def main():
         assert restarted.job(financial_job["id"])["result"] == financial.model_dump(mode="json")
         restarted_context, _ = conversation_evidence(restarted, financial.asset, restarted.get("conversation:" + cited_chat.id)["messages"])
         assert restarted_context == original_context
+        for document in imports:
+            restored = RetainedImport.model_validate(restarted.get("import:" + document.id))
+            assert restored == document and restored.content() == document.content() and not restored.verified
         print("PostgreSQL full-library restore, rollback on failure, preserved saved versions, event sequence and restart passed.")
         print("Typed issuer observations, exact decimals, separate identity proofs and conflict/revision references survived actual restore and restart.")
         print("Financial snapshot originated through production research orchestration with explicit synthetic source/runtime adapters.")
         print("Original conversation facts, version-specific citations, source URLs and dates remain reusable after restore and restart.")
+        print("Five retained documents across four formats preserved exact bytes, checksums, locators, original provenance and permission through atomic restore and restart; concurrent capacity enforcement passed.")
         print("Non-empty restore was rejected; cloud consent reset and no provider calls were made.")
     finally:
         for db in databases:

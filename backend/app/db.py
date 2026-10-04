@@ -62,11 +62,14 @@ class Database:
     def _put(session, record_id, kind, payload, parent_id=None):
         if kind in ("asset", "bundle"):
             EvidenceBundle.model_validate(payload)
+        if kind == "import":
+            from backend.app.retained_imports import validate_import_write
+            validate_import_write(session, record_id, payload, parent_id)
         record = session.get(Record, record_id)
         if record:
             if record.kind != kind:
                 raise ValueError("Record type cannot change")
-            if kind in ("bundle", "term") and record.payload != payload:
+            if kind in ("bundle", "term", "import") and record.payload != payload:
                 raise ValueError("Evidence snapshots are immutable")
             record.payload = payload
             record.updated_at = datetime.now(timezone.utc)

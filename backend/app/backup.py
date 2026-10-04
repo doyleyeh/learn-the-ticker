@@ -1,6 +1,7 @@
 """Portable application data, never SQL, filesystem trees, credentials or provider profiles."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -10,7 +11,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -18,11 +19,14 @@ from backend.app.contracts import AssetIdentity, BackupSummary, Conversation, Ev
 from backend.app.db import Database, Event, Job, Record
 from backend.app.evidence import validate_claim_sources
 from backend.app.identity import identity_hash
+from backend.app.retained_imports import MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, RetainedImport
+from backend.app.import_documents import MAX_INPUT
 from backend.app.terms import term_key, validate_explanation
 
 MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
 MAX_CONTENT_BYTES = 256 * 1024 * 1024
 FORMAT = "learn-the-ticker.library"
+MAX_MANIFEST_BYTES = 64 * 1024
 
 
 class BackupError(ValueError):
@@ -35,7 +39,7 @@ class StrictModel(BaseModel):
 
 class StoredRecord(StrictModel):
     id: str = Field(max_length=200)
-    kind: Literal["asset", "bundle", "conversation", "saved", "settings", "term"]
+    kind: Literal["asset", "bundle", "conversation", "saved", "settings", "term", "import"]
     parent_id: str | None = Field(default=None, max_length=200)
     updated_at: AwareDatetime
     payload: dict
@@ -71,15 +75,35 @@ class EducationalResult(StrictModel):
     educational_redirect: str = Field(max_length=10000)
 
 
+class AttachmentEntry(StrictModel):
+    id: str = Field(pattern=r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$")
+    byte_count: int = Field(gt=0, le=MAX_INPUT)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @property
+    def path(self):
+        return "attachments/" + self.id + ".bin"
+
+
 class Manifest(StrictModel):
     format: Literal["learn-the-ticker.library"] = FORMAT
-    format_version: Literal["1"] = "1"
+    format_version: Literal["1", "2"] = "1"
     database_revision: Literal["0001"] = "0001"
     application_version: str = "0.2.0"
     created_at: AwareDatetime = Field(default_factory=now)
     content_bytes: int = Field(ge=0, le=MAX_CONTENT_BYTES)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     credentials_included: Literal[False] = False
+    attachments: list[AttachmentEntry] = Field(default_factory=list, max_length=MAX_ATTACHMENTS)
+
+    @model_validator(mode="after")
+    def validate_attachments(self):
+        if ((self.format_version == "1" and self.attachments)
+                or (self.format_version == "2" and not self.attachments)
+                or len({entry.id for entry in self.attachments}) != len(self.attachments)
+                or sum(entry.byte_count for entry in self.attachments) > MAX_ATTACHMENT_BYTES):
+            raise ValueError("Invalid attachment manifest")
+        return self
 
 
 def utc(value: datetime) -> datetime:
@@ -93,13 +117,21 @@ def validate_library(data: LibraryData):
         raise BackupError("Duplicate library record")
     records = {row.id: row for row in data.records}
     bundles: dict[str, EvidenceBundle] = {}
+    imports = [row for row in data.records if row.kind == "import"]
+    if len(imports) > MAX_ATTACHMENTS:
+        raise BackupError("Library exceeds the current 100 retained-document archive limit")
+    attachment_bytes = 0
     for row in data.records:
-        model = {"asset": EvidenceBundle, "bundle": EvidenceBundle, "settings": Settings, "conversation": Conversation, "saved": SavedResearch, "term": TermExplanation}[row.kind]
+        model = {"asset": EvidenceBundle, "bundle": EvidenceBundle, "settings": Settings, "conversation": Conversation, "saved": SavedResearch, "term": TermExplanation, "import": RetainedImport}[row.kind]
         value = model.model_validate(row.payload)
         suffix = value.asset.id if row.kind == "asset" else getattr(value, "id", "")
         expected = "settings" if row.kind == "settings" else row.kind + ":" + suffix
         if row.id != expected:
             raise BackupError("Record identity does not match its content")
+        if isinstance(value, RetainedImport):
+            attachment_bytes += value.byte_count
+            if row.parent_id is not None or attachment_bytes > MAX_ATTACHMENT_BYTES:
+                raise BackupError("Retained document references or aggregate size are invalid")
         if isinstance(value, EvidenceBundle):
             if value.identity_verification and value.identity_verification.identity_hash != identity_hash(value.asset):
                 raise BackupError("Identity verification does not match the evidence scope")
@@ -178,14 +210,27 @@ def make_backup(db: Database) -> bytes:
         validate_library(data)
     except (ValueError, TypeError, KeyError) as exc:
         raise BackupError("Library contains unsupported or inconsistent records; backup was not created") from exc
+    attachments = []
+    retained_bytes = {}
+    for row in data.records:
+        if row.kind == "import":
+            document = RetainedImport.model_validate(row.payload)
+            entry = AttachmentEntry(id=document.id, byte_count=document.byte_count, sha256=document.document.content_hash)
+            attachments.append(entry)
+            retained_bytes[entry.path] = document.content()
+            # Raw bytes have their own bounded, checksummed members in format 2.
+            row.payload.pop("content_base64")
     payload = data.model_dump_json().encode("utf-8")
     if len(payload) > MAX_CONTENT_BYTES:
         raise BackupError("Library exceeds the current 256 MiB portable archive limit; no partial backup was created")
-    manifest = Manifest(content_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
+    manifest = Manifest(format_version="2" if attachments else "1", attachments=attachments,
+                        content_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", manifest.model_dump_json())
+        archive.writestr("manifest.json", manifest.model_dump_json(exclude={"attachments"} if not attachments else set()))
         archive.writestr("library.json", payload)
+        for name, content in retained_bytes.items():
+            archive.writestr(name, content)
     result = output.getvalue()
     if len(result) > MAX_ARCHIVE_BYTES:
         raise BackupError("Compressed library exceeds the current 128 MiB archive limit")
@@ -198,24 +243,50 @@ def read_backup(raw: bytes) -> tuple[Manifest, LibraryData]:
     try:
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
             entries = archive.infolist()
-            if len(entries) != 2 or {entry.filename for entry in entries} != {"manifest.json", "library.json"}:
-                raise BackupError("Archive must contain only the library and its manifest")
+            names = {entry.filename for entry in entries}
+            if len(entries) > MAX_ATTACHMENTS + 2 or len(names) != len(entries) or not {"manifest.json", "library.json"} <= names:
+                raise BackupError("Archive has missing, duplicate or excessive entries")
             manifest_info, content_info = archive.getinfo("manifest.json"), archive.getinfo("library.json")
-            if manifest_info.file_size > 10000 or content_info.file_size > MAX_CONTENT_BYTES:
+            if manifest_info.file_size > MAX_MANIFEST_BYTES or content_info.file_size > MAX_CONTENT_BYTES:
                 raise BackupError("Archive contents exceed the allowed size")
             if any(entry.flag_bits & 1 or entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED) for entry in entries):
                 raise BackupError("Encrypted or unsupported archive entries")
-            manifest = Manifest.model_validate_json(archive.read("manifest.json"))
-            payload = archive.read("library.json")
+            manifest = Manifest.model_validate_json(read_member(archive, manifest_info, MAX_MANIFEST_BYTES))
+            if names != {"manifest.json", "library.json", *(entry.path for entry in manifest.attachments)}:
+                raise BackupError("Archive contains unregistered attachment paths")
+            payload = read_member(archive, content_info, MAX_CONTENT_BYTES)
             if len(payload) != manifest.content_bytes or hashlib.sha256(payload).hexdigest() != manifest.sha256:
                 raise BackupError("Backup checksum does not match; the archive may be incomplete or modified")
             data = LibraryData.model_validate_json(payload)
+            import_rows = [row for row in data.records if row.kind == "import"]
+            expected = {"import:" + entry.id: entry for entry in manifest.attachments}
+            if len(import_rows) != len(expected) or {row.id for row in import_rows} != expected.keys():
+                raise BackupError("Retained document manifest references do not match")
+            for row in import_rows:
+                entry = expected[row.id]
+                content = read_member(archive, archive.getinfo(entry.path), entry.byte_count)
+                if (len(content) != entry.byte_count or hashlib.sha256(content).hexdigest() != entry.sha256
+                        or "content_base64" in row.payload or not isinstance(row.payload.get("document"), dict)
+                        or row.payload.get("byte_count") != entry.byte_count
+                        or row.payload.get("document", {}).get("content_hash") != entry.sha256):
+                    raise BackupError("Retained document checksum or reference mismatch")
+                row.payload["content_base64"] = base64.b64encode(content).decode("ascii")
             validate_library(data)
             return manifest, data
     except BackupError:
         raise
     except (ValidationError, ValueError, KeyError, TypeError, OSError, RuntimeError, zipfile.BadZipFile, EOFError, zlib.error) as exc:
         raise BackupError("Invalid or incompatible library archive") from exc
+
+
+def read_member(archive, entry, limit):
+    if entry.file_size > limit:
+        raise BackupError("Archive entry exceeds its permitted size")
+    with archive.open(entry) as stream:
+        raw = stream.read(limit + 1)
+    if len(raw) > limit or len(raw) != entry.file_size:
+        raise BackupError("Archive entry exceeds its permitted size")
+    return raw
 
 
 def restore_allowed(db: Database) -> bool:
@@ -227,7 +298,7 @@ def preview_backup(db: Database, raw: bytes) -> BackupSummary:
     manifest, data = read_backup(raw)
     counts = Counter(record.kind for record in data.records)
     allowed = restore_allowed(db)
-    return BackupSummary(created_at=manifest.created_at, fingerprint=hashlib.sha256(raw).hexdigest(), assets=counts["asset"], evidence_versions=counts["bundle"], conversations=counts["conversation"], saved_reports=counts["saved"], term_explanations=counts["term"], jobs=len(data.jobs), can_restore=allowed, reason=None if allowed else "Restore requires an empty library. Keep this installation intact and restore into a new library to preserve newer research.")
+    return BackupSummary(format_version=manifest.format_version, created_at=manifest.created_at, fingerprint=hashlib.sha256(raw).hexdigest(), assets=counts["asset"], evidence_versions=counts["bundle"], conversations=counts["conversation"], saved_reports=counts["saved"], term_explanations=counts["term"], retained_imports=counts["import"], attachment_bytes=sum(entry.byte_count for entry in manifest.attachments), jobs=len(data.jobs), can_restore=allowed, reason=None if allowed else "Restore requires an empty library. Keep this installation intact and restore into a new library to preserve newer research.")
 
 
 def restore_backup(db: Database, raw: bytes, fingerprint: str) -> BackupSummary:
