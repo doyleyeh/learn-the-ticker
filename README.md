@@ -10,6 +10,8 @@ Online research must combine configured financial/news APIs with autonomous live
 
 New research requires independent identity verification. SEC resolves issuer/listing metadata; OpenFIGI provides a separate public instrument-identifier lookup without an account or API key. Exact FIGIs, tickers and full names can produce listing/class/contract choices; incomplete results require a more specific selection. Records from the two registries are never merged by name/ticker alone. Uncertain type/currency remains explicit; all-category live coverage and financial/news admission remain M2 work. Unresolved or changed identities cannot publish facts, and unknown source rights retain links only. Existing saved versions remain accessible. Online cache reuse checks the saved language/reader level, identity and supporting source dates; newly downloaded old information is not current evidence.
 
+The initial SEC financial adapter independently checks one reviewed common-stock listing against its issuer, then normalizes official observations with original units, dates and filing revisions. Missing history remains explicit. Its separate live check passed; numeric publication, persisted financial evidence and charts remain unfinished. See the [adapter evidence and limits](docs/verification/2026-10-04-sec-financial-observations.md).
+
 ## Development on Windows
 
 Use Python 3.12 and Node 22.13+ (22.x) or Node 24+ for development; native builds also need Rust/MSVC and the Windows webview prerequisites. PostgreSQL 17 binaries were used in the local lifecycle tests. Other major versions have not been qualified. The future end-user installer must bundle the core dependencies and handle provider prerequisites explicitly.

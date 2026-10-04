@@ -22,6 +22,12 @@ _SEC_LOCK = threading.Lock()
 _SEC_LAST_REQUEST = 0.0
 
 
+class SourceFetchError(ValueError):
+    def __init__(self, status: int):
+        super().__init__("Public source request was unavailable")
+        self.status = status
+
+
 def valid_sec_contact(value: str) -> bool:
     return (10 <= len(value) <= 200 and value.isascii()
             and not any(ord(c) < 32 or ord(c) == 127 for c in value)
@@ -86,7 +92,9 @@ def fetch_public_bytes(url: str, *, accept="text/html,text/plain", user_agent="L
             headers["Content-Type"] = "application/json"
         connection.request("POST" if json_body is not None else "GET", parsed.path + ("?" + parsed.query if parsed.query else ""), body=json_body, headers=headers)
         response = connection.getresponse()
-        if response.status != 200 or response.getheader("Content-Type", "").split(";")[0].strip() not in accept.split(","):
+        if response.status != 200:
+            raise SourceFetchError(response.status)
+        if response.getheader("Content-Type", "").split(";")[0].strip() not in accept.split(","):
             raise ValueError("Source cannot be verified as a readable document")
         raw = response.read(MAX_BYTES + 1)
         if len(raw) > MAX_BYTES:

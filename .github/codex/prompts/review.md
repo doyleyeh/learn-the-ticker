@@ -36,6 +36,8 @@ For M2 identity/admission changes, reject same-ID changes in listing, issuer, cl
 
 OpenFIGI identity changes must preserve separate listing/composite/share-class IDs, check digits, exact scope and incomplete-page ambiguity. An ETP label cannot certify ETF type, generic futures cannot certify a dated contract and fresh metadata cannot certify active trading status. Do not merge SEC and FIGI records or attach a CIK by name/ticker resemblance. Metadata permission does not admit financial facts or arbitrary website text. Keep lookup POST requests on the two registered endpoints, below anonymous limits and outside deterministic CI. A verified model proposal after an unresolved request still needs user scope confirmation before source admission.
 
+SEC financial association must preserve both independent proofs and DEC-025's exact name/symbol/reviewed-venue checks. Keep decimal precision, concept/unit/actual period, filing date/accession and all retained revisions; latest conflicts cannot supply current values. Never splice concepts, invent missing quarters or infer split-adjusted prices. Fresh retrieval cannot refresh old observation dates. Rate/access/server failures stop remaining requests and cancellation publishes nothing. Adapter results alone do not qualify persisted numeric admission, charts or full online research.
+
 Return:
 
 - summary
