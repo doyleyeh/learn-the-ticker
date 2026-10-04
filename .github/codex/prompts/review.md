@@ -44,6 +44,8 @@ Research scheduling must retain the retrieval slot until cancelled blocking I/O 
 
 Filing publication/report dates require independently retrieved SEC index metadata bound to exact issuer/accession/document URLs; model proof fields must be cleared. Metadata is not narrative claim support or a complete news feed. Validate publication references with issuer proof in the same bundle, keep original dates in exports/restore and disclose unavailable current coverage. A live research check needs observed search, page opening and subsequent follow-up plus independently dated supported claims; snippets, action counts or an application-owned fetch alone cannot establish the full workflow. Use DEC-028: correlate completed navigation with an independently verified dated cited URL, separately from fact admission. Event results are not the complete model-visible page body; do not infer quotation support from opaque metadata. Report returned references/failure indicators and telemetry limits honestly. Historical conversation facts must retain their version/source metadata, exclude notes and other identities, and undergo independent validation before new factual publication. Never log raw provider actions or contact headers to diagnose it.
 
+Import parsing must retain literal source locators/decimals without fact admission, reject entities/expansion/active content, and run behind owned process time/memory limits. Do not pass document paths, provider credentials or raw parser errors through its pipes. Verify the frozen worker as well as source mode; parser success is not native file selection, usage rights or attachment restore acceptance.
+
 Return:
 
 - summary

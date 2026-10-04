@@ -19,12 +19,12 @@ class ProcessGroup:
                 pass
 
 
-async def launch_owned(*command, **kwargs):
+async def launch_owned(*command, memory_limit=None, **kwargs):
     owner, process = None, None
     try:
         if os.name == "nt":
             from backend.app.windows_job import WindowsJob
-            owner = WindowsJob()
+            owner = WindowsJob(memory_limit=memory_limit) if memory_limit is not None else WindowsJob()
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | 0x4  # CREATE_SUSPENDED
         else:
             kwargs["start_new_session"] = True

@@ -34,6 +34,12 @@ Routes cover authenticated health, settings, connection diagnostics, library, re
 
 Persisted settings are not all operational features. Cloud permission, selected provider/model, explanation language and conversation expiry affect current behavior. Manual source review keeps incoming sources as unverified candidates; there is no admission-review UI yet. Update mode, start-at-login and the document-cache size are stored preferences awaiting their respective services. Connections exposes bounded subscription model discovery and explicit selection; a stored selection does not qualify live model access.
 
+## Import parser boundary
+
+`import_documents` extracts untrusted PDF/CSV/XLSX/HTML content only; production use goes through `import_worker`. Input is at most 5 MiB, ZIP expansion 20 MiB with 4 MiB per entry/stream, 100 PDF pages, 20 sheets, 2,000 rows, 100 columns, 10,000 cells and 200,000 content characters. Workers have a 20-second deadline and 512 MiB memory ceiling (Windows committed-memory Job Object; POSIX development resource limits). An optional Job Object memory parameter leaves provider defaults unchanged. Cancellation closes the owned process tree.
+
+Workers receive base64 bytes and a format over stdin, no document path or provider/database credential. They return strict JSON with original hash/page/cell locators, literal values and limitations. XLSX numeric XML text is retained without float rounding; cached formula results never establish computed facts. XML preflight rejects DTDs/entities, ZIP expansion, active content and external relationships. PDF script/actions/attachments and encrypted or text-unavailable documents fail explicitly; no external decoder is enabled. Parser errors/logs never reach user output. The frozen sidecar has a narrow `--parse-import` entry distinct from database startup. API/UI/rights admission and durable attachment restore are still separate M3 work.
+
 ## Term explanations
 
 Conversation research hydrates up to five distinct immutable assistant bundles from the last twenty messages after the latest scope change. Full identity fingerprints must match. A 400,000-character budget admits complete contexts, never detached claims without their sources. Context includes original bundle/date metadata and version-specific hashed source aliases; notes are excluded and current registered rights are checked. The application resolves reused aliases to stored URLs even when the model omits or substitutes source objects. New publication retrieves and validates support again, preserving original snapshots and dates. This uses existing JSON documents, not a new citation database or SQL migration. Publication and archive restore share claim/source-reference validation.
@@ -139,5 +145,8 @@ Build PyInstaller separately for each OS. The current script accepts Windows x64
 | PyInstaller | Ship Python dependencies; system Python conflicts with installer promise | GPL with bootloader exception; build per OS |
 | Vitest | Executable frontend scenarios; source-string smoke tests replaced | MIT; developer only; update vulnerable mocker versions |
 | json-schema-to-typescript | Generated contracts; handwritten duplication rejected | MIT; build-time only |
+| pypdf 6.19.0 | PDF extraction; handwritten parser or external Office/OCR rejected | BSD-3-Clause; bounded owned worker, no external decoder; included in sidecar |
+| openpyxl 3.1.5 / et-xmlfile 2.0.0 | OOXML cells/styles; preserve original XML decimals alongside reader output | MIT; formulas unexecuted, ZIP/XML preflight; included in sidecar |
+| defusedxml 0.7.1 | Entity/DTD rejection; default XML parsing alone is insufficient | PSF license; pinned secure XML path; [retained notices](docs/THIRD_PARTY_NOTICES.md) |
 
 FastAPI/Uvicorn, React, TypeScript and existing reviewed dependencies are retained. Review transitive notices and exact pinned artifacts before distribution. No runtime dependency is added for Tailwind/shadcn in this slice.

@@ -26,7 +26,7 @@ class ThreadEntry(ctypes.Structure):
 
 
 class WindowsJob:
-    def __init__(self):
+    def __init__(self, *, memory_limit=None):
         self.api = ctypes.WinDLL("kernel32", use_last_error=True)
         definitions = {
             "CreateJobObjectW": ([ctypes.c_void_p, w.LPCWSTR], w.HANDLE),
@@ -50,6 +50,12 @@ class WindowsJob:
             raise OSError("Cannot create provider process ownership boundary")
         limits = ExtendedLimits()
         limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE; no breakaway.
+        if memory_limit is not None:
+            if not isinstance(memory_limit, int) or not 32 * 1024 * 1024 <= memory_limit <= 4 * 1024 * 1024 * 1024:
+                self.close()
+                raise ValueError("Invalid owned process memory limit")
+            limits.basic.flags |= 0x100 | 0x200  # Per-process and aggregate job committed memory.
+            limits.process_memory = limits.job_memory = memory_limit
         if not self.api.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
             self.close()
             raise OSError("Cannot configure provider process ownership boundary")

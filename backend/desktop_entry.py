@@ -1,4 +1,9 @@
-from backend.app.entrypoint import run
+import sys
 
 if __name__ == "__main__":
-    run()
+    if sys.argv[1:] == ["--parse-import"]:
+        from backend.app.import_worker import main
+        main()
+    else:
+        from backend.app.entrypoint import run
+        run()

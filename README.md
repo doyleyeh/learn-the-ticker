@@ -109,3 +109,6 @@ Use the shared fast check with `python -m scripts.verify fast`; the existing Pow
 Requirements describe the destination; STATUS records verified progress. Historical documents retain original dates under docs/archive/2026-10-04.
 
 This is educational software, not investment advice or a trading application. Distribution is Apache-2.0; data and runtime dependencies retain their own terms.
+
+
+Import parser development: bounded PDF/CSV/XLSX/HTML extraction runs in an owned worker and keeps original page/cell references, decimal text and explicit uncertainty. Formulas are not evaluated; imported content is not verified financial evidence. The API/native selection and restore-aware durable import workflow remain in progress. New dependency licenses are listed in [import notices](docs/THIRD_PARTY_NOTICES.md).
