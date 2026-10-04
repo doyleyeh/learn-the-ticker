@@ -112,6 +112,8 @@ def test_probe_output_limit_closes_stream_before_temporary_workspace_cleanup(tmp
 
 def test_quota_error_in_restricted_probe_stops_instead_of_continuing(tmp_path, monkeypatch):
     async def run():
+        async def enforced(profile): return True
+        monkeypatch.setattr("scripts.qualify_codex.enforcement_ready", enforced)
         calls = []
         async def collector(runtime, prompt, workspace, model, **kwargs):
             calls.append(Path(workspace).name)
@@ -152,6 +154,8 @@ def test_sign_in_helper_refuses_redirected_device_code_output(monkeypatch, capsy
     (RuntimeFailure("private-provider-diagnostic"), "runtime_or_probe_check_failed"),
 ])
 def test_live_failure_records_stage_without_text_or_retry(tmp_path, monkeypatch, failure, reason):
+    async def enforced(profile): return True
+    monkeypatch.setattr("scripts.qualify_codex.enforcement_ready", enforced)
     calls = []
     async def collector(runtime, prompt, workspace, model, **kwargs):
         calls.append(Path(workspace).name)
@@ -163,6 +167,19 @@ def test_live_failure_records_stage_without_text_or_retry(tmp_path, monkeypatch,
     assert report["stage"] == "source" and report["failure_reason"] == reason
     assert report["status"] == "blocked" and not report["live_qualified"]
     assert "private-provider" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("failure", [False, RuntimeFailure("private diagnostic")])
+def test_enforcement_failure_stops_live_probe_before_any_inference(tmp_path, monkeypatch, failure):
+    async def enforced(profile):
+        if isinstance(failure, Exception): raise failure
+        return failure
+    async def forbidden(*args, **kwargs): pytest.fail("inference before enforcement")
+    monkeypatch.setattr("scripts.qualify_codex.enforcement_ready", enforced)
+    monkeypatch.setattr("scripts.qualify_codex.collect", forbidden)
+    report = asyncio.run(live_probes(tmp_path, {"status": "preflight_passed", "live_qualified": False}))
+    assert report["blocker"] == "sandbox_enforcement" and not report["generation_requested"]
+    assert "private" not in str(report)
 
 
 def test_live_observations_allow_only_fixed_categories(tmp_path, monkeypatch):

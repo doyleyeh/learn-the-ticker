@@ -1,7 +1,9 @@
 import asyncio
 import base64
+import os
 from pathlib import Path
 import re
+import socket
 
 import pytest
 
@@ -86,3 +88,35 @@ def test_network_probe_requires_denial_and_no_listener_connection(tmp_path, monk
     assert result["checks"]["controlled_loopback_connection_blocked"] == passed
     assert result["checks"]["loopback_listener_observed_connection"] == connect
     assert not result["generation_requested"] and not result["live_qualified"]
+
+
+@pytest.mark.parametrize("udp", [False, True])
+@pytest.mark.parametrize("connect", [False, True])
+def test_extended_probe_checks_real_host_control_and_rejects_false_denial(tmp_path, monkeypatch, udp, connect):
+    async def execute(rpc, workspace, script):
+        if connect:
+            port = int(re.search(r"(?:ConnectAsync|Connect)\('127\.0\.0\.1', (\d+)\)", script).group(1))
+            if udp:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+                    client.setblocking(False)
+                    loop = asyncio.get_running_loop()
+                    await loop.sock_sendto(client, b"probe", ("127.0.0.1", port))
+                    data, _ = await asyncio.wait_for(loop.sock_recvfrom(client, 64), 2)
+                    assert data == b"ack"
+            else:
+                _, writer = await asyncio.open_connection("127.0.0.1", port)
+                writer.close(); await writer.wait_closed()
+                await asyncio.sleep(0)
+        return "NETWORK_BLOCKED"
+    monkeypatch.setattr(verify_codex_sandbox, "execute", execute)
+    result = asyncio.run(verify_codex_sandbox.additional_loopback_probe(None, tmp_path, "127.0.0.1", udp=udp))
+    assert result["host_control_reachable"] and result["reported_block"]
+    assert result["listener_observed_connection"] == connect and result["blocked"] != connect
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows proactor IPv6 WSASendTo regression")
+def test_ipv6_udp_host_control_uses_complete_socket_address(tmp_path, monkeypatch):
+    async def execute(*args): return "NETWORK_BLOCKED"
+    monkeypatch.setattr(verify_codex_sandbox, "execute", execute)
+    result = asyncio.run(verify_codex_sandbox.additional_loopback_probe(None, tmp_path, "::1", udp=True))
+    assert result["host_control_reachable"] and result["blocked"]

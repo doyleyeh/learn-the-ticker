@@ -164,8 +164,22 @@ async def collect(runtime, prompt, workspace, model, *, browsing=False):
     return output, progress
 
 
+async def enforcement_ready(profile):
+    # Explicit live qualification must exercise the real boundary, even if a
+    # prior report/setup flag passed. Import here to keep the helpers independent.
+    from scripts.verify_codex_sandbox import probe
+    result = await probe(profile, extended=True)
+    return result["status"] == "enforcement_probes_passed_review_required"
+
+
 async def live_probes(profile: Path, report: dict) -> dict:
     if report["status"] != "preflight_passed": return report
+    try:
+        if not await enforcement_ready(profile):
+            raise RuntimeFailure("Sandbox enforcement check failed")
+    except (RuntimeFailure, OSError, ValueError, TypeError, TimeoutError):
+        return {**report, "status": "blocked", "blocker": "sandbox_enforcement",
+                "generation_requested": False}
     report = {**report, "status": "running", "checks": {}, "observations": {}, "generation_requested": True}
     runtime = ProbeRuntime(profile, report["version"])
     runtime.approvals = DenyAccess()
