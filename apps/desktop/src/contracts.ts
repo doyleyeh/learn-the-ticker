@@ -829,6 +829,29 @@ export type SourceIds2 =
       string,
       string
     ];
+export type SchemaVersion33 = "1";
+export type Cancel = boolean;
+/**
+ * @maxItems 100
+ */
+export type SourceIds3 = string[];
+export type SchemaVersion34 = "1";
+export type Id13 = string;
+export type RunId2 = string;
+export type AssetId6 = string;
+/**
+ * @minItems 1
+ * @maxItems 100
+ */
+export type Sources2 = [ReviewSource, ...ReviewSource[]];
+export type SchemaVersion35 = "1";
+export type Id14 = string;
+export type Url1 = string;
+export type Publisher1 = string;
+export type SourcePolicy1 = "full_text_allowed" | "summary_allowed" | "metadata_only" | "link_only" | "rejected";
+export type RightsUrl = string;
+export type ReviewedAt = string;
+export type ExpiresAt2 = string;
 
 export interface DesktopContracts {
   ApprovalDecision?: ApprovalDecision;
@@ -858,6 +881,8 @@ export interface DesktopContracts {
   TermExplanation?: TermExplanation;
   TermRequest?: TermRequest;
   TermResult?: TermResult;
+  SourceReviewDecision?: SourceReviewDecision;
+  SourceReviewRequest?: SourceReviewRequest;
 }
 export interface ApprovalDecision {
   schema_version?: SchemaVersion;
@@ -1234,4 +1259,26 @@ export interface TermResult {
   explanation: Explanation2;
   basis: Basis1;
   source_ids?: SourceIds2;
+}
+export interface SourceReviewDecision {
+  schema_version?: SchemaVersion33;
+  cancel?: Cancel;
+  source_ids?: SourceIds3;
+}
+export interface SourceReviewRequest {
+  schema_version?: SchemaVersion34;
+  id?: Id13;
+  run_id: RunId2;
+  asset_id: AssetId6;
+  sources: Sources2;
+  expires_at: ExpiresAt2;
+}
+export interface ReviewSource {
+  schema_version?: SchemaVersion35;
+  id?: Id14;
+  url: Url1;
+  publisher: Publisher1;
+  policy: SourcePolicy1;
+  rights_url: RightsUrl;
+  reviewed_at: ReviewedAt;
 }

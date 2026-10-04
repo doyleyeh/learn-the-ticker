@@ -20,6 +20,7 @@ from backend.app.import_routes import mount_import_routes
 from backend.app.research import ResearchService
 from backend.app.runtimes import runtimes
 from backend.app.terms import TermService
+from backend.app.source_review import SourceReviewDecision
 
 ORIGINS = ("tauri://localhost", "http://tauri.localhost", "https://tauri.localhost", "http://localhost:1420", "http://127.0.0.1:1420")
 
@@ -111,6 +112,21 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     @app.get("/api/connections")
     async def connections():
         return [await adapter.check() for adapter in service.adapters.values()]
+
+    @app.get("/api/source-reviews")
+    async def source_reviews():
+        return JSONResponse([item.model_dump(mode="json") for item in service.source_reviews.snapshot()], headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/jobs/{job_id}/source-reviews/{review_id}")
+    async def review_sources(job_id: str, review_id: str, decision: SourceReviewDecision):
+        job, task = db.job(job_id), service.tasks.get(job_id)
+        if not job or job["status"] != "running" or not task or task.done() or not service.settings().cloud_enabled:
+            raise HTTPException(409, "Research is no longer active. No source was approved.")
+        try:
+            service.source_reviews.resolve(job_id, review_id, decision)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return JSONResponse({"accepted": True}, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/approvals")
     async def approvals():

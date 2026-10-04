@@ -89,6 +89,21 @@ def test_scope_failure_stops_before_financial_retrieval():
     assert not result.concepts and result.issuer is None and "issuer_instrument_association_unconfirmed" in result.gaps
 
 
+def test_prepared_review_scope_expires_or_rejects_different_instrument_before_fetch():
+    at = [AT]
+    calls = []
+    adapter = SecFinancialAdapter(Resolver(), lambda *a, **kw: calls.append(a) or raw(), clock=lambda: at[0])
+    prepared = adapter.prepare("FIGI:chosen")
+    assert prepared.issuer and not calls
+    other = prepared.instrument.asset.model_copy(update={"id": "foreign"})
+    with pytest.raises(ValueError, match="scope"):
+        adapter.retrieve("FIGI:chosen", prepared=prepared, resolved=ResolvedIdentity(other, prepared.instrument.verification))
+    at[0] += timedelta(days=2)
+    with pytest.raises(ValueError, match="scope"):
+        adapter.retrieve("FIGI:chosen", prepared=prepared)
+    assert not calls
+
+
 def test_identity_dates_are_checked_after_retrieval_completes():
     tick = [AT]
     class AdvancingResolver(Resolver):

@@ -54,11 +54,9 @@ class SecFinancialAdapter:
         self.resolver = resolver or RegisteredIdentityResolver()
         self.fetcher, self.clock = fetcher or fetch_public_bytes, clock
 
-    def retrieve(self, query: str, *, concepts=None, cancelled: threading.Event | None = None,
-                 resolved: ResolvedIdentity | None = None) -> StructuredFinancials:
-        selected = tuple(CONCEPTS) if concepts is None else tuple(concepts)
-        if not selected or len(selected) > len(CONCEPTS) or len(set(selected)) != len(selected) or any(key not in CONCEPTS for key in selected):
-            raise ValueError("Select registered financial concepts")
+    def prepare(self, query: str, *, cancelled: threading.Event | None = None,
+                resolved: ResolvedIdentity | None = None) -> StructuredFinancials:
+        """Resolve scope only, so source review can precede any financial retrieval."""
         def check_cancel():
             if cancelled is not None and cancelled.is_set():
                 raise InterruptedError("Structured retrieval was cancelled")
@@ -81,6 +79,24 @@ class SecFinancialAdapter:
         issuer = matching_issuer(instrument, issuers, at=checked_at)
         if issuer is None:
             return StructuredFinancials(instrument, None, (), ("issuer_instrument_association_unconfirmed",))
+        return StructuredFinancials(instrument, issuer, (), (), checked_at)
+
+    def retrieve(self, query: str, *, concepts=None, cancelled: threading.Event | None = None,
+                 resolved: ResolvedIdentity | None = None, prepared: StructuredFinancials | None = None) -> StructuredFinancials:
+        selected = tuple(CONCEPTS) if concepts is None else tuple(concepts)
+        if not selected or len(selected) > len(CONCEPTS) or len(set(selected)) != len(selected) or any(key not in CONCEPTS for key in selected):
+            raise ValueError("Select registered financial concepts")
+        def check_cancel():
+            if cancelled is not None and cancelled.is_set():
+                raise InterruptedError("Structured retrieval was cancelled")
+        check_cancel()
+        scope = prepared or self.prepare(query, cancelled=cancelled, resolved=resolved)
+        instrument, issuer, checked_at = scope.instrument, scope.issuer, self.clock()
+        if issuer is None:
+            return scope
+        if (instrument is None or (resolved is not None and instrument != resolved)
+                or matching_issuer(instrument, [issuer], at=checked_at) != issuer):
+            raise ValueError("Prepared financial scope is no longer valid")
         results, gaps = [], {"price_history_unavailable", "corporate_actions_unavailable"}
         for concept in selected:
             check_cancel()

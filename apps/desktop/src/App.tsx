@@ -11,6 +11,7 @@ import { EvidenceSections, contextSections } from "./EvidenceSections";
 import { CodexConnection } from "./CodexConnection";
 import { Connections } from "./Connections";
 import { AccessReview } from "./AccessReview";
+import { SourceReview } from "./SourceReview";
 import { TermLearning } from "./TermLearning";
 import { ResearchJobs } from "./ResearchJobs";
 import { activeResearch, observeResearch } from "./researchObservation";
@@ -127,6 +128,7 @@ export function App() {
       {notice && <p role="status">{notice}</p>}
       {!ready ? <Connect onConnect={async (endpoint, token) => { try { connect({ endpoint, token }); await reload(); } catch (error) { fail(error); } }} /> : <>
         <AccessReview />
+        <SourceReview onReviewed={(runId) => { void reopenResearch(runId).catch(fail); }}/>
         <form className="research-bar" onSubmit={research}><label htmlFor="research-query">Understand an asset<input id="research-query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ticker, asset name, exchange or contract" required maxLength={1000}/></label><label>Explanation level<select value={level} onChange={(e) => setLevel(e.target.value as typeof level)}><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option></select></label><button disabled={busy}>{settings?.cloud_enabled ? "Research" : "Open cached research"}</button></form>
         {!settings?.cloud_enabled && <p>Online research is off. Enable your chosen provider in <a href="#connections">Connections</a>. Cached pages remain available.</p>}
         <ResearchJobs currentId={job?.id} revision={`${job?.id}:${job?.status}`} onOpen={reopenResearch}/>

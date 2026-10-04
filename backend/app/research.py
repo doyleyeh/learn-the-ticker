@@ -19,6 +19,9 @@ from backend.app.runtimes import RuntimeFailure
 from backend.app.runtime_base import AIRuntime
 from backend.app.structured_financials import SecFinancialAdapter
 from backend.app.sec_filings import SecFilingsAdapter
+from backend.app.sec_filings import index_url
+from backend.app.sec_financials import CONCEPTS, concept_url
+from backend.app.source_review import SourceReviewBroker, SourceReviewScope
 from backend.safety import classify_question, educational_redirect
 
 
@@ -64,6 +67,7 @@ class ResearchService:
         self.retrieval_workers: set[asyncio.Task] = set()
         self.stop_events: dict[str, threading.Event] = {}
         self.approvals = ApprovalBroker()
+        self.source_reviews = SourceReviewBroker()
         for adapter in self.adapters.values():
             if isinstance(adapter, AIRuntime):
                 adapter.approvals = self.approvals
@@ -189,14 +193,26 @@ class ResearchService:
         if not self.settings().cloud_enabled:
             raise RuntimeFailure("Cloud permission was revoked before this run completed")
 
-    async def structured(self, resolved, request, cancelled):
-        if self.settings().manual_source_review:
-            return None, "Financial history awaits source review."
+    async def structured(self, resolved, request, cancelled, review):
         if resolved is None or resolved.asset.asset_type != "stock" or resolved.verification.authority != "openfigi-v3":
             return None, "Financial history could not be independently verified for this asset."
         try:
+            options = {}
+            if review.active():
+                if not hasattr(self.financial_adapter, "prepare"):
+                    return None, "Financial history awaits source review."
+                prepared = await self.retrieve(lambda: self.financial_adapter.prepare(resolved.asset.id,
+                    resolved=resolved, cancelled=cancelled), cancelled=cancelled)
+                if prepared.issuer is None:
+                    return None, "Financial history could not be independently verified for this asset."
+                urls = {concept: concept_url(prepared.issuer.asset.identifiers["cik"], concept) for concept in CONCEPTS}
+                allowed = await review.select(resolved.asset.id, urls.values())
+                selected = tuple(concept for concept, url in urls.items() if url in allowed)
+                if not selected:
+                    return None, "Financial history awaits source review; no financial sources were selected."
+                options = {"prepared": prepared, "concepts": selected}
             result = await self.retrieve(lambda: self.financial_adapter.retrieve(resolved.asset.id,
-                resolved=resolved, cancelled=cancelled), cancelled=cancelled)
+                resolved=resolved, cancelled=cancelled, **options), cancelled=cancelled)
             if result.issuer is None:
                 return None, "Financial history could not be independently verified for this asset."
             bundle = EvidenceBundle(asset=resolved.asset, identity_verification=resolved.verification,
@@ -209,9 +225,9 @@ class ResearchService:
         except (ValueError, OSError):
             return None, "Financial history is unavailable from the permitted source."
 
-    def checkpoint(self, job_id, bundle):
+    def checkpoint(self, job_id, bundle, review):
         self.require_consent()
-        if self.settings().manual_source_review:
+        if any(not review.allowed(str(source.url)) for source in bundle.sources if source.verified):
             return
         # Revalidate after stripping notes/candidates; no raw model output is stored.
         if not bundle.claims and not (bundle.financials and bundle.financials.observations):
@@ -222,6 +238,7 @@ class ResearchService:
 
     async def run(self, job_id: str, request: ResearchRequest):
         try:
+            review = SourceReviewScope(self, job_id)
             cancelled = self.stop_events.get(job_id) or threading.Event()
             if not self.settings().cloud_enabled:
                 raise RuntimeFailure("Cloud permission was revoked before this run started")
@@ -257,23 +274,24 @@ class ResearchService:
             if resolved:
                 prompt += "\nINDEPENDENTLY RESOLVED IDENTITY: " + resolved.asset.model_dump_json() + "\nUse these exact identity attributes. Unknown type or currency must remain unknown."
             self.emit(RuntimeEvent(run_id=job_id, kind="tool.started", text="Checking available financial history and its sources"))
-            financial, financial_gap = await self.structured(resolved, request, cancelled)
+            financial, financial_gap = await self.structured(resolved, request, cancelled, review)
             self.require_consent()
             if financial:
-                self.checkpoint(job_id, financial)
+                self.checkpoint(job_id, financial, review)
             issuer = (ResolvedIdentity(financial.financials.issuer, financial.financials.issuer_verification) if financial
                       else resolved if resolved and resolved.verification.authority == "sec-listings-v1" else None)
             filings = []
-            if issuer and not self.settings().manual_source_review:
+            if issuer and await review.select(resolved.asset.id, [index_url(issuer.asset.identifiers["cik"])]):
                 try:
                     filings = await self.retrieve(lambda: self.filing_adapter.retrieve(issuer, cancelled=cancelled), cancelled=cancelled)
                 except (ValueError, OSError):
                     filings = []
             filing_sources = {}
             attempted_filings, filings_blocked = set(), False
+            permitted_filings = await review.select(resolved.asset.id, [str(row.document_url) for row in filings[:2]]) if filings else set()
             for publication in filings[:2]:
-                if self.settings().manual_source_review:
-                    break
+                if str(publication.document_url) not in permitted_filings or not review.allowed(str(publication.document_url)):
+                    continue
                 try:
                     attempted_filings.add(str(publication.document_url))
                     candidate = Source(id="filing:" + uid(), asset_id=issuer.asset.id, url=publication.document_url,
@@ -357,6 +375,9 @@ class ResearchService:
             candidates.extend(historical_sources[sid] for sid in sorted(requested_history))
             if len(candidates) > 100:
                 raise RuntimeFailure("The response cites too many sources. Ask a narrower follow-up.")
+            await review.select(asset.id, [str(source.url) for source in candidates
+                if source.asset_id == asset.id and source.policy != SourcePolicy.rejected
+                and source.id not in financial_sources and source.id not in filing_sources])
             narrative_checkpoint = False
             for source in candidates:
                 if source.asset_id != asset.id:
@@ -364,8 +385,7 @@ class ResearchService:
                 if source.id in financial_sources or source.id in filing_sources:
                     # Context citations remain application-owned, regardless of model copies.
                     continue
-                if self.settings().manual_source_review:
-                    # A preview may collect candidate links but cannot bypass manual review.
+                if not review.allowed(str(source.url)):
                     source = candidate_metadata(source)
                 else:
                     try:
@@ -390,19 +410,21 @@ class ResearchService:
                 sources.append(source)
                 # At most one narrative checkpoint plus the earlier financial checkpoint.
                 # Later evidence remains in the final immutable version.
-                if not narrative_checkpoint and not self.settings().manual_source_review:
+                if not narrative_checkpoint:
                     partial = admit_bundle(asset, [*sources, *filing_sources.values(), *financial_sources.values()], result.claims,
                         language=request.language, level=request.level, identity_verification=resolved.verification,
                         created_at=self.clock(), financials=financial.financials if financial else None)
                     if partial.claims:
-                        self.checkpoint(job_id, partial)
+                        self.checkpoint(job_id, partial, review)
                         narrative_checkpoint = True
             self.require_consent()
-            if self.settings().manual_source_review:
-                financial = None
-                financial_sources = {}
-                financial_gap = "Financial history awaits source review."
-                sources = [candidate_metadata(source) for source in [*sources, *filing_sources.values()]]
+            if review.active():
+                if any(not review.allowed(str(source.url)) for source in financial_sources.values()):
+                    financial = None
+                    financial_sources = {}
+                    financial_gap = "Financial history awaits source review."
+                sources = [source if review.allowed(str(source.url)) else candidate_metadata(source)
+                           for source in [*sources, *filing_sources.values()]]
                 filing_sources = {}
             sources.extend(filing_sources.values())
             sources.extend(financial_sources.values())
@@ -434,12 +456,14 @@ class ResearchService:
             self.db.transition(job_id, "failed", error="Research could not be validated. Check the connection and retry; no facts were invented.")
         finally:
             self.approvals.cancel(job_id)
+            self.source_reviews.cancel(job_id)
             job = self.db.job(job_id)
             if job and job["status"] not in ("cancelled",):
                 self.emit(RuntimeEvent(run_id=job_id, kind="run.failed" if job["status"] == "failed" else "run.completed", text=job["error"] or "", data={"status": job["status"]}))
 
     async def cancel(self, job_id: str):
         self.approvals.cancel(job_id)
+        self.source_reviews.cancel(job_id)
         if job_id in self.stop_events:
             self.stop_events[job_id].set()
         task = self.tasks.get(job_id)
@@ -453,6 +477,7 @@ class ResearchService:
 
     async def close(self):
         self.approvals.cancel()
+        self.source_reviews.cancel()
         for stopped in self.stop_events.values():
             stopped.set()
         for task in list(self.tasks.values()):

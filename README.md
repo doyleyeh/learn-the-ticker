@@ -20,6 +20,8 @@ Recent research jobs lets you reopen progress or an original saved response afte
 
 Independently checked financial history and supported sections can appear while research continues. These versions are labeled incomplete and preserve their original source links. Cancellation or failure keeps checked sections available without replacing earlier completed research. Final answers remain separate versions; missing information stays explicit.
 
+Optional source review lets you select exact permitted sources before the app retrieves evidence. Selections start unchecked; skip or cancel if needed. Approval still requires independent identity, claim-support and usage-rights validation. Identity lookup and the provider's permitted browsing remain part of cloud research. Reviews expire after two minutes and never resume automatically after restart/restore; earlier saved research remains available.
+
 The Sources screen can retain bounded original documents with checksums, provenance and separate storage/backup permission. Reopening preserves original dates and references, works offline and keeps the content unverified. With separate sharing permission, your selected compatible provider can explain a retained document with browsing disabled. Saved interpretations retain original page/cell quotations, work offline and never become facts or chart inputs. Backups include permitted copies and their explanations and read older archives. See [archive compatibility](docs/MIGRATION.md#database-and-library-compatibility).
 
 ## Development on Windows

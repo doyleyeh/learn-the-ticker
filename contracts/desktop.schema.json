@@ -1781,6 +1781,56 @@
       "title": "RetainedImportView",
       "type": "object"
     },
+    "ReviewSource": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "publisher": {
+          "title": "Publisher",
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/SourcePolicy"
+        },
+        "rights_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Rights Url",
+          "type": "string"
+        },
+        "reviewed_at": {
+          "format": "date",
+          "title": "Reviewed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "publisher",
+        "policy",
+        "rights_url",
+        "reviewed_at"
+      ],
+      "title": "ReviewSource",
+      "type": "object"
+    },
     "RuntimeCapabilities": {
       "additionalProperties": false,
       "properties": {
@@ -2278,6 +2328,77 @@
       "title": "SourcePolicy",
       "type": "string"
     },
+    "SourceReviewDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "cancel": {
+          "default": false,
+          "title": "Cancel",
+          "type": "boolean"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Source Ids",
+          "type": "array"
+        }
+      },
+      "title": "SourceReviewDecision",
+      "type": "object"
+    },
+    "SourceReviewRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "asset_id": {
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/ReviewSource"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "asset_id",
+        "sources",
+        "expires_at"
+      ],
+      "title": "SourceReviewRequest",
+      "type": "object"
+    },
     "TermExplanation": {
       "additionalProperties": false,
       "properties": {
@@ -2594,6 +2715,12 @@
     },
     "TermResult": {
       "$ref": "#/$defs/TermResult"
+    },
+    "SourceReviewDecision": {
+      "$ref": "#/$defs/SourceReviewDecision"
+    },
+    "SourceReviewRequest": {
+      "$ref": "#/$defs/SourceReviewRequest"
     }
   },
   "additionalProperties": false

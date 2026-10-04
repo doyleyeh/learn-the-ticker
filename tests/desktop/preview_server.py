@@ -134,6 +134,13 @@ if __name__ == "__main__":
         app.state.service.clock = lambda: AT
         app.state.service.adapters = {"codex": PreviewRecoveryRuntime(result.instrument.asset)}
         db.put("settings", "settings", {"cloud_enabled": True})
+    if "--source-review-demo" in sys.argv:
+        from tests.desktop.source_review_fixture import review_service
+        demo, _ = review_service(db, Path(".local/preview-source-review"))
+        service = app.state.service
+        service.adapters, service.verifier = demo.adapters, demo.verifier
+        service.identity_resolver, service.financial_adapter = demo.identity_resolver, demo.financial_adapter
+        service.filing_adapter, service.clock = demo.filing_adapter, demo.clock
     if "--approvals-demo" in sys.argv:
         adapter = PreviewAccessRuntime(asset)
         adapter.approvals = app.state.service.approvals

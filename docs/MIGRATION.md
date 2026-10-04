@@ -44,6 +44,8 @@ Research-job recovery reads existing job IDs, bounded request metadata and statu
 
 Evidence versions now carry `completion`, defaulting to `complete` for older records. New `section_checkpoint` versions contain independently admitted sections from an unfinished run and cannot replace a current asset or be marked completed. They use existing bundle/job/event tables and archive versions; restore preserves the original section references while interrupting active jobs. Older binaries that do not understand this field are not qualified rollback targets. A completed response may still have partial data availability; completion does not certify comprehensive coverage.
 
+Source-review requests and decisions are memory-only and excluded from SQL, portable backups and exports. A restored research job that was awaiting source selection is interrupted; nothing is automatically selected, fetched or replayed. Independently admitted results from reviewed sources use the same immutable evidence format and original references. No schema/archive revision changes.
+
 ## Native packaging and platforms
 
 The current source setup installs Python/frontend dependencies after the developer provides Python and Node. Native launch additionally requires Rust/MSVC, webview prerequisites and an explicit `LTT_PG_BIN` directory. The optional Docker Compose database is not the private desktop cluster. The public installer must remove the need for users to install or operate core Python, Node, Docker or PostgreSQL dependencies themselves.

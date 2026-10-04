@@ -141,6 +141,13 @@ def test_next_round_reuses_original_url_but_revalidates_new_fact(tmp_path, unava
                                   identity_resolver=StaticIdentityResolver(), financial_adapter=NoFinancials())
         try:
             job = await service.submit(ResearchRequest(query="Explain the prior fact", asset_id=IDENTITY.id, conversation_id=chat.id))
+            if manual:
+                from backend.app.source_review import SourceReviewDecision
+                from tests.desktop.source_review_fixture import next_review
+                review = await next_review(service, service.tasks[job["id"]])
+                assert [str(row.url) for row in review.sources] == [str(old.sources[0].url)]
+                assert not calls
+                service.source_reviews.resolve(job["id"], review.id, SourceReviewDecision())
             await service.tasks[job["id"]]
             completed = db.job(job["id"])
             if over_limit:

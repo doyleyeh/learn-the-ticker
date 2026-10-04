@@ -8,7 +8,7 @@ from threading import Barrier
 
 from sqlalchemy import event
 
-from backend.app.backup import BackupError, make_backup, preview_backup, restore_backup
+from backend.app.backup import BackupError, preview_backup, restore_backup
 from backend.app.contracts import AssetIdentity, Conversation, EvidenceBundle, IdentityVerification, RuntimeEvent, SavedResearch, Settings, TermExplanation, TermRequest, now, uid
 from backend.app.identity import identity_hash
 from backend.app.evidence_reuse import conversation_evidence
@@ -17,6 +17,7 @@ from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
 from backend.app.terms import term_key
 from tests.desktop.financial_fixture import publish_financial_snapshot
+from tests.desktop.source_review_fixture import backup_during_review, publish_review_snapshot
 from tests.desktop.import_fixture import retain_synthetic_documents, explain_synthetic_document
 from backend.app.import_previews import ImportPreview
 from backend.app.retained_imports import RetainedImport, retain_import
@@ -39,9 +40,11 @@ def main():
             databases.append(db)
             migrate(db.engine)
         source, target = databases
+        reviewed_job = asyncio.run(publish_review_snapshot(source, roots[0] / "synthetic-source-review"))
+        reviewed_ids = {row["id"] for row in source.list("bundle")}
         financial_job = asyncio.run(publish_financial_snapshot(source, roots[0] / "synthetic-research"))
         financial = EvidenceBundle.model_validate(financial_job["result"])
-        sections = [row for row in source.list("bundle") if row["completion"] == "section_checkpoint"]
+        sections = [row for row in source.list("bundle") if row["completion"] == "section_checkpoint" and row["id"] not in reviewed_ids]
         assert len(sections) == 2
         progress = EvidenceBundle.model_validate({**sections[0], "id": uid()})
         with source.session.begin() as session:
@@ -98,14 +101,14 @@ def main():
             imports.extend(admitted)
         finally:
             retained_module.MAX_ATTACHMENTS = original_limit
-        archive = make_backup(source)
+        archive, pending_review_job, pending_review_id = asyncio.run(backup_during_review(source, roots[0] / "synthetic-pending-review"))
         original_jobs = {row["id"]: row for row in source.research_jobs()}
         assert original_jobs["pending"]["status"] == "running"
         assert import_job["id"] not in original_jobs and "term-job" not in original_jobs
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
-        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 6 and summary.saved_reports == 1 and summary.term_explanations == 1
+        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 9 and summary.saved_reports == 1 and summary.term_explanations == 1
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
         assert summary.import_explanations == 1
 
@@ -131,6 +134,9 @@ def main():
         assert restored_jobs["pending"]["request"] == original_jobs["pending"]["request"]
         assert target.job("progressive-pending")["status"] == "interrupted"
         assert target.job("progressive-pending")["result"] == progress.model_dump(mode="json")
+        assert target.job(pending_review_job)["status"] == "interrupted" and target.job(pending_review_job)["result"] is None
+        assert target.job(reviewed_job["id"])["result"] == reviewed_job["result"]
+        assert not target.list("source_review") and pending_review_id not in str(target.events(pending_review_job))
         assert restored_jobs[financial_job["id"]] == original_jobs[financial_job["id"]]
         assert target.get("bundle:" + old.id) and target.get("asset:" + identity.id)["id"] == latest.id
         assert target.list("saved")[0]["bundle_id"] == old.id
@@ -163,6 +169,8 @@ def main():
         assert {row["id"]: row for row in restarted.research_jobs()} == restored_jobs
         assert restarted.job("progressive-pending")["result"] == progress.model_dump(mode="json")
         assert restarted.get("bundle:" + progress.id) == progress.model_dump(mode="json")
+        assert restarted.job(pending_review_job)["status"] == "interrupted"
+        assert restarted.job(reviewed_job["id"])["result"] == reviewed_job["result"]
         assert restarted.list("saved")[0]["bundle_id"] == old.id
         assert restarted.get("asset:" + identity.id)["id"] == latest.id
         assert restarted.get("asset:" + identity.id)["identity_verification"] == proof.model_dump(mode="json")
