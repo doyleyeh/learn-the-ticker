@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.contracts import AssetIdentity, BackupSummary, Conversation, EvidenceBundle, ResearchRequest, RuntimeEvent, SavedResearch, Settings, SourcePolicy, TermExplanation, TermRequest, now
 from backend.app.db import Database, Event, Job, Record
+from backend.app.identity import identity_hash
 from backend.app.terms import term_key, validate_explanation
 
 MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
@@ -99,6 +100,8 @@ def validate_library(data: LibraryData):
         if row.id != expected:
             raise BackupError("Record identity does not match its content")
         if isinstance(value, EvidenceBundle):
+            if value.identity_verification and value.identity_verification.identity_hash != identity_hash(value.asset):
+                raise BackupError("Identity verification does not match the evidence scope")
             if value.created_at.tzinfo is None:
                 raise BackupError("Evidence timestamps must include a timezone")
             sources = {source.id: source for source in value.sources}

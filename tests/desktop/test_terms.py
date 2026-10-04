@@ -92,7 +92,7 @@ def test_cache_versions_language_and_level_are_independent(tmp_path):
 def test_refresh_regenerates_used_terms_and_preserves_old_snapshot(tmp_path):
     async def run():
         from backend.app.contracts import ResearchRequest
-        from tests.desktop.test_application import payload
+        from tests.desktop.test_application import StaticIdentityResolver, payload
         db, bundle, runtime, research, service = setup(tmp_path)
         old = await completed(service, TermRequest(term="revenue", bundle_id=bundle.id))
         class HybridRuntime(TermRuntime):
@@ -104,6 +104,7 @@ def test_refresh_regenerates_used_terms_and_preserves_old_snapshot(tmp_path):
                         yield event
         research.adapters["codex"] = HybridRuntime({"explanation": "Revenue describes sales before costs. No supported current figures are available.", "basis": "general"})
         research.verifier = lambda source, asset: source
+        research.identity_resolver = StaticIdentityResolver()
         refresh = await research.submit(ResearchRequest(query="Refresh", asset_id=IDENTITY.id, refresh=True))
         await research.tasks[refresh["id"]]
         # The auto-regeneration uses the same queue and selected connection.

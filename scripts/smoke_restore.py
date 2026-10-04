@@ -6,7 +6,8 @@ from pathlib import Path
 from sqlalchemy import event
 
 from backend.app.backup import BackupError, make_backup, preview_backup, restore_backup
-from backend.app.contracts import AssetIdentity, Conversation, EvidenceBundle, RuntimeEvent, SavedResearch, Settings, TermExplanation, TermRequest
+from backend.app.contracts import AssetIdentity, Conversation, EvidenceBundle, IdentityVerification, RuntimeEvent, SavedResearch, Settings, TermExplanation, TermRequest, now
+from backend.app.identity import identity_hash
 from backend.app.db import Database, Event, Job
 from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
@@ -31,7 +32,9 @@ def main():
             migrate(db.engine)
         source, target = databases
         identity = AssetIdentity(id="TEST:RESTORE", symbol="RESTORE", name="Synthetic restored asset", asset_type="other")
-        old, latest = EvidenceBundle(asset=identity), EvidenceBundle(asset=identity)
+        proof = IdentityVerification(authority="synthetic-restore", source_url="https://identity.example/restore",
+                                     retrieved_at=now(), content_hash="a" * 64, identity_hash=identity_hash(identity))
+        old, latest = EvidenceBundle(asset=identity), EvidenceBundle(asset=identity, level="intermediate", identity_verification=proof)
         for bundle in (old, latest):
             source.put("bundle:" + bundle.id, "bundle", bundle.model_dump(mode="json"), identity.id)
         source.put("asset:" + identity.id, "asset", latest.model_dump(mode="json"))
@@ -92,6 +95,9 @@ def main():
         databases.append(restarted)
         assert restarted.list("saved")[0]["bundle_id"] == old.id
         assert restarted.get("asset:" + identity.id)["id"] == latest.id
+        assert restarted.get("asset:" + identity.id)["identity_verification"] == proof.model_dump(mode="json")
+        assert restarted.get("asset:" + identity.id)["level"] == "intermediate"
+        assert restarted.get("bundle:" + old.id)["identity_verification"] is None
         assert len(restarted.events("pending")) == 2
         assert restarted.get("term:" + term.id) == term.model_dump(mode="json")
         assert restarted.get("settings")["model"] == "synthetic-selected-model"

@@ -102,6 +102,14 @@ Build and run the Windows package on a clean VM without Python, Node, PostgreSQL
 
 Current results and unverified boundaries are maintained in [STATUS.md](STATUS.md). Passing the ordinary gate never implies release readiness.
 
+## Independent research identity and rights
+
+Run `python -m pytest tests/desktop/test_identity.py tests/desktop/test_research_admission.py tests/desktop/test_cache_resolution.py tests/desktop/test_backup.py -q`. Require independent listing ambiguity, exact scope fingerprints including class/contract/currency, wrong-issuer filing rejection, unknown/rejected permissions, cleared model hashes/dates on every path, no restricted derived notes, uncertain-type suppression and source-aware freshness. Latest requests must not reuse a recent bundle containing old or missing dates. Include offline language/level mismatches, legacy snapshot preservation and proof/level archive round trips. These cases are part of Q/R; generated schemas/types are C. Repeat D for persisted contract changes.
+
+Normal desktop tests clear `LTT_SEC_USER_AGENT`; use explicit synthetic resolvers and recorded/synthetic transport. No test should become live merely because the developer configured a contact. After Q, `python -m scripts.qualify_sec_identity --live --query MSFT` separately exercises the installed production SEC listing adapter. It requires an explicitly supplied local application contact, reports only fixed outcomes/source URLs/hashes/timestamps, performs no inference or library writes and never retries or prints raw failures. Default invocation does no retrieval and exits 2 (not run). A passing identity check does not qualify financial values, all asset categories or full M2 online research.
+
+For the small identity-message/saved-level UI check, run `python -m tests.desktop.preview_server --identity-demo`. It uses only a synthetic candidate and an explicitly unavailable identity resolver. New research must show the unavailable/disagreement explanation without publishing facts; opening the existing intermediate snapshot must keep its recorded level when the request selector changes. Check citations, dates/rights, missing sections and 640-pixel layout using the existing synthetic connection procedure.
+
 ## Runtime capability checks
 
 Run `python -m pytest tests/desktop/test_runtime_policy.py tests/desktop/test_codex.py tests/desktop/test_terms.py tests/desktop/test_codex_scope.py -q` for exact prerelease/build versions, bounded/sanitized discovery, qualified-capability/authentication separation, unsupported execution rejection and cached-only browsing denial. Synthetic qualification injection is not a production supported-version declaration. The reviewed Codex record additionally requires exact native Windows binary/model/catalog/policy/capability scope (DEC-022); drift must stop before turn/start and clean up without fallback. No other provider/platform/model is enabled by that record.

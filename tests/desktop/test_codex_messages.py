@@ -201,14 +201,14 @@ def test_only_completed_answer_reaches_structured_validation_and_persistence(tmp
     from backend.app.api import create_app
     from backend.app.db import Database
     from backend.app.evidence import verify_candidate
-    from tests.desktop.test_application import TOKEN, payload
+    from tests.desktop.test_application import StaticIdentityResolver, TOKEN, payload
     from tests.desktop.test_terms import setup
 
     async def run():
         runtime = CodexRuntime(tmp_path)
         if consumer == "research":
             db = Database("sqlite://", testing=True)
-            service = create_app(db, TOKEN, tmp_path, adapters={"codex": runtime}, verifier=lambda s, a: verify_candidate(s, a, lambda _: "Synthetic Example Company provides test services.")).state.service
+            service = create_app(db, TOKEN, tmp_path, adapters={"codex": runtime}, identity_resolver=StaticIdentityResolver(), verifier=lambda s, a: verify_candidate(s, a, lambda _: "Synthetic Example Company provides test services.")).state.service
             research = service
             db.put("settings", "settings", {"cloud_enabled": True})
             request = ResearchRequest(query="Synthetic business")

@@ -32,6 +32,8 @@ Focus on P0/P1 issues only:
 
 Do not nitpick style unless it affects correctness, trust, safety, source rights, packaging or maintainability. Review the submitted change; identify existing gaps as context rather than attributing them to an unrelated diff.
 
+For M2 identity/admission changes, reject same-ID changes in listing, issuer, class, contract, type or currency without independent re-resolution. Model flags and a source-name mention cannot certify identity. Require document-scoped rights, issuer-bound SEC filing paths, cleared model dates/hashes on failure/manual review and no restricted derivatives in notes. A newly created bundle cannot make old/undated source data current. Preserve saved scopes, language/level and unknown legacy fields through actual restore. Synthetic all-category tests do not qualify live category coverage; the initial SEC listing map must not be described as a complete asset resolver. Normal CI must clear live SEC contact configuration.
+
 Return:
 
 - summary

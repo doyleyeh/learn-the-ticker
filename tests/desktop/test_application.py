@@ -6,26 +6,39 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.api import create_app
-from backend.app.contracts import AssetIdentity, Claim, ResearchRequest, RuntimeEvent, Source, SourcePolicy
+from backend.app.contracts import AssetIdentity, Claim, IdentityVerification, ResearchRequest, RuntimeEvent, Source, SourcePolicy, now
+from backend.app.identity import ResolvedIdentity, identity_hash
 from backend.app.db import Database, Job
 from backend.app.evidence import admit_bundle, factual_context, verify_candidate
 from backend.app.runtimes import normalize_cli_event, provider_environment
 
 TOKEN = "test-session-token-" * 4
-IDENTITY = AssetIdentity(id="XTEST:ALPHA", symbol="ALPHA", name="Synthetic Example Company", asset_type="stock", exchange="XTEST")
+IDENTITY = AssetIdentity(id="XTEST:ALPHA", symbol="ALPHA", name="Synthetic Example Company", asset_type="stock", exchange="XTEST", identifiers={"cik": "0000000001"})
+
+
+class StaticIdentityResolver:
+    """Explicit synthetic trusted adapter; never installed by the production entrypoint."""
+    def __init__(self, *assets):
+        self.assets = assets or (IDENTITY,)
+
+    def resolve(self, query):
+        return [ResolvedIdentity(asset, IdentityVerification(authority="synthetic-test", source_url="https://identity.example/registry",
+                retrieved_at=now(), content_hash="a" * 64, identity_hash=identity_hash(asset))) for asset in self.assets]
 
 
 def source(**kwargs):
-    values = dict(id="s1", asset_id=IDENTITY.id, url="https://www.sec.gov/example", title="Synthetic filing", publisher="Synthetic regulator")
+    values = dict(id="s1", asset_id=IDENTITY.id, url="https://www.sec.gov/Archives/edgar/data/1/000000000100000001/synthetic.htm", title="Synthetic filing", publisher="Synthetic regulator")
     return Source(**(values | kwargs))
 
 
 class FakeRuntime:
     def __init__(self, payload, wait=False):
         self.payload, self.calls, self.wait = payload, 0, wait
+        self.started = asyncio.Event()
 
     async def stream(self, prompt, run_id, workspace, model=None):
         self.calls += 1
+        self.started.set()
         if self.wait:
             await asyncio.sleep(30)
         yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps(self.payload))
@@ -40,9 +53,8 @@ def test_admission_rejects_self_attestation_wrong_asset_and_unsupported_claims()
     clean = verify_candidate(candidate, IDENTITY, lambda _: pytest.fail("Unreviewed sources must not be fetched"))
     assert not clean.verified and not clean.excerpt and clean.policy == SourcePolicy.link
     bundle = admit_bundle(IDENTITY, [clean], [Claim(asset_id=IDENTITY.id, text="Revenue is 5", source_ids=["s1"], kind="fact", value=5, unit="USD"), Claim(asset_id="other", text="Wrong company", source_ids=["s1"], kind="fact")])
-    assert not bundle.claims and len(bundle.notes) == 1
+    assert not bundle.claims and not bundle.notes
     assert not factual_context(bundle)["claims"] and not factual_context(bundle)["sources"]
-    assert bundle.notes[0].value is None
 
 
 def test_exact_supported_prose_can_be_admitted_with_sources():
@@ -111,7 +123,7 @@ def test_dynamic_research_persistence_reuse_and_saved_versions(tmp_path, kind):
     async def scenario():
         db = Database("sqlite://", testing=True)
         adapter = FakeRuntime(payload(kind))
-        app = create_app(db, TOKEN, tmp_path, adapters={"codex": adapter}, verifier=lambda s, a: verify_candidate(s, a, lambda _: "Synthetic Example Company provides test services."))
+        app = create_app(db, TOKEN, tmp_path, adapters={"codex": adapter}, identity_resolver=StaticIdentityResolver(IDENTITY.model_copy(update={"asset_type": kind})), verifier=lambda s, a: verify_candidate(s, a, lambda _: "Synthetic Example Company provides test services."))
         service = app.state.service
         db.put("settings", "settings", {"cloud_enabled": True})
         result = await service.submit(ResearchRequest(query="An uncached synthetic asset"))
@@ -121,8 +133,11 @@ def test_dynamic_research_persistence_reuse_and_saved_versions(tmp_path, kind):
         assert job["result"]["asset"]["asset_type"] == kind
         assert len(job["result"]["claims"]) == 1
         old_id = job["result"]["id"]
+        # This undated document is preserved offline, never reused as fresh online research.
+        db.put("settings", "settings", {"cloud_enabled": False})
         cached = await service.submit(ResearchRequest(query="Same asset", asset_id=IDENTITY.id))
         assert cached["status"] == "cached" and adapter.calls == 1
+        db.put("settings", "settings", {"cloud_enabled": True})
         refresh = await service.submit(ResearchRequest(query="Refresh", asset_id=IDENTITY.id, refresh=True))
         await service.tasks[refresh["id"]]
         assert db.get("bundle:" + old_id) and len(db.list("bundle", IDENTITY.id)) == 2
@@ -156,7 +171,7 @@ def test_cancellation_recovery_and_no_subscription_replay(tmp_path):
         service = create_app(db, TOKEN, tmp_path, adapters={"codex": runtime}).state.service
         db.put("settings", "settings", {"cloud_enabled": True})
         job = await service.submit(ResearchRequest(query="ALPHA"))
-        await asyncio.sleep(.01)
+        await asyncio.wait_for(runtime.started.wait(), 2)
         await service.cancel(job["id"])
         assert db.job(job["id"])["status"] == "cancelled"
         with db.session.begin() as session:

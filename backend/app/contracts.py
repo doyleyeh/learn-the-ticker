@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Literal
+from urllib.parse import parse_qsl
 from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
@@ -15,6 +16,15 @@ def uid() -> str:
 
 def now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def public_reference_url(value: HttpUrl) -> HttpUrl:
+    if value.username is not None or value.password is not None:
+        raise ValueError("Source references cannot contain credentials")
+    if any(key.casefold().replace("-", "_") in {"token", "access_token", "api_key", "apikey", "password", "secret", "authorization", "signature"}
+           for key, _ in parse_qsl(value.query or "")):
+        raise ValueError("Source references cannot contain authentication parameters")
+    return value
 
 
 class Contract(BaseModel):
@@ -57,6 +67,8 @@ class Source(Contract):
     excerpt: str = Field(default="", max_length=20000)
     provenance: Literal["agent_candidate", "structured_adapter", "verified_retrieval", "user_import"] = "agent_candidate"
 
+    _public_url = field_validator("url")(public_reference_url)
+
     @model_validator(mode="after")
     def restrict_text(self):
         if self.policy in (SourcePolicy.link, SourcePolicy.metadata, SourcePolicy.rejected) and self.excerpt:
@@ -80,6 +92,16 @@ class Claim(Contract):
     input_claim_ids: list[str] = Field(default_factory=list)
 
 
+class IdentityVerification(Contract):
+    authority: str = Field(min_length=1, max_length=100)
+    source_url: HttpUrl
+    retrieved_at: AwareDatetime
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    identity_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    _public_url = field_validator("source_url")(public_reference_url)
+
+
 class EvidenceBundle(Contract):
     id: str = Field(default_factory=uid)
     asset: AssetIdentity
@@ -89,6 +111,9 @@ class EvidenceBundle(Contract):
     notes: list[Claim] = Field(default_factory=list)
     state: Literal["partial", "available", "stale", "unavailable"] = "partial"
     language: Literal["en", "zh-TW"] = "en"
+    # Missing on older snapshots: keep readable, never infer independent verification.
+    level: Literal["beginner", "intermediate"] | None = None
+    identity_verification: IdentityVerification | None = None
 
 
 class RuntimeCapabilities(Contract):

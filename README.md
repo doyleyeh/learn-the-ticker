@@ -8,6 +8,8 @@ Working preview features include the local library, evidence versions and citati
 
 Online research must combine configured financial/news APIs with autonomous live web search and reading public source pages for current market and ticker context. Qualified Codex research retains live web search; local browser/computer control remains outside its scope. The complete API/search/page-reading/freshness workflow is still M2 work, and Gemini/Claude must qualify the same online behavior in M8. Latest-information requests must verify source dates and disclose unavailable or stale information; web search alone does not establish real-time market prices.
 
+New research now requires independent identity verification. The first adapter resolves SEC-listed issuers/listings; it does not infer instrument type or currency. Other identity categories and full financial/news admission remain M2 work. Unresolved or changed identities cannot publish facts, and unknown source rights retain links only. Existing saved versions remain accessible. Online cache reuse checks the saved language/reader level, identity and supporting source dates; newly downloaded old information is not current evidence.
+
 ## Development on Windows
 
 Use Python 3.12 and Node 22.13+ (22.x) or Node 24+ for development; native builds also need Rust/MSVC and the Windows webview prerequisites. PostgreSQL 17 binaries were used in the local lifecycle tests. Other major versions have not been qualified. The future end-user installer must bundle the core dependencies and handle provider prerequisites explicitly.
@@ -21,6 +23,8 @@ npm run desktop
 ```
 
 Setup creates `.venv` and installs Python/frontend dependencies; it does not install Python, Node, Rust/MSVC, PostgreSQL or provider CLIs. `.env.example` is guidance, not an automatically loaded desktop configuration. The supervisor creates its own cluster and does not use an existing PostgreSQL service. The native launcher source still needs Rust/MSVC build and window/tray validation; these commands are not a claim of a verified installer.
+
+The SEC adapter requires `LTT_SEC_USER_AGENT` in the backend process environment, containing `LearnTheTicker/0.2` and a contact email you control, as requested by [SEC automated-access guidance](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data). This is a contact header sent to SEC, not authentication or the subscription email requirement. Keep the real value out of Git. Without it the adapter performs no SEC request; cached pages remain usable. After deterministic verification, `.venv/Scripts/python.exe -m scripts.qualify_sec_identity --live --query MSFT` performs one bounded public identity check without provider inference or library writes. The query is a probe, not a production eligibility list. Live acceptance and packaged contact configuration are still pending.
 
 `npm run dev` starts only the frontend at `http://127.0.0.1:1420`; `npm start` previews the built frontend. Neither starts a database or backend. For a reproducible browser-only demonstration without subscriptions, use the [synthetic preview instructions](EVALS.md#synthetic-browser-preview). Docker Compose is optional database development support and is not connected to the desktop supervisor.
 

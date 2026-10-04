@@ -5,7 +5,8 @@ import json
 import sys
 import uvicorn
 from backend.app.api import create_app
-from backend.app.contracts import AssetIdentity, Claim, EvidenceBundle, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, Source, SourcePolicy
+from backend.app.contracts import AssetIdentity, Claim, EvidenceBundle, IdentityVerification, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, Source, SourcePolicy, now
+from backend.app.identity import ResolvedIdentity, identity_hash
 from backend.app.db import Database
 from backend.app.backup import make_backup
 
@@ -60,11 +61,30 @@ class PreviewAccessRuntime(PreviewTermRuntime):
             raise RuntimeFailure("Synthetic access review expired. No provider was contacted.")
         yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps({"candidates": [self.asset.model_dump(mode="json")], "sources": [], "claims": []}))
 
+
+class PreviewIdentityResolver:
+    def __init__(self, asset, *, unavailable=False):
+        self.asset, self.unavailable = asset, unavailable
+
+    def resolve(self, query):
+        if self.unavailable:
+            return []
+        return [ResolvedIdentity(self.asset, IdentityVerification(authority="synthetic-preview", source_url="https://example.com/identity",
+                retrieved_at=now(), content_hash="a" * 64, identity_hash=identity_hash(self.asset)))]
+
+
+class PreviewIdentityRuntime(PreviewTermRuntime):
+    def __init__(self, asset):
+        self.asset = asset
+
+    async def stream(self, prompt, run_id, workspace, model=None, *, allow_browsing=True):
+        yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps({"candidates": [self.asset.model_dump(mode="json")], "sources": [], "claims": []}))
+
 if __name__ == "__main__":
     db = Database("sqlite://", testing=True)
     asset = AssetIdentity(id="XTEST:SYNTH", name="Synthetic Research Example", symbol="SYNTH", asset_type="stock", exchange="XTEST")
     source = Source(id="synthetic-source", asset_id=asset.id, url="https://example.com/synthetic", title="Synthetic evidence for UI testing", publisher="Test fixture", policy=SourcePolicy.summary, provenance="user_import", excerpt="Synthetic Research Example is a fictional company used for interface tests.", verified=True)
-    bundle = EvidenceBundle(asset=asset, sources=[source], claims=[Claim(asset_id=asset.id, kind="fact", text=source.excerpt, source_ids=[source.id])], notes=[Claim(asset_id=asset.id, text="This unverified example must never appear in a chart or canonical evidence.", source_ids=[source.id])])
+    bundle = EvidenceBundle(asset=asset, level="intermediate" if "--identity-demo" in sys.argv else None, sources=[source], claims=[Claim(asset_id=asset.id, kind="fact", text=source.excerpt, source_ids=[source.id])], notes=[Claim(asset_id=asset.id, text="This unverified example must never appear in a chart or canonical evidence.", source_ids=[source.id])])
     value = bundle.model_dump(mode="json")
     db.put("asset:" + asset.id, "asset", value)
     db.put("bundle:" + bundle.id, "bundle", value, asset.id)
@@ -75,7 +95,11 @@ if __name__ == "__main__":
         db = Database("sqlite://", testing=True)
     if "--models-demo" in sys.argv:
         db.put("settings", "settings", {"model": "synthetic-removed"})
-    app = create_app(db, "synthetic-preview-credential-not-for-production", Path(".local/preview"), adapters={"codex": PreviewTermRuntime()} if "--terms-demo" in sys.argv or "--models-demo" in sys.argv else None)
+    app = create_app(db, "synthetic-preview-credential-not-for-production", Path(".local/preview"), identity_resolver=PreviewIdentityResolver(asset), adapters={"codex": PreviewTermRuntime()} if "--terms-demo" in sys.argv or "--models-demo" in sys.argv else None)
+    if "--identity-demo" in sys.argv:
+        app.state.service.identity_resolver = PreviewIdentityResolver(asset, unavailable=True)
+        app.state.service.adapters = {"codex": PreviewIdentityRuntime(asset)}
+        db.put("settings", "settings", {"cloud_enabled": True})
     if "--approvals-demo" in sys.argv:
         adapter = PreviewAccessRuntime(asset)
         adapter.approvals = app.state.service.approvals

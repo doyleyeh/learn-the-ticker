@@ -15,6 +15,23 @@ from backend.app.db import Database, Event, Job, Record
 TOKEN = "backup-test-session-" * 4
 
 
+def test_registered_identity_scope_and_level_survive_restore_and_reject_tampering():
+    from tests.desktop.test_research_admission import fresh_bundle
+    source, target = Database("sqlite://", testing=True), Database("sqlite://", testing=True)
+    bundle, _ = fresh_bundle()
+    for key, kind in (("bundle:" + bundle.id, "bundle"), ("asset:" + bundle.asset.id, "asset")):
+        source.put(key, kind, bundle.model_dump(mode="json"), bundle.asset.id if kind == "bundle" else None)
+    raw = make_backup(source)
+    summary = preview_backup(target, raw)
+    restore_backup(target, raw, summary.fingerprint)
+    assert target.get("asset:" + bundle.asset.id) == bundle.model_dump(mode="json")
+    def tamper(data):
+        for row in data["records"]:
+            row["payload"]["asset"]["currency"] = "EUR"
+    with pytest.raises(BackupError, match="scope"):
+        read_backup(alter(raw, change=tamper))
+
+
 def seed(db):
     identity = AssetIdentity(id="TEST:TRANSFER", symbol="TRANSFER", name="Synthetic transfer example", asset_type="other")
     source = Source(id="portable-source", asset_id=identity.id, url="https://www.sec.gov/synthetic", title="Synthetic portable evidence", publisher="Test", policy=SourcePolicy.summary, provenance="user_import", verified=True, excerpt="Synthetic transfer example has portable evidence.")

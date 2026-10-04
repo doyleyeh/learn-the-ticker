@@ -133,7 +133,7 @@ def test_reported_reroute_stops_without_publishing_or_retrying(tmp_path, monkeyp
 
 @pytest.mark.parametrize("rerouted", [False, True])
 def test_model_telemetry_cannot_replace_selected_model_or_publish_rerouted_research(tmp_path, monkeypatch, rerouted):
-    from tests.desktop.test_application import TOKEN, payload
+    from tests.desktop.test_application import StaticIdentityResolver, TOKEN, payload
 
     async def run():
         import json
@@ -153,7 +153,7 @@ def test_model_telemetry_cannot_replace_selected_model_or_publish_rerouted_resea
         db = Database("sqlite://", testing=True)
         db.put("settings", "settings", {"cloud_enabled": True, "provider": "codex", "model": "synthetic-model"})
         # Identity-only candidate admission; no live retrieval is permitted here.
-        service = create_app(db, TOKEN, tmp_path, adapters={"codex": CodexRuntime(tmp_path)}, verifier=lambda s, a: s.model_copy(update={"verified": False})).state.service
+        service = create_app(db, TOKEN, tmp_path, adapters={"codex": CodexRuntime(tmp_path)}, identity_resolver=StaticIdentityResolver(), verifier=lambda s, a: s.model_copy(update={"verified": False})).state.service
         job = await service.submit(ResearchRequest(query="Synthetic business"))
         await service.tasks[job["id"]]
         saved = db.job(job["id"])

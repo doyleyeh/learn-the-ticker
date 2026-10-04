@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import unicodedata
 from contextlib import aclosing
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from backend.app.approvals import ApprovalBroker
-from backend.app.contracts import EvidenceBundle, ResearchRequest, ResearchResult, RuntimeEvent, Settings, uid
+from backend.app.contracts import AssetIdentity, EvidenceBundle, ResearchRequest, ResearchResult, RuntimeEvent, Settings, now, uid
 from backend.app.db import Database, Event, Job
-from backend.app.evidence import admit_bundle, factual_context, verify_candidate
+from backend.app.evidence import admit_bundle, candidate_metadata, factual_context, verify_candidate
+from backend.app.identity import SecIdentityResolver, identity_hash, normalized
+from backend.app.research_cache import reusable
 from backend.app.runtimes import RuntimeFailure
 from backend.app.runtime_base import AIRuntime
 from backend.safety import classify_question, educational_redirect
@@ -39,8 +39,9 @@ def research_prompt(request: ResearchRequest, cached: dict | None, history: list
 
 
 class ResearchService:
-    def __init__(self, db: Database, adapters: dict, workspace: Path, verifier=verify_candidate):
+    def __init__(self, db: Database, adapters: dict, workspace: Path, verifier=verify_candidate, identity_resolver=None):
         self.db, self.adapters, self.workspace, self.verifier = db, adapters, workspace, verifier
+        self.identity_resolver = identity_resolver if identity_resolver is not None else SecIdentityResolver()
         self.inference = asyncio.Semaphore(1)
         self.retrieval = asyncio.Semaphore(2)
         self.tasks: dict[str, asyncio.Task] = {}
@@ -64,9 +65,6 @@ class ResearchService:
         return self.db.get("asset:" + asset_id) if asset_id else None
 
     def cached_identities(self, query: str) -> list[dict]:
-        def normalized(value: str) -> str:
-            return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
-
         key = normalized(query)
         assets = [record["asset"] for record in self.db.list("asset")]
         # A qualified identity takes precedence over a coincidentally equal name/symbol.
@@ -84,9 +82,18 @@ class ResearchService:
                 request = request.model_copy(update={"asset_id": identities[0]["id"]})
         cached = self.cached(request.asset_id)
         if cached and not request.refresh and not request.conversation_id:
-            created = datetime.fromisoformat(cached["created_at"].replace("Z", "+00:00"))
-            if created > datetime.now(timezone.utc) - timedelta(days=1) or not self.settings().cloud_enabled:
+            bundle = EvidenceBundle.model_validate(cached)
+            if not self.settings().cloud_enabled:
+                if bundle.language != request.language or bundle.level not in (None, request.level):
+                    raise ValueError("No cached research matches this language and reader level. Open the saved version from the library or enable cloud research.")
                 return {"status": "cached", "result": cached}
+            if reusable(bundle, request):
+                identities = await self.resolve(bundle.asset.id)
+                if (len(identities) == 1 and identity_hash(identities[0].asset) == identity_hash(bundle.asset)
+                        and identities[0].verification.content_hash == bundle.identity_verification.content_hash
+                        and identities[0].verification.authority == bundle.identity_verification.authority
+                        and identities[0].verification.source_url == bundle.identity_verification.source_url):
+                    return {"status": "cached", "result": cached}
         if not self.settings().cloud_enabled:
             raise ValueError("Cloud research is disabled. Enable it in Connections; cached pages remain available.")
         request = self.selected_request(request)
@@ -112,6 +119,20 @@ class ResearchService:
         with self.db.session.begin() as session:
             session.add(Event(job_id=event.run_id, payload=event.model_dump(mode="json")))
 
+    async def resolve(self, query):
+        try:
+            async with self.retrieval:
+                rows = await asyncio.to_thread(self.identity_resolver.resolve, query)
+            if len(rows) > 20 or len({row.asset.id for row in rows}) != len(rows):
+                return []
+            return [row for row in rows if row.valid(now())]
+        except (ValueError, OSError):
+            return []
+
+    def require_consent(self):
+        if not self.settings().cloud_enabled:
+            raise RuntimeFailure("Cloud permission was revoked before this run completed")
+
     async def run(self, job_id: str, request: ResearchRequest):
         try:
             async with self.inference:
@@ -127,7 +148,18 @@ class ResearchService:
                 work.mkdir(parents=True, exist_ok=True)
                 text = ""
                 previous = self.cached(request.asset_id)
+                identities = await self.resolve(request.asset_id or request.query)
+                self.require_consent()
+                if len(identities) > 1:
+                    self.db.transition(job_id, "needs_identity", result={"candidates": [row.asset.model_dump(mode="json") for row in identities]})
+                    return
+                resolved = identities[0] if identities else None
+                if previous and resolved and identity_hash(AssetIdentity.model_validate(previous["asset"])) != identity_hash(resolved.asset):
+                    self.db.transition(job_id, "needs_identity", result={"candidates": [resolved.asset.model_dump(mode="json")], "message": "The independently resolved identity differs from this saved scope. Start a separate search."})
+                    return
                 prompt = research_prompt(request, previous, (conversation or {}).get("messages", []))
+                if resolved:
+                    prompt += "\nINDEPENDENTLY RESOLVED IDENTITY: " + resolved.asset.model_dump_json() + "\nUse these exact identity attributes. Unknown type or currency must remain unknown."
                 async with aclosing(self.adapters[request.provider].stream(prompt, job_id, work, request.model)) as events:
                     async for event in events:
                         if event.kind == "message.delta":
@@ -151,23 +183,32 @@ class ResearchService:
                 if request.asset_id and asset.id != request.asset_id:
                     self.db.transition(job_id, "needs_identity", result={"candidates": [asset.model_dump(mode="json")], "message": "Scope changed. Start a separate research request to confirm this identity."})
                     return
+                if resolved is None:
+                    identities = await self.resolve(asset.id)
+                    if not identities:
+                        identities = await self.resolve(asset.symbol)
+                    resolved = identities[0] if len(identities) == 1 else None
+                self.require_consent()
+                if (resolved is None or not resolved.valid(now()) or identity_hash(asset) != identity_hash(resolved.asset)
+                        or (previous and identity_hash(AssetIdentity.model_validate(previous["asset"])) != identity_hash(asset))):
+                    self.db.transition(job_id, "needs_identity", result={"candidates": [row.asset.model_dump(mode="json") for row in identities], "message": "Independent identity verification is unavailable or disagrees with the proposed listing, contract or share class. No facts were stored."})
+                    return
                 sources = []
                 for source in result.sources:
                     if source.asset_id != asset.id:
                         continue
                     if self.settings().manual_source_review:
                         # A preview may collect candidate links but cannot bypass manual review.
-                        from backend.app.contracts import SourcePolicy
-                        source = source.model_copy(update={"verified": False, "official": False, "policy": SourcePolicy.rejected if source.policy == SourcePolicy.rejected else SourcePolicy.link, "excerpt": "", "provenance": "agent_candidate", "published_at": None, "as_of": None})
+                        source = candidate_metadata(source)
                     else:
                         try:
                             async with self.retrieval:
                                 source = await asyncio.to_thread(self.verifier, source, asset)
                         except (ValueError, OSError):
-                            from backend.app.contracts import SourcePolicy
-                            source = source.model_copy(update={"verified": False, "official": False, "policy": SourcePolicy.rejected if source.policy == SourcePolicy.rejected else SourcePolicy.link, "excerpt": "", "provenance": "agent_candidate", "published_at": None, "as_of": None})
+                            source = candidate_metadata(source)
                     sources.append(source)
-                bundle = admit_bundle(asset, sources, result.claims, language=request.language)
+                self.require_consent()
+                bundle = admit_bundle(asset, sources, result.claims, language=request.language, level=request.level, identity_verification=resolved.verification)
                 payload = bundle.model_dump(mode="json")
                 self.db.complete_research(job_id, payload, conversation_id=request.conversation_id)
                 if previous and not request.conversation_id and getattr(self, "refresh_terms", None):
