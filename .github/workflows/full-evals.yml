@@ -1,4 +1,4 @@
-name: Full evaluations - isolated PostgreSQL lane
+name: Full evaluations - isolated database and browser lanes
 on:
   workflow_dispatch:
 permissions:
@@ -27,4 +27,21 @@ jobs:
       - name: Exercise private lifecycle, transaction recovery and real restore
         run: python -m scripts.verify database
       # This lane never starts/modifies the runner's system service.
-      # Browser/native/live/clean-machine acceptance remains in EVALS.md.
+      # Native/live/clean-machine acceptance remains in EVALS.md.
+  browser:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: python -m venv .venv
+      - run: .venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+      - run: npm ci
+      - run: npm exec --workspace apps/desktop -- playwright install chromium --only-shell
+      - name: Verify synthetic evidence, source review and reconnect in Chromium
+        run: npm run test:browser

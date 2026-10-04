@@ -14,7 +14,7 @@
 | N — packaged | `python -m scripts.verify packaged` | Builds PyInstaller sidecar and exercises packaged service; native Windows x64 and PostgreSQL required |
 | N — native | `python -m scripts.verify native` | Tauri build; requires Rust/MSVC, reviewed PostgreSQL resources and built sidecar; does not prove tray/installer behavior |
 | Full automated | `python -m scripts.verify full` | Q, D, packaged and native checks; fails with missing prerequisites, never silently skips them |
-| B — browser | Synthetic preview procedure below | Inspect interactions/citations/layout and record results; automated browser interaction harness remains M4-T03 |
+| B — browser | `npm run test:browser` plus affected synthetic preview scenarios below | Deterministic evidence/review/reconnect interactions, citations and layouts; complete financial parity remains M4-T03 |
 | L — live provider | Explicit scenarios under Required before public v1 | Live harness remains M1-T05/M8; protocol-only smoke is not inference qualification |
 | W — clean machine | Windows acceptance matrix under Required before public v1 | M11 clean VM evidence; no existing automated clean-machine harness is claimed |
 
@@ -28,7 +28,7 @@ To update contracts deliberately, run `python -m scripts.contracts` then `node s
 
 ## CI and full release gates
 
-Normal CI runs Q on Windows and Ubuntu with no live providers, source retrieval, database service or Docker requirement. The manual full-evals workflow currently runs the D lane on windows-2025 using its installed PostgreSQL 17 binaries in separate disposable clusters. It does not start or modify the runner's system database. Runner availability is checked explicitly; [the official image inventory](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md) is an input to that prerequisite, not installer qualification. No automatic API-key Codex review is enabled.
+Normal CI runs Q on Windows and Ubuntu with no live providers, source retrieval, database service or Docker requirement. The manual full-evals workflow has separate D and deterministic B lanes on windows-2025. D uses installed PostgreSQL 17 binaries in separate disposable clusters; B installs the pinned test browser and starts owned synthetic services. Neither lane starts or modifies the runner's system database. Runner availability is checked explicitly; [the official image inventory](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md) is an input to that prerequisite, not installer qualification. No automatic API-key Codex review is enabled.
 
 Full automated checks are necessary but insufficient for release. B/L/W, license/rights review, runtime isolation, signatures, migration/update/rollback interruption, and all SPEC workflows must also have dated passing evidence. Missing harnesses, toolchains, accounts or clean VM access keep the corresponding task/milestone incomplete. Extend the shared dispatcher/full-evals workflow only when real harnesses land, never with nonexistent placeholder commands.
 
@@ -65,6 +65,8 @@ Retained imports: `python -m pytest tests/desktop/test_retained_imports.py tests
 For the browser restore scenario, add `--restore-demo` to the preview command below. This writes `.local/restore-demo.lttbackup` from synthetic evidence and serves an empty in-memory test library. Restore it through Connections, inspect the library and validate a downloaded backup with `backend.app.backup.read_backup`. Use separate preview runs for restoration and term learning so initial state remains clear.
 
 ## Synthetic browser preview
+
+Repeatable B: after repository setup, run `npm exec --workspace apps/desktop -- playwright install chromium --only-shell` once, then `npm run test:browser`. This uses the production frontend build with explicit synthetic research/source adapters and the repository virtual environment. It starts owned loopback services on 1420/18764, refuses occupied ports, uses no retries, blocks external browser requests and shuts its services down. The integrated flow verifies original exact decimals/bookmarks, admitted sections while source review waits, subset/skip/cancel, original dates/rights/citations, reload without research replay and keyboard/normal/640-pixel views. Ignored screenshots are under `output/playwright/automated`. Q type-checks/lints this harness but does not install or launch a browser. Run B separately after relevant UI changes; the manual full-evals workflow includes it. This coverage does not qualify missing price/return adapters, native WebView behavior, live providers or clean-machine installation.
 
 In two repository-root terminals, run:
 

@@ -26,6 +26,8 @@ The Sources screen can retain bounded original documents with checksums, provena
 
 ## Development on Windows
 
+After repository setup, install the separate test browser once with `npm exec --workspace apps/desktop -- playwright install chromium --only-shell`, then run `npm run test:browser`. It builds the frontend, starts and stops its own synthetic loopback services and tests citations, source review, recovery, keyboard and 640-pixel behavior. Ports 1420 and 18764 must be free; the harness refuses existing services. It uses the repository `.venv`, contacts no providers and writes ignored screenshots under `output/playwright/automated`. These test tools are not desktop installer requirements.
+
 Use Python 3.12 and Node 22.13+ (22.x) or Node 24+ for development; native builds also need Rust/MSVC and the Windows webview prerequisites. PostgreSQL 17 binaries were used in the local lifecycle tests. Other major versions have not been qualified. The future end-user installer must bundle the core dependencies and handle provider prerequisites explicitly.
 
 On this Windows development machine, user-authorized installation supplied Rust/Cargo 1.99.0, Visual Studio 2022 Build Tools 17.14.41 (C++ workload/MSVC 14.44) and Windows SDK 10.0.26100.0. C++ and Rust compile/link/run probes passed. WebView2 was already installed. Open a new terminal after installation to pick up Cargo's PATH entry. Native builds use the committed Cargo.lock with `--locked`; toolchain installation alone does not qualify the application or installer.
