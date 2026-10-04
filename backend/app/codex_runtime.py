@@ -3,7 +3,7 @@ import asyncio
 from pathlib import Path
 
 from backend.app.codex_rpc import CodexRPC
-from backend.app.codex_approvals import CodexApprovals, identifier
+from backend.app.codex_approvals import CodexApprovals, PendingTools, identifier
 from backend.app.contracts import RuntimeEvent, RuntimeModelCatalog
 from backend.app.codex_models import read_models, select_model
 from backend.app.codex_messages import CodexMessages
@@ -88,6 +88,7 @@ class CodexRuntime(AIRuntime):
                 turn_id = turn["id"]
                 approvals = CodexApprovals(rpc, self.approvals, run_id, thread_id, turn_id)
                 messages = CodexMessages()
+                pending_tools = PendingTools()
                 while True:
                     raw = await rpc.event()
                     method, params = raw.get("method"), raw.get("params", {})
@@ -97,8 +98,10 @@ class CodexRuntime(AIRuntime):
                         # Term explanations have no permission to request additional tools.
                         if not allow_browsing:
                             raise RuntimeFailure("Cached-evidence explanations cannot request expanded access.")
+                        pending_item = pending_tools.request(raw)
                         yield RuntimeEvent(run_id=run_id, kind="approval.required", text="Review requested access. Research is waiting; no permission has been granted.")
                         await approvals.handle(raw)
+                        pending_tools.denied(pending_item)
                         continue
                     if method in ("item/agentMessage/delta", "item/started", "item/completed", "turn/started", "turn/completed", "model/rerouted"):
                         event_turn = params.get("turn", {}).get("id") if isinstance(params.get("turn"), dict) else params.get("turnId")
@@ -106,6 +109,9 @@ class CodexRuntime(AIRuntime):
                             raise RuntimeFailure("Codex returned activity for an unexpected thread or turn.")
                     if method == "model/rerouted":
                         raise RuntimeFailure("Codex reported a model change. The run was stopped; choose a model in Connections before retrying.")
+                    if method in ("item/commandExecution/outputDelta", "item/commandExecution/terminalInteraction",
+                                  "item/fileChange/outputDelta", "command/exec/outputDelta", "process/outputDelta"):
+                        raise RuntimeFailure("Codex reported activity outside the permitted research tools.")
                     if method == "item/agentMessage/delta":
                         messages.delta(params)
                     elif method in ("item/started", "item/completed"):
@@ -115,6 +121,8 @@ class CodexRuntime(AIRuntime):
                         kind = item.get("type")
                         if kind == "agentMessage":
                             messages.item(item, completed=method == "item/completed")
+                        elif kind in ("commandExecution", "fileChange") and allow_browsing:
+                            pending_tools.activity(item, completed=method == "item/completed")
                         elif kind == "webSearch" and allow_browsing:
                             if method == "item/started":
                                 yield RuntimeEvent(run_id=run_id, kind="tool.started", text="Searching online sources")
@@ -123,6 +131,7 @@ class CodexRuntime(AIRuntime):
                     elif method == "turn/completed":
                         if params.get("turn", {}).get("status") != "completed":
                             raise RuntimeFailure("Codex turn did not complete. Check quota, authentication or cancellation.")
+                        pending_tools.finish()
                         answer = messages.finish()
                         completed = True
                         if answer:
