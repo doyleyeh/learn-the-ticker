@@ -6,6 +6,7 @@ from backend.app.codex_rpc import CodexRPC
 from backend.app.codex_approvals import CodexApprovals, identifier
 from backend.app.contracts import RuntimeEvent, RuntimeModelCatalog
 from backend.app.codex_models import read_models, select_model
+from backend.app.codex_messages import CodexMessages
 from backend.app.codex_usage import require_included_usage
 from backend.app.codex_policy import require_execution_sandbox
 from backend.app.runtime_base import AIRuntime, RuntimeFailure
@@ -86,6 +87,7 @@ class CodexRuntime(AIRuntime):
                     raise RuntimeFailure("Codex did not identify the active turn.")
                 turn_id = turn["id"]
                 approvals = CodexApprovals(rpc, self.approvals, run_id, thread_id, turn_id)
+                messages = CodexMessages()
                 while True:
                     raw = await rpc.event()
                     method, params = raw.get("method"), raw.get("params", {})
@@ -103,23 +105,26 @@ class CodexRuntime(AIRuntime):
                         if params.get("threadId") != thread_id or event_turn != turn_id:
                             raise RuntimeFailure("Codex returned activity for an unexpected thread or turn.")
                     if method == "item/agentMessage/delta":
-                        if not isinstance(params.get("delta"), str) or not identifier(params.get("itemId")):
-                            raise RuntimeFailure("Codex returned an invalid message update.")
-                        yield RuntimeEvent(run_id=run_id, kind="message.delta", text=params["delta"])
+                        messages.delta(params)
                     elif method in ("item/started", "item/completed"):
                         item = params.get("item")
                         if not isinstance(item, dict):
                             raise RuntimeFailure("Codex returned an invalid item.")
                         kind = item.get("type")
-                        if kind == "webSearch" and allow_browsing:
+                        if kind == "agentMessage":
+                            messages.item(item, completed=method == "item/completed")
+                        elif kind == "webSearch" and allow_browsing:
                             if method == "item/started":
                                 yield RuntimeEvent(run_id=run_id, kind="tool.started", text="Searching online sources")
-                        elif kind not in ("agentMessage", "userMessage", "reasoning"):
+                        elif kind not in ("userMessage", "reasoning"):
                             raise RuntimeFailure("Codex reported activity outside the permitted research tools.")
                     elif method == "turn/completed":
                         if params.get("turn", {}).get("status") != "completed":
                             raise RuntimeFailure("Codex turn did not complete. Check quota, authentication or cancellation.")
+                        answer = messages.finish()
                         completed = True
+                        if answer:
+                            yield RuntimeEvent(run_id=run_id, kind="message.delta", text=answer)
                         break
                     elif method == "error":
                         raise RuntimeFailure("Codex reported a provider error; no automatic retry was attempted.")

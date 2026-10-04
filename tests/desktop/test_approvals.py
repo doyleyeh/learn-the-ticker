@@ -108,7 +108,9 @@ def test_authenticated_app_reviews_active_run_only_and_excludes_requests_from_li
     async def run():
         rpc = ReviewRPC()
         await rpc.events.put(access())
+        await rpc.events.put({"method": "item/started", "params": {"threadId": "thread-1", "turnId": "turn-1", "item": {"type": "agentMessage", "id": "message-1", "text": ""}}})
         await rpc.events.put({"method": "item/agentMessage/delta", "params": {"threadId": "thread-1", "turnId": "turn-1", "itemId": "message-1", "delta": json.dumps({"candidates": [], "sources": [], "claims": []})}})
+        await rpc.events.put({"method": "item/completed", "params": {"threadId": "thread-1", "turnId": "turn-1", "item": {"type": "agentMessage", "id": "message-1", "text": json.dumps({"candidates": [], "sources": [], "claims": []})}}})
         await rpc.events.put({"method": "turn/completed", "params": {"threadId": "thread-1", "turn": {"id": "turn-1", "status": "completed"}}})
         monkeypatch.setattr("backend.app.codex_runtime.CodexRPC", lambda *_, **kwargs: rpc)
         async def qualified(self):

@@ -198,7 +198,9 @@ def test_codex_generation_checks_subscription_and_normalizes_events(tmp_path, mo
         rpc.account = {"type": "chatgpt"}
         for event in [
             {"method": "item/reasoning/summaryTextDelta", "params": {"delta": "hidden"}},
+            {"method": "item/started", "params": {"threadId": "thread-1", "turnId": "turn-1", "item": {"type": "agentMessage", "id": "message-1", "text": ""}}},
             {"method": "item/agentMessage/delta", "params": {"delta": "Answer", "threadId": "thread-1", "turnId": "turn-1", "itemId": "message-1"}},
+            {"method": "item/completed", "params": {"threadId": "thread-1", "turnId": "turn-1", "item": {"type": "agentMessage", "id": "message-1", "text": "Answer"}}},
             {"method": "turn/completed", "params": {"threadId": "thread-1", "turn": {"id": "turn-1", "status": "completed"}}},
         ]: await rpc.events.put(event)
         monkeypatch.setattr("backend.app.codex_runtime.CodexRPC", lambda *_, **kwargs: rpc)
