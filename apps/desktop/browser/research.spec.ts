@@ -20,10 +20,11 @@ async function research(page: Page, query: string) {
 }
 
 test("admitted versions, source review and reconnect preserve evidence at normal and narrow widths", async ({ page, context }, testInfo) => {
-  const failures: string[] = [], external: string[] = [], generation: string[] = [];
+  const failures: string[] = [], external: string[] = [], generation: string[] = [], termLookups: { bundle_id: string }[] = [];
   page.on("pageerror", (error) => failures.push(error.message));
   page.on("response", (response) => { if (response.url().includes("/api/") && response.status() >= 400) failures.push(`${response.status()} ${new URL(response.url()).pathname}`); });
   page.on("request", (request) => { if (request.method() === "POST" && new URL(request.url()).pathname === "/api/research") generation.push(request.url()); });
+  page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/terms/lookup") termLookups.push(request.postDataJSON()); });
   await context.route("**/*", async (route) => {
     if (new URL(route.request().url()).hostname !== "127.0.0.1") {
       external.push(route.request().url());
@@ -32,16 +33,51 @@ test("admitted versions, source review and reconnect preserve evidence at normal
   });
   await page.goto("/");
   await connect(page);
+  const history = page.getByRole("region", { name: "Financial history", exact: true });
 
   await test.step("original exact decimals, five-year issuer history and immutable bookmark", async () => {
     await page.getByRole("button", { name: /SYNTHETIC COMPANY SYN/ }).click();
     await page.getByText("Revenue · USD · Annual periods · 5 retained periods", { exact: true }).click();
-    await expect(page.getByText("9,007,199,254,740,992 USD", { exact: true })).toBeVisible();
+    await expect(history.getByText("9,007,199,254,740,992 USD", { exact: true })).toBeVisible();
     await expect(page.getByText("Five-year daily price history: unavailable in this snapshot.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Bookmark this version" }).click();
     await expect(page.getByText("Research version bookmarked.", { exact: true })).toBeVisible();
   });
   const original = page.url();
+  await test.step("dashboard navigation keeps the saved version and exact statistics with honest gaps", async () => {
+    const navigation = page.getByRole("navigation", { name: "Ticker sections" });
+    await navigation.getByRole("button", { name: "Statistics", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    const statistics = page.getByRole("region", { name: "Key statistics", exact: true });
+    await expect(statistics).toBeFocused();
+    await expect(statistics.getByText("9,007,199,254,740,992 USD", { exact: true })).toBeVisible();
+    await expect(statistics.getByText(/Latest period unavailable/)).toBeVisible();
+    await statistics.screenshot({ path: testInfo.outputPath("dashboard-statistics-wide.png") });
+    await navigation.getByRole("button", { name: "Overview", exact: true }).click();
+    await page.screenshot({ path: testInfo.outputPath("dashboard-overview-wide.png") });
+    await navigation.getByRole("button", { name: "Financials", exact: true }).click();
+    await history.getByRole("combobox", { name: "Reporting periods" }).selectOption("quarter");
+    await expect(history.getByText("Unavailable — no admitted observations for these reporting periods.", { exact: true })).toBeVisible();
+    await expect(history.getByRole("img")).toHaveCount(0);
+    await history.getByRole("combobox", { name: "Reporting periods" }).selectOption("annual");
+    await history.getByText("Revenue · USD · Annual periods · 5 retained periods", { exact: true }).click();
+    await expect(history.getByRole("img")).not.toHaveCount(0);
+    await navigation.getByRole("button", { name: "Learn about this ticker", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Understand a term", exact: true })).toBeFocused();
+    await page.getByRole("button", { name: "revenue", exact: true }).focus();
+    await expect.poll(() => termLookups.length).toBeGreaterThan(0);
+    expect(termLookups.at(-1)?.bundle_id).toBe(new URLSearchParams(new URL(original).hash.split("?")[1]).get("bundle"));
+    expect(generation).toHaveLength(0);
+    await expect(page).toHaveURL(original);
+    await page.setViewportSize({ width: 640, height: 900 });
+    await navigation.getByRole("button", { name: "Statistics", exact: true }).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+    await statistics.screenshot({ path: testInfo.outputPath("dashboard-statistics-narrow.png") });
+    await navigation.getByRole("button", { name: "Analyst insights", exact: true }).click();
+    await expect(page.getByText(/no qualified analyst estimates or outlooks/)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("dashboard-analysts-narrow.png") });
+    await page.setViewportSize({ width: 1280, height: 900 });
+  });
   await test.step("selected revenue appears while other evidence still awaits review", async () => {
     const review = await research(page, "Synthetic reviewed research");
     await expect(review.getByText(/publication and as-of dates remain unknown/)).toBeVisible();
@@ -50,7 +86,7 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await review.getByRole("button", { name: "Use selected sources" }).click();
     await expect(review.getByRole("checkbox", { name: /\/submissions\/CIK0000000001\.json$/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Incomplete research — checked sections", exact: true })).toBeVisible();
-    await expect(page.getByText("100 USD", { exact: true })).toBeVisible();
+    await expect(history.getByText("100 USD", { exact: true })).toBeVisible();
     expect(page.url()).not.toBe(original);
     await page.setViewportSize({ width: 640, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
@@ -83,7 +119,7 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(original);
     await page.getByText("Revenue · USD · Annual periods · 5 retained periods", { exact: true }).click();
-    await expect(page.getByText("9,007,199,254,740,992 USD", { exact: true })).toBeVisible();
+    await expect(history.getByText("9,007,199,254,740,992 USD", { exact: true })).toBeVisible();
     expect(original).not.toBe(completed);
   });
   await test.step("skipping sources exposes missing data without inventing evidence", async () => {

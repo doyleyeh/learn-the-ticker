@@ -35,3 +35,14 @@ it("distinguishes incomplete research from evidence availability", () => {
   expect(html).toContain("Earlier completed research is unchanged");
   expect(renderToStaticMarkup(<CheckpointNotice completion="complete"/>)).toBe("");
 });
+
+it("the dashboard preserves unknown listing fields and separates missing quotes and analyst opinions", () => {
+  const html = renderToStaticMarkup(<EvidenceView bundle={{ id: "old-snapshot", created_at: "2020-01-01T00:00:00Z", asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "stock" } }}/>);
+  expect(html).toContain("Exchange / venue</dt><dd>Unconfirmed");
+  expect(html).toContain("Listing currency</dt><dd>Unconfirmed");
+  expect(html).toContain("Evidence saved 2020-01-01T00:00:00Z");
+  expect(html).toContain("Quote time, market session and delay are unknown");
+  expect(html).toContain("no qualified analyst estimates or outlooks");
+  expect(html).toContain("Original identity verification is not recorded");
+  expect(html).not.toContain("NASDAQ");
+});

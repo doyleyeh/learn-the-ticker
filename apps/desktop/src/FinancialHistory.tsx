@@ -7,8 +7,10 @@ import { chartGeometry, concepts, displayNumber, financialSeries, gapLabel, type
 
 const periodLabels = { annual: "Annual periods", quarter: "Quarterly periods", instant: "Point-in-time observations", other_duration: "Other durations" };
 
-export function FinancialHistory({ bundle }: { bundle: EvidenceBundle }) {
+export function FinancialHistory({ bundle, includePriceAvailability = true }: { bundle: EvidenceBundle; includePriceAvailability?: boolean }) {
   const { series, sources, excluded } = useMemo(() => financialSeries(bundle), [bundle]);
+  const [period, setPeriod] = useState("all");
+  const visible = series.filter((value) => period === "all" || value.period === period);
   return <section className="plain-panel financial-history" aria-labelledby="financial-history-heading" data-evidence-layer="numeric">
     <h2 id="financial-history-heading">Financial history</h2>
     <p>Reported issuer observations retain their original units and dates. They describe the business, not a stock price or a forecast.</p>
@@ -19,16 +21,22 @@ export function FinancialHistory({ bundle }: { bundle: EvidenceBundle }) {
       <p>Default view: up to five annual periods, twelve quarters or twenty point-in-time observations. All retained filing versions remain available below each series.</p>
       {excluded > 0 && <p className="error" role="status">Some observations are hidden because their source or numeric reference could not be validated for display.</p>}
       {series.length === 0 && <p className="source-gap-note">Insufficient evidence — no supported series is available.</p>}
-      {series.map((value, index) => <SeriesPanel key={`${bundle.id}:${value.key}`} series={value} bundle={bundle} sources={sources} initiallyOpen={index === 0}/>)}
+      {series.length > 0 && <label className="financial-period">Reporting periods<select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="all">All reporting periods</option>{Object.entries(periodLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>}
+      {series.length > 0 && !visible.length && <p className="source-gap-note">Unavailable — no admitted observations for these reporting periods.</p>}
+      {visible.map((value, index) => <SeriesPanel key={`${bundle.id}:${value.key}`} series={value} bundle={bundle} sources={sources} initiallyOpen={index === 0}/>)}
       {!!bundle.financials.gaps?.length && <details><summary>Evidence gaps ({bundle.financials.gaps.length})</summary><ul>{bundle.financials.gaps.map((gap) => <li key={gap}>{gapLabel(gap)}</li>)}</ul></details>}
     </>}
-    <section className="financial-unavailable" aria-label="Price and return availability"><h3>Price history and returns</h3>
+    {includePriceAvailability && <PriceHistoryAvailability/>}
+  </section>;
+}
+
+export function PriceHistoryAvailability() {
+  return <section className="financial-unavailable" aria-label="Price and return availability"><h3>Price history and returns</h3>
       <p>Five-year daily price history: unavailable in this snapshot.</p>
       <p>Price return: unavailable — independently verified, corporate-action-compatible prices are required.</p>
       <p>Total return: unavailable — compatible prices, distributions and a stated reinvestment method are required. Price return does not include distributions.</p>
       <p>Historical valuation: unavailable — price and financial inputs must refer to compatible dates, units and share bases.</p>
-    </section>
-  </section>;
+    </section>;
 }
 
 function SeriesPanel({ series, bundle, sources, initiallyOpen }: { series: FinancialSeries; bundle: EvidenceBundle; sources: Map<string, Source>; initiallyOpen: boolean }) {
@@ -70,8 +78,8 @@ function ObservationValue({ row }: { row: FinancialObservation }) {
   return <><p>{row.start ? `${row.start} through ${row.end}` : `As of ${row.end}`}</p><p className="financial-value">{displayNumber(row.value)} <span>{row.unit}</span></p></>;
 }
 
-function ObservationCitation({ row, bundle, source }: { row: FinancialObservation; bundle: EvidenceBundle; source: Source }) {
-  return <div className="financial-citation"><p>Filed {row.filed} · {row.form} · {row.accession}</p><p>Retrieved {source.retrieved_at ?? "Unknown"} · Permission: {source.policy?.replaceAll("_", " ")}</p>
+export function ObservationCitation({ row, bundle, source }: { row: FinancialObservation; bundle: EvidenceBundle; source: Source }) {
+  return <div className="financial-citation"><p>{source.publisher} · Filed {row.filed} · {row.form} · {row.accession}</p><p>Retrieved {source.retrieved_at ?? "Unknown"} · Permission: {source.policy?.replaceAll("_", " ")}</p>
     <CitationChip href={`#${sourceRoute(bundle.id!, row.source_id)}`} label="Inspect original evidence" citation={{ citationId: row.source_id, sourceDocumentId: row.source_id, title: source.title, publisher: source.publisher, freshnessState: "unknown" }}/>
   </div>;
 }

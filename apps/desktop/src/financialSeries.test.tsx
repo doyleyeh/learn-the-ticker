@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { FinancialHistory } from "./FinancialHistory";
+import { KeyStatistics } from "./TickerDashboard";
 import { chartGeometry, decimalInteger, displayNumber, financialSeries } from "./financialSeries";
 import type { EvidenceBundle, FinancialObservation } from "./contracts";
 
@@ -98,5 +99,32 @@ describe("admitted financial presentation", () => {
   it("shows old snapshots without inventing financial observations", () => {
     const data = bundle([]); delete data.financials;
     expect(renderToStaticMarkup(<FinancialHistory bundle={data}/>)).toContain("no independently admitted financial observations");
+  });
+  it("statistics retain exact dated source figures without generating market ratios", () => {
+    const html = renderToStaticMarkup(<KeyStatistics bundle={bundle([observation()])}/>);
+    expect(html).toContain("9,007,199,254,740,993.123456789");
+    expect(html).toContain("2025-01-01 through 2025-12-31");
+    expect(html).toContain("Filed 2026-02-01");
+    expect(html).toContain("Synthetic fixture");
+    expect(html).toContain("bundle=saved%2Fversion&amp;source=source1");
+    expect(html).toContain("P/E and dividend yield: unavailable");
+  });
+  it("statistics do not replace a conflicted latest period with an older observation", () => {
+    const html = renderToStaticMarkup(<KeyStatistics bundle={bundle([
+      observation({ value: "12345", start: "2024-01-01", end: "2024-12-31" }),
+      observation({ id: "b", value: "54321", revision: "conflict" }),
+    ])}/>);
+    expect(html).toContain("Latest period unavailable");
+    expect(html).not.toContain("12,345");
+    expect(html).not.toContain("54,321");
+  });
+  it("statistics cannot draw from missing numeric sources or prose", () => {
+    const data = bundle([observation({ source_id: "missing" })]);
+    data.notes = [{ asset_id: data.asset.id, text: "unverified-statistic 12345", value: 12345 }];
+    data.claims = [{ asset_id: data.asset.id, kind: "fact", text: "model-statistic 54321", value: 54321 }];
+    const html = renderToStaticMarkup(<KeyStatistics bundle={data}/>);
+    expect(html).toContain("no independently admitted financial statistics");
+    expect(html).not.toContain("unverified-statistic");
+    expect(html).not.toContain("model-statistic");
   });
 });

@@ -87,9 +87,11 @@ export function TermLearning({ bundle, level, settings, children }: { bundle: Ev
   }
 
   return <>
-    <section ref={panel} className="plain-panel term-learning" aria-labelledby="term-learning-title">
+    <div ref={content} onMouseUp={captureSelection} onKeyUp={captureSelection}>{children}</div>
+    <section id="ticker-learning" tabIndex={-1} ref={panel} className="plain-panel term-learning" aria-labelledby="term-learning-title">
       <h2 id="term-learning-title">Understand a term</h2>
-      <p>Select words in the evidence below, choose a core term, or type a term. Hover and keyboard focus reuse saved explanations and core definitions without generating content.</p>
+      <p>Learning context: {bundle.asset.name} ({bundle.asset.symbol}) · Evidence saved {bundle.created_at ?? "at an unknown time"}. Explanations use this saved version’s permitted evidence and original references automatically.</p>
+      <p>Select words on this page, choose a core term, or type a term. Hover and keyboard focus reuse saved explanations and core definitions without generating content.</p>
       <div className="actions">{common.map((value) => <button type="button" key={value} disabled={busy} onMouseEnter={() => void hover(value)} onFocus={() => void hover(value)} title={cached[normalizeTerm(value)]?.explanation ?? coreDefinition(value)?.definition} onClick={() => void explain(value)}>{value}</button>)}</div>
       <form className="research-bar" onSubmit={(event) => { event.preventDefault(); void explain(term); }}><label>Term to explain<input value={term} required maxLength={120} disabled={busy} onChange={(event) => { setTerm(event.target.value); setAnswer(undefined); setJob(undefined); setProgress(""); setError(""); }}/></label><button disabled={busy}>{settings?.cloud_enabled ? "Explain term" : "Look up saved explanation"}</button></form>
       {!settings?.cloud_enabled && <p>Online explanations are off. Core definitions and previously generated explanations work offline.</p>}
@@ -100,7 +102,6 @@ export function TermLearning({ bundle, level, settings, children }: { bundle: Ev
       {job?.id && ["queued", "running"].includes(job.status) && <button onClick={() => api<TermJob>(`/api/jobs/${job.id}/cancel`, { method: "POST" }).then((value) => { setJob(value); setProgress("Explanation cancelled."); }).catch(fail)}>Cancel explanation</button>}
       {error && <p role="alert">{error}</p>}
     </section>
-    <div ref={content} onMouseUp={captureSelection} onKeyUp={captureSelection}>{children}</div>
     {selected && !busy && <div className="term-selection-bar"><button onClick={() => void explain(selected)}>Explain “{selected}”</button><button aria-label="Dismiss term selection" onClick={() => setSelected("")}>×</button></div>}
   </>;
 }
