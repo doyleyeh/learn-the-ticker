@@ -14,6 +14,7 @@ from backend.app.contracts import ResearchRequest, RuntimeCapabilities, RuntimeM
 from backend.app.db import Database
 from backend.app.runtime_base import AIRuntime, RuntimeFailure
 from tests.desktop.test_codex import FakeRPC
+from tests.desktop.test_codex_messages import event, message, turn_completed
 from tests.desktop.test_codex_policy import config_response, features_response, thread_response
 
 
@@ -93,6 +94,78 @@ def test_server_model_substitution_is_rejected_before_inference(tmp_path, monkey
             pytest.fail("inference started")
         rpc.request = request
         with pytest.raises(RuntimeFailure, match="changed the selected model"): await rpc.start_thread("requested")
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("after_answer", [False, True])
+@pytest.mark.parametrize("params", [
+    {"fromModel": "synthetic-model", "toModel": "PRIVATE_SUBSTITUTED_MODEL", "reason": "PRIVATE_REASON"},
+    {"threadId": "foreign", "fromModel": "synthetic-model", "toModel": "PRIVATE_SUBSTITUTED_MODEL"},
+    {"turnId": "old", "fromModel": "synthetic-model", "toModel": "PRIVATE_SUBSTITUTED_MODEL"},
+    {"fromModel": "synthetic-model", "toModel": "synthetic-model"},
+    {"toModel": {"private": "PRIVATE_DIAGNOSTIC"}},
+    {},
+])
+def test_reported_reroute_stops_without_publishing_or_retrying(tmp_path, monkeypatch, params, after_answer):
+    async def run():
+        rpc = FakeRPC(); rpc.account = {"type": "chatgpt"}
+        answer = message("answer", "PRIVATE_ANSWER", "final_answer")
+        reroute = event("model/rerouted", **params)
+        for item in [*(answer if after_answer else []), reroute, *(answer if not after_answer else []), turn_completed()]:
+            await rpc.events.put(item)
+        monkeypatch.setattr("backend.app.codex_runtime.CodexRPC", lambda *_, **kwargs: rpc)
+
+        async def qualified(self):
+            return RuntimeCapabilities(provider="codex", installed=True, authentication="authenticated", qualification="live", generation=True, browsing=True)
+
+        monkeypatch.setattr(CodexRuntime, "check", qualified)
+        output = []
+        with pytest.raises(RuntimeFailure) as error:
+            async for item in CodexRuntime(tmp_path).stream("example", "run", tmp_path, "synthetic-model"):
+                output.append(item)
+        assert not output and "PRIVATE" not in str(error.value) and rpc.closed
+        assert ("turn/interrupt", {"threadId": "thread-1", "turnId": "turn-1"}) in rpc.requests
+        assert sum(method == "turn/start" for method, _ in rpc.requests) == 1
+        assert sum(method == "thread/start" for method, _ in rpc.requests) == 1
+        assert next(value for method, value in rpc.requests if method == "thread/start")["model"] == "synthetic-model"
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("rerouted", [False, True])
+def test_model_telemetry_cannot_replace_selected_model_or_publish_rerouted_research(tmp_path, monkeypatch, rerouted):
+    from tests.desktop.test_application import TOKEN, payload
+
+    async def run():
+        import json
+
+        rpc = FakeRPC(); rpc.account = {"type": "chatgpt"}
+        events = [event("model/safetyBuffering/updated", model="synthetic-model", fasterModel="PRIVATE_OTHER_MODEL"),
+                  *message("answer", json.dumps(payload()), "final_answer")]
+        if rerouted:
+            events.append(event("model/rerouted", fromModel="synthetic-model", toModel="PRIVATE_OTHER_MODEL", reason="PRIVATE_REASON"))
+        for item in [*events, turn_completed()]: await rpc.events.put(item)
+        monkeypatch.setattr("backend.app.codex_runtime.CodexRPC", lambda *_, **kwargs: rpc)
+
+        async def qualified(self):
+            return RuntimeCapabilities(provider="codex", installed=True, authentication="authenticated", qualification="live", generation=True, browsing=True)
+
+        monkeypatch.setattr(CodexRuntime, "check", qualified)
+        db = Database("sqlite://", testing=True)
+        db.put("settings", "settings", {"cloud_enabled": True, "provider": "codex", "model": "synthetic-model"})
+        # Identity-only candidate admission; no live retrieval is permitted here.
+        service = create_app(db, TOKEN, tmp_path, adapters={"codex": CodexRuntime(tmp_path)}, verifier=lambda s, a: s.model_copy(update={"verified": False})).state.service
+        job = await service.submit(ResearchRequest(query="Synthetic business"))
+        await service.tasks[job["id"]]
+        saved = db.job(job["id"])
+        assert saved["status"] == ("failed" if rerouted else "completed")
+        assert saved["request"]["model"] == "synthetic-model"
+        assert db.get("settings")["model"] == "synthetic-model"
+        assert "PRIVATE" not in json.dumps([saved, db.events(job["id"]), db.list("bundle")])
+        if rerouted:
+            assert "model change" in saved["error"]
+            assert not db.list("bundle") and not db.list("asset")
+        assert rpc.closed and sum(method == "turn/start" for method, _ in rpc.requests) == 1
+        await service.close()
     asyncio.run(run())
 
 

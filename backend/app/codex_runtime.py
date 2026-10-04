@@ -100,10 +100,12 @@ class CodexRuntime(AIRuntime):
                         yield RuntimeEvent(run_id=run_id, kind="approval.required", text="Review requested access. Research is waiting; no permission has been granted.")
                         await approvals.handle(raw)
                         continue
-                    if method in ("item/agentMessage/delta", "item/started", "item/completed", "turn/started", "turn/completed"):
+                    if method in ("item/agentMessage/delta", "item/started", "item/completed", "turn/started", "turn/completed", "model/rerouted"):
                         event_turn = params.get("turn", {}).get("id") if isinstance(params.get("turn"), dict) else params.get("turnId")
                         if params.get("threadId") != thread_id or event_turn != turn_id:
                             raise RuntimeFailure("Codex returned activity for an unexpected thread or turn.")
+                    if method == "model/rerouted":
+                        raise RuntimeFailure("Codex reported a model change. The run was stopped; choose a model in Connections before retrying.")
                     if method == "item/agentMessage/delta":
                         messages.delta(params)
                     elif method in ("item/started", "item/completed"):
