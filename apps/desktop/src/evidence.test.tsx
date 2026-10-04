@@ -9,3 +9,21 @@ it("keeps unverified claims out of canonical sections and escapes source content
   expect(html.split('data-evidence-layer="notes"')[0]).not.toContain("fictional metric");
   expect(html).toContain("&lt;script&gt;fictional metric&lt;/script&gt;");
 });
+
+it("restores applicable stock/fund headings without fixture facts", () => {
+  const stock = renderToStaticMarkup(<EvidenceView bundle={{ asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "stock" } }}/>);
+  const fund = renderToStaticMarkup(<EvidenceView bundle={{ asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "etf" } }}/>);
+  expect(stock).toContain("Products and services");
+  expect(stock).toContain("Reported business strengths");
+  expect(fund).toContain("Fund objective and role");
+  expect(fund).toContain("Holdings and exposures");
+  expect(fund).toContain("Costs and trading context");
+  expect(fund).toContain("Unavailable — no admitted evidence");
+  expect(fund).not.toContain("Products and services");
+});
+
+it("hides type-dependent claims when the instrument type is unresolved", () => {
+  const html = renderToStaticMarkup(<EvidenceView bundle={{ asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "unknown" }, claims: [{ asset_id: "X:TEST", text: "Unconfirmed fund holdings", section: "holdings", source_ids: [] }] }}/>);
+  expect(html).toContain("Asset type is unconfirmed");
+  expect(html).not.toContain("Unconfirmed fund holdings");
+});

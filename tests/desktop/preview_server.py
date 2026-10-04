@@ -85,6 +85,10 @@ if __name__ == "__main__":
     asset = AssetIdentity(id="XTEST:SYNTH", name="Synthetic Research Example", symbol="SYNTH", asset_type="stock", exchange="XTEST")
     source = Source(id="synthetic-source", asset_id=asset.id, url="https://example.com/synthetic", title="Synthetic evidence for UI testing", publisher="Test fixture", policy=SourcePolicy.summary, provenance="user_import", excerpt="Synthetic Research Example is a fictional company used for interface tests.", verified=True)
     bundle = EvidenceBundle(asset=asset, level="intermediate" if "--identity-demo" in sys.argv else None, sources=[source], claims=[Claim(asset_id=asset.id, kind="fact", text=source.excerpt, source_ids=[source.id])], notes=[Claim(asset_id=asset.id, text="This unverified example must never appear in a chart or canonical evidence.", source_ids=[source.id])])
+    if "--financials-demo" in sys.argv:
+        from tests.desktop.financial_fixture import financial_ui_bundle
+        bundle = financial_ui_bundle()
+        asset = bundle.asset
     value = bundle.model_dump(mode="json")
     db.put("asset:" + asset.id, "asset", value)
     db.put("bundle:" + bundle.id, "bundle", value, asset.id)

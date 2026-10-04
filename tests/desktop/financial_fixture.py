@@ -43,6 +43,37 @@ def financial_bundle(*, conflict=False):
     return attach_financials(base, result, created_at=AT)
 
 
+def financial_ui_bundle():
+    """Multi-period, mixed-sign, revised synthetic history for interactive UI checks."""
+    identities = financial_result()
+    class Resolver:
+        @property
+        def sec(self):
+            return self
+
+        def resolve(self, query):
+            return [identities.issuer] if query == "SYN" else [identities.instrument]
+
+    def fetch(url, **_):
+        concept = url.rsplit("/", 1)[-1].removesuffix(".json")
+        rows = [{"start": f"{year}-01-01", "end": f"{year}-12-31", "val": (year - 2023) * 100 + 50,
+                 "accn": f"0000009999-{year + 1 - 2000:02d}-000001", "filed": f"{year + 1}-02-01", "form": "10-K", "fy": year, "fp": "FY"}
+                for year in range(2021, 2026)]
+        if concept == "Revenues":
+            rows[-1]["val"] = 9007199254740993
+            rows += [{**rows[-1], "val": 9007199254740992, "filed": "2026-03-01", "accn": "0000009999-26-000002"}]
+        if concept == "NetIncomeLoss":
+            rows += [{**rows[-1], "val": 300, "accn": "0000009999-26-000003"}]
+        unit = "USD/shares" if concept == "EarningsPerShareDiluted" else "USD"
+        return json.dumps({"cik": 1, "taxonomy": "us-gaap", "tag": concept, "entityName": "SYNTHETIC COMPANY", "units": {unit: rows}}).encode()
+
+    result = SecFinancialAdapter(Resolver(), fetch, clock=lambda: AT).retrieve("FIGI:chosen",
+        concepts=("Revenues", "NetIncomeLoss", "EarningsPerShareDiluted"))
+    base = EvidenceBundle(asset=result.instrument.asset, identity_verification=result.instrument.verification,
+                          language="en", level="beginner", created_at=AT)
+    return attach_financials(base, result, created_at=AT)
+
+
 async def publish_financial_snapshot(db, workspace):
     """Exercise production orchestration against synthetic sources/runtime in a real DB."""
     from backend.app.contracts import Claim, ResearchRequest, RuntimeEvent, Source

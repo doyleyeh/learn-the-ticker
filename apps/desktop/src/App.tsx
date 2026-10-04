@@ -6,6 +6,8 @@ import { CitationChip } from "../components/CitationChip";
 import { bundleRoute, pages, routeFromHash, sourceRoute } from "./routes";
 import { LibraryBackup } from "./LibraryBackup";
 import { ImportDocuments } from "./ImportDocuments";
+import { FinancialHistory } from "./FinancialHistory";
+import { EvidenceSections, contextSections } from "./EvidenceSections";
 import { CodexConnection } from "./CodexConnection";
 import { Connections } from "./Connections";
 import { AccessReview } from "./AccessReview";
@@ -14,8 +16,6 @@ import { TermLearning } from "./TermLearning";
 type Job = { id: string; status: string; error?: string; result?: EvidenceBundle & { candidates?: EvidenceBundle["asset"][]; educational_redirect?: string; message?: string } };
 type Saved = SavedResearch & { id: string };
 type Conversation = ConversationContract & { id: string; bookmarked: boolean; messages: NonNullable<ConversationContract["messages"]> };
-const sections = ["overview", "business_model", "financial_trends", "holdings", "valuation", "risks"];
-const contextSections = ["weekly_news", "earlier_context", "historical_research"];
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -148,10 +148,10 @@ function FollowUp({ onAsk, busy }: { onAsk: (question: string) => void; busy: bo
 export function EvidenceView({ bundle }: { bundle: EvidenceBundle }) {
   const sources = bundle.sources ?? [];
   function renderClaim(claim: Claim) { return <article key={claim.id}><p>{claim.text}</p><div className="chip-row">{claim.source_ids?.map((id) => { const source = sources.find((item) => item.id === id); return source ? <CitationChip key={id} href={`#${sourceRoute(bundle.id!, id)}`} citation={{ citationId: id, sourceDocumentId: id, title: source.title, publisher: source.publisher, freshnessState: "unknown" }}/> : null; })}</div></article>; }
-  function renderSection(section: string) { const claims = bundle.claims?.filter((claim) => claim.section === section) ?? []; return <section className="plain-panel" key={section}><h2>{section.replaceAll("_", " ")}</h2>{claims.length ? claims.map(renderClaim) : <p className="source-gap-note">Unavailable — no admitted evidence for this section.</p>}</section>; }
-  const extraSections = [...new Set((bundle.claims ?? []).map((claim) => claim.section ?? "overview"))].filter((section) => !sections.includes(section) && !contextSections.includes(section));
+  function renderSection(section: string) { const claims = bundle.claims?.filter((claim) => claim.section === section) ?? []; return <section className="plain-panel" key={section}><h2>{section === "recent_developments" ? "Other reported developments" : section.replaceAll("_", " ")}</h2>{claims.length ? claims.map(renderClaim) : <p className="source-gap-note">Unavailable — no admitted evidence for this section.</p>}</section>; }
   return <>
-    <div className="library-grid" data-evidence-layer="canonical">{[...sections, ...extraSections].map(renderSection)}</div>
+    <EvidenceSections bundle={bundle} renderClaim={renderClaim}/>
+    <FinancialHistory bundle={bundle}/>
     <section data-evidence-layer="context"><h2>News and historical context</h2><p>Dated research stays separate from the asset’s stable facts. Weekly selection and historical report generation are still being integrated.</p><div className="library-grid">{contextSections.map(renderSection)}</div></section>
     <section className="plain-panel" data-evidence-layer="notes"><h2>Unverified research notes</h2><p>These explanations have not passed factual validation. Candidate citations may be incomplete. These notes do not feed facts, charts or calculations.</p>{bundle.notes?.map(renderClaim)}{!bundle.notes?.length && <p>No unverified notes.</p>}</section>
     <section className="plain-panel"><h2>Sources and evidence</h2>{sources.map((source) => <SourceDetails source={source} key={source.id}/>)}{!sources.length && <p>No source documents have been registered.</p>}</section>
