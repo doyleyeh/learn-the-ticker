@@ -5,7 +5,7 @@ from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, create_engin
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.app.contracts import RuntimeEvent, uid
+from backend.app.contracts import EvidenceBundle, RuntimeEvent, uid
 
 
 class Base(DeclarativeBase):
@@ -60,6 +60,8 @@ class Database:
 
     @staticmethod
     def _put(session, record_id, kind, payload, parent_id=None):
+        if kind in ("asset", "bundle"):
+            EvidenceBundle.model_validate(payload)
         record = session.get(Record, record_id)
         if record:
             if record.kind != kind:

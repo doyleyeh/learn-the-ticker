@@ -38,6 +38,8 @@ OpenFIGI identity changes must preserve separate listing/composite/share-class I
 
 SEC financial association must preserve both independent proofs and DEC-025's exact name/symbol/reviewed-venue checks. Keep decimal precision, concept/unit/actual period, filing date/accession and all retained revisions; latest conflicts cannot supply current values. Never splice concepts, invent missing quarters or infer split-adjusted prices. Fresh retrieval cannot refresh old observation dates. Rate/access/server failures stop remaining requests and cancellation publishes nothing. Adapter results alone do not qualify persisted numeric admission, charts or full online research.
 
+Typed numeric documents must pass the same scope/source/period/unit/revision validation on publication and archive restore. Preserve exact decimal strings through generated contracts, exports and real PostgreSQL restore; do not route them through Claim.value or JavaScript floats. ResearchResult cannot self-attest financial documents. Recomputed archive checksums do not prove external source authenticity. Keep conflicts/superseded values out of current numeric context while retaining their versions and disclosures. Current financial snapshots cannot inherit prose-only cache freshness.
+
 Return:
 
 - summary

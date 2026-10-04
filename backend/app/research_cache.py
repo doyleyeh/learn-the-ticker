@@ -9,6 +9,10 @@ from backend.app.source_registry import source_rule
 
 def reusable(bundle: EvidenceBundle, request: ResearchRequest, *, at=None) -> bool:
     at = at or now()
+    # Financial reuse needs a structured refresh policy (M2-T03). No fresh prose
+    # claim may make a separate old numeric series appear current.
+    if bundle.financials is not None:
+        return False
     if (request.refresh or request.conversation_id or bundle.asset.id != request.asset_id
             or bundle.language != request.language or bundle.level != request.level
             or bundle.state in ("unavailable", "stale")):

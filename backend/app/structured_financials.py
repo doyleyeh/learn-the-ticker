@@ -4,6 +4,7 @@ from __future__ import annotations
 import threading
 import re
 from dataclasses import dataclass
+from datetime import datetime
 
 from backend.app.contracts import now
 from backend.app.evidence import SourceFetchError, fetch_public_bytes
@@ -23,6 +24,7 @@ class StructuredFinancials:
     issuer: ResolvedIdentity | None
     concepts: tuple[ConceptObservations, ...]
     gaps: tuple[str, ...]
+    checked_at: datetime | None = None
 
 
 def matching_issuer(instrument: ResolvedIdentity, issuers: list[ResolvedIdentity], *, at):
@@ -74,7 +76,8 @@ class SecFinancialAdapter:
         except (ValueError, OSError):
             return StructuredFinancials(instrument, None, (), ("issuer_identity_unavailable",))
         check_cancel()
-        issuer = matching_issuer(instrument, issuers, at=self.clock())
+        checked_at = self.clock()
+        issuer = matching_issuer(instrument, issuers, at=checked_at)
         if issuer is None:
             return StructuredFinancials(instrument, None, (), ("issuer_instrument_association_unconfirmed",))
         results, gaps = [], {"price_history_unavailable", "corporate_actions_unavailable"}
@@ -102,4 +105,4 @@ class SecFinancialAdapter:
                 results.append(result)
                 gaps.update(concept + ":" + gap for gap in result.gaps)
         check_cancel()
-        return StructuredFinancials(instrument, issuer, tuple(results), tuple(sorted(gaps)))
+        return StructuredFinancials(instrument, issuer, tuple(results), tuple(sorted(gaps)), checked_at)

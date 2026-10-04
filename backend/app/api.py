@@ -324,6 +324,15 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
         lines = ["# " + clean(value.asset.name), "", f"Research snapshot: {value.created_at.isoformat()}", "", "Educational research; not investment advice.", "", "## Source-backed claims"]
         for claim in value.claims:
             lines += ["", clean(claim.text) + " Sources: " + ", ".join(claim.source_ids)]
+        if value.financials is not None:
+            lines += ["", "## Issuer financial observations", "",
+                      "Issuer: " + clean(value.financials.issuer.name),
+                      "Original reported units; historical values include superseded and unresolved conflicting versions."]
+            for row in value.financials.observations:
+                lines += [f"\n{row.concept}: {row.value} {row.unit}; {row.start or 'instant'} through {row.end}; "
+                          f"filed {row.filed} ({row.form}, {row.accession}); {row.revision}; source {row.source_id}; "
+                          f"observation {row.id}; supersedes {', '.join(row.supersedes) or 'none'}."]
+            lines += ["", "Availability: " + ", ".join(value.financials.gaps)]
         lines += ["", "## Unverified research notes", "", "These notes are not factual evidence."]
         lines += ["\n" + clean(note.text) for note in value.notes]
         lines += ["", "## Sources"]

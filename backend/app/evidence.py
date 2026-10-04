@@ -174,5 +174,12 @@ def admit_bundle(asset: AssetIdentity, sources: list[Source], claims: list[Claim
 
 def factual_context(bundle: EvidenceBundle) -> dict:
     """Unverified notes and provider raw output never become future factual evidence."""
+    from backend.app.financial_evidence import numeric_context
+    observations = numeric_context(bundle)
     ids = {sid for claim in bundle.claims for sid in claim.source_ids}
-    return {"asset": bundle.asset.model_dump(mode="json"), "claims": [c.model_dump(mode="json") for c in bundle.claims], "sources": [s.model_dump(mode="json") for s in bundle.sources if s.id in ids]}
+    ids.update(row["source_id"] for row in observations)
+    context = {"asset": bundle.asset.model_dump(mode="json"), "claims": [c.model_dump(mode="json") for c in bundle.claims], "sources": [s.model_dump(mode="json") for s in bundle.sources if s.id in ids]}
+    if bundle.financials:
+        context["financials"] = {"scope": "issuer", "issuer": bundle.financials.issuer.model_dump(mode="json"),
+                                 "observations": observations, "gaps": bundle.financials.gaps}
+    return context

@@ -69,7 +69,7 @@ def _date(value):
     return date.fromisoformat(value)
 
 
-def _number(value):
+def number_text(value):
     # Parse JSON numbers directly as Decimal; never round them through binary floats.
     if type(value) not in (int, Decimal) or not Decimal(value).is_finite():
         raise ValueError("Invalid financial number")
@@ -96,7 +96,7 @@ def _constant(_):
     raise ValueError("Non-finite structured source number")
 
 
-def _unit_supported(unit, concept):
+def unit_supported(unit, concept):
     kind = CONCEPTS[concept][1]
     return ((kind == "currency" and unit in CURRENCIES)
             or (kind == "per_share" and unit in {currency + "/shares" for currency in CURRENCIES})
@@ -123,7 +123,7 @@ def parse_concept(raw: bytes, *, cik: str, concept: str, retrieved_at: datetime)
         count += len(entries)
         if count > 10_000:
             raise ValueError("Too many structured observations")
-        if not _unit_supported(unit, concept):
+        if not unit_supported(unit, concept):
             gaps.add("unsupported_unit")
             continue
         for item in entries:
@@ -157,9 +157,8 @@ def parse_concept(raw: bytes, *, cik: str, concept: str, retrieved_at: datetime)
                 period = "annual" if 330 <= days <= 400 else "quarter" if 70 <= days <= 110 else "other_duration"
                 if period == "other_duration":
                     gaps.add("nonstandard_or_year_to_date_period")
-            value = _number(item.get("val"))
-            identity = [cik, concept, unit, str(start), str(end), accession, str(filed), item["form"], value, fy, fp]
-            key = hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+            value = number_text(item.get("val"))
+            key = observation_id(cik, concept, unit, start, end, accession, filed, item["form"], value, fy, fp)
             rows[key] = IssuerObservation(key, cik, "us-gaap:" + concept, value, unit, start, end, period, accession,
                                           filed, item["form"], fy, fp, url, digest, retrieved_at)
     result = mark_revisions(tuple(rows.values()))
@@ -168,6 +167,11 @@ def parse_concept(raw: bytes, *, cik: str, concept: str, retrieved_at: datetime)
     if any(row.revision == "conflict" for row in result):
         gaps.add("conflicting_latest_values")
     return ConceptObservations(cik, concept, result, tuple(sorted(gaps)))
+
+
+def observation_id(cik, concept, unit, start, end, accession, filed, form, value, fy, fp):
+    identity = [cik, concept, unit, str(start), str(end), accession, str(filed), form, value, fy, fp]
+    return hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
 
 
 def mark_revisions(rows: tuple[IssuerObservation, ...]) -> tuple[IssuerObservation, ...]:

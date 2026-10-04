@@ -1,8 +1,10 @@
-"""Explicit SEC financial normalization check; never publishes instrument facts."""
+"""Explicit SEC normalization and numeric-contract check; no library writes."""
 import argparse
 import json
 
 from backend.app.structured_financials import SecFinancialAdapter
+from backend.app.contracts import EvidenceBundle
+from backend.app.financial_evidence import attach_financials
 
 
 def check(*, live=False, query="", adapter=None):
@@ -18,10 +20,18 @@ def check(*, live=False, query="", adapter=None):
                   "latest_period_end": max((o.end.isoformat() for o in row.observations), default=None),
                   "latest_filed": max((o.filed.isoformat() for o in row.observations), default=None)} for row in result.concepts]
     passed = result.instrument is not None and result.issuer is not None and any(row["count"] for row in summaries)
+    if passed:
+        try:
+            bundle = attach_financials(EvidenceBundle(asset=result.instrument.asset,
+                identity_verification=result.instrument.verification), result)
+            EvidenceBundle.model_validate_json(bundle.model_dump_json())
+        except ValueError:
+            return {"status": "blocked", "reason": "Retrieved observations failed numeric admission; no library writes were made."}
     return {"status": "passed" if passed else "blocked", "gaps": list(result.gaps), "concepts": summaries,
+            "numeric_contract_validated": passed,
             "instrument_identity_hash": result.instrument.verification.identity_hash if result.instrument else None,
             "issuer_identity_hash": result.issuer.verification.identity_hash if result.issuer else None,
-            "scope": "Partial issuer history only; no price/corporate-action, pipeline, subscription or release qualification."}
+            "scope": "Partial issuer history and numeric contract only; no library writes, price/corporate-action, pipeline, subscription or release qualification."}
 
 
 def main():

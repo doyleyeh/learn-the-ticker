@@ -102,6 +102,36 @@ class IdentityVerification(Contract):
     _public_url = field_validator("source_url")(public_reference_url)
 
 
+class FinancialObservation(Contract):
+    id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cik: str = Field(pattern=r"^[0-9]{10}$")
+    concept: str = Field(max_length=100)
+    # Exact source decimals stay strings across JSON/JavaScript and database round trips.
+    value: str = Field(max_length=80, pattern=r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$")
+    unit: str = Field(max_length=20)
+    start: date | None = None
+    end: date
+    period: Literal["annual", "quarter", "instant", "other_duration"]
+    accession: str = Field(pattern=r"^[0-9]{10}-[0-9]{2}-[0-9]{6}$")
+    filed: date
+    form: Literal["10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "20-F/A", "40-F", "40-F/A"]
+    reported_fiscal_year: int = Field(strict=True, ge=1900, le=9999)
+    reported_fiscal_period: Literal["FY", "Q1", "Q2", "Q3", "Q4"]
+    source_id: str = Field(max_length=200)
+    revision: Literal["current", "superseded", "conflict"]
+    supersedes: list[str] = Field(default_factory=list, max_length=128)
+
+
+class FinancialEvidence(Contract):
+    scope: Literal["issuer"] = "issuer"
+    association: Literal["sec-common-stock-concordance-v1"] = "sec-common-stock-concordance-v1"
+    issuer: AssetIdentity
+    issuer_verification: IdentityVerification
+    checked_at: AwareDatetime
+    observations: list[FinancialObservation] = Field(default_factory=list, max_length=40000)
+    gaps: list[str] = Field(default_factory=list, max_length=100)
+
+
 class EvidenceBundle(Contract):
     id: str = Field(default_factory=uid)
     asset: AssetIdentity
@@ -114,6 +144,15 @@ class EvidenceBundle(Contract):
     # Missing on older snapshots: keep readable, never infer independent verification.
     level: Literal["beginner", "intermediate"] | None = None
     identity_verification: IdentityVerification | None = None
+    financials: FinancialEvidence | None = None
+
+    @model_validator(mode="after")
+    def financial_references(self):
+        if self.financials is not None:
+            # Delayed import keeps wire definitions independent of adapter initialization.
+            from backend.app.financial_evidence import validate_financials
+            validate_financials(self)
+        return self
 
 
 class RuntimeCapabilities(Contract):
