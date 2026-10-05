@@ -1,5 +1,6 @@
 """Opted-in private retrieval using the production research queues and review scope."""
 import asyncio
+from dataclasses import replace
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
@@ -9,12 +10,14 @@ from backend.app.market_mapping import map_yahoo_history
 from backend.app.market_retrieval import retrieve_history
 from backend.app.market_returns import years_before
 from backend.app.market_transport import fetch_free_eodhd_prices
-from backend.app.yfinance_worker import fetch_yahoo_history
+from backend.app.yfinance_worker import fetch_yahoo_history, fetch_yahoo_valuations
 
 
 class MarketResearch:
-    def __init__(self, research, *, store_factory=DataCredentialStore, primary=fetch_free_eodhd_prices, yahoo=fetch_yahoo_history):
+    def __init__(self, research, *, store_factory=DataCredentialStore, primary=fetch_free_eodhd_prices,
+                 yahoo=fetch_yahoo_history, valuations=fetch_yahoo_valuations):
         self.research, self.store_factory, self.primary, self.yahoo = research, store_factory, primary, yahoo
+        self.valuations = valuations
 
     def require_enabled(self, cancelled):
         self.research.require_consent()
@@ -30,7 +33,8 @@ class MarketResearch:
             return None, "Private price history is unavailable for this unqualified listing."
         symbol = resolved.asset.symbol
         primary_url, yahoo_url = f"https://eodhd.com/api/eod/{symbol}.US", f"https://finance.yahoo.com/quote/{symbol}/history/"
-        allowed = await review.select(resolved.asset.id, [primary_url, yahoo_url], private_market=True)
+        valuation_url = f"https://finance.yahoo.com/quote/{symbol}/key-statistics/"
+        allowed = await review.select(resolved.asset.id, [primary_url, yahoo_url, valuation_url], private_market=True)
         self.require_enabled(cancelled)
         credential = None
         try:
@@ -69,7 +73,23 @@ class MarketResearch:
             self.require_enabled(cancelled)
             if result.selected is None or result.selected.provider != "yahoo_yfinance" or not review.allowed(yahoo_url):
                 return None, "Private market history is unavailable or was not selected; no equivalent retry was made."
-            return map_yahoo_history(result.selected, resolved, at=service.clock()), ""
+            mapped = map_yahoo_history(result.selected, resolved, at=service.clock())
+            if valuation_url not in allowed or not review.allowed(valuation_url):
+                return replace(mapped, valuation_gap="not_selected"), ""
+            try:
+                async with service.retrieval:
+                    self.require_enabled(cancelled)
+                    if not review.allowed(valuation_url):
+                        return replace(mapped, valuation_gap="not_selected"), ""
+                    values, _ = await self.valuations(symbol, start.isoformat(), end.isoformat())
+                    self.require_enabled(cancelled)
+                if not review.allowed(valuation_url):
+                    return replace(mapped, valuation_gap="not_selected"), ""
+                if not values.points:
+                    return replace(mapped, valuation_gap="no_observations"), ""
+                return replace(mapped, valuations=values), ""
+            except MarketDataError:
+                return replace(mapped, valuation_gap="source_unavailable"), ""
         except asyncio.CancelledError:
             raise
         except InterruptedError:

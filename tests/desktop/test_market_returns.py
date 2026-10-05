@@ -117,6 +117,8 @@ def test_pre_calculation_snapshot_fingerprint_survives_without_offline_generatio
     market = payload["market"]
     market.pop("returns")
     market.pop("return_method")
+    market.pop("valuations")
+    market.pop("valuation_gap")
     market["fingerprint"] = hashlib.sha256(json.dumps({k: v for k, v in market.items() if k != "fingerprint"},
                                                     sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     original = market["fingerprint"]

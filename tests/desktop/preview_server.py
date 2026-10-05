@@ -151,13 +151,15 @@ if __name__ == "__main__":
         service.filing_adapter, service.clock = demo.filing_adapter, demo.clock
         from dataclasses import replace
         from backend.app.market_research import MarketResearch
-        from tests.desktop.market_fixture import market_candidate
+        from tests.desktop.market_fixture import market_candidate, valuation_candidate
         class PreviewDataStore:
             def load(self, name):
                 return None
         async def preview_yahoo(symbol, start, end):
             return replace(market_candidate(), requested_start=start, requested_end=end), 4
-        service.market_adapter = MarketResearch(service, store_factory=PreviewDataStore, yahoo=preview_yahoo)
+        async def preview_valuations(symbol, start, end):
+            return replace(valuation_candidate(), requested_start=start, requested_end=end), 3
+        service.market_adapter = MarketResearch(service, store_factory=PreviewDataStore, yahoo=preview_yahoo, valuations=preview_valuations)
     if "--approvals-demo" in sys.argv:
         adapter = PreviewAccessRuntime(asset)
         adapter.approvals = app.state.service.approvals

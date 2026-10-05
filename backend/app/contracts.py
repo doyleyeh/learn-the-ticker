@@ -191,6 +191,24 @@ class MarketReturn(Contract):
     reason: Literal["start_boundary_missing", "insufficient_observations", "missing_price_rows", "history_gap"] | None = None
 
 
+class ValuationObservation(Contract):
+    metric: Literal["MarketCap", "EnterpriseValue", "PeRatio", "PsRatio", "PbRatio", "EnterprisesValueRevenueRatio", "EnterprisesValueEBITDARatio"]
+    sampling: Literal["annual", "quarterly", "trailing"]
+    date: date
+    period_type: Literal["12M", "3M", "TTM"]
+    currency: Literal["USD"] | None = None
+    value: str | None = Field(default=None, max_length=80)
+    reason: Literal["value_missing", "currency_missing"] | None = None
+
+
+class MarketValuations(Contract):
+    method: Literal["yahoo-reported-valuation-v1"] = "yahoo-reported-valuation-v1"
+    source_id: str = Field(max_length=200)
+    requested_start: date
+    requested_end: date
+    points: list[ValuationObservation] = Field(min_length=1, max_length=600)
+
+
 class MarketEvidence(Contract):
     """Application-owned daily history; never an LLM output field."""
     provider: Literal["yahoo_yfinance"] = "yahoo_yfinance"
@@ -214,6 +232,8 @@ class MarketEvidence(Contract):
     gaps: list[Literal["missing_price_rows", "calendar_completeness_unverified"]] = Field(max_length=2)
     return_method: Literal["yahoo-adjusted-ratio-v1"] | None = None
     returns: list[MarketReturn] = Field(default_factory=list, max_length=5)
+    valuations: MarketValuations | None = None
+    valuation_gap: Literal["source_unavailable", "not_selected", "no_observations"] | None = None
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 

@@ -126,24 +126,8 @@ class YahooPolicy:
             elif (parts.hostname in ("query1.finance.yahoo.com", "query2.finance.yahoo.com")
                     and parts.path == "/v1/test/getcrumb" and not params and crumb is None):
                 kind = "crumb"
-            elif (parts.hostname in ("query1.finance.yahoo.com", "query2.finance.yahoo.com")
-                    and parts.path == f"/v8/finance/chart/{self.symbol}"):
-                if params == {"range": "1d", "interval": "1d"}:
-                    kind = "timezone"
-                else:
-                    if (set(params) != {"period1", "period2", "interval", "includePrePost", "events"}
-                            or params["interval"] != "1d" or params["includePrePost"] is not False
-                            or params["events"] != "div,splits,capitalGains"):
-                        raise ValueError
-                    for key, day in (("period1", self.first), ("period2", self.last + timedelta(days=1))):
-                        stamp = params[key]
-                        midnight = int(datetime.combine(day, time(), timezone.utc).timestamp())
-                        # yfinance converts exchange-local midnight to UTC, not system-local time.
-                        if type(stamp) is not int or abs(stamp - midnight) > 14 * 3600:
-                            raise ValueError
-                    kind = "history"
             else:
-                raise ValueError
+                kind = self.data_kind(parts, params)
             if kind in self.used:
                 raise ValueError
         except (ValueError, TypeError, AttributeError, OverflowError):
@@ -152,14 +136,42 @@ class YahooPolicy:
         self.count += 1
         return kind
 
+    def data_kind(self, parts, params):
+        if (parts.hostname not in ("query1.finance.yahoo.com", "query2.finance.yahoo.com")
+                or parts.path != f"/v8/finance/chart/{self.symbol}"):
+            raise ValueError
+        if params == {"range": "1d", "interval": "1d"}:
+            return "timezone"
+        if (set(params) != {"period1", "period2", "interval", "includePrePost", "events"}
+                or params["interval"] != "1d" or params["includePrePost"] is not False
+                or params["events"] != "div,splits,capitalGains"):
+            raise ValueError
+        for key, day in (("period1", self.first), ("period2", self.last + timedelta(days=1))):
+            stamp = params[key]
+            midnight = int(datetime.combine(day, time(), timezone.utc).timestamp())
+            # yfinance converts exchange-local midnight to UTC, not system-local time.
+            if type(stamp) is not int or abs(stamp - midnight) > 14 * 3600:
+                raise ValueError
+        return "history"
+
     def received(self, kind, status, raw):
         error = status_error(status, cookie=kind == "cookie")
         if error:
             self.fail(error)
-        if len(raw) > (MAX_BYTES if kind in ("history", "timezone") else 65536):
+        if len(raw) > (MAX_BYTES if kind in ("history", "timezone", "valuation") else 65536):
             self.fail("response_size")
-        if kind == "history":
+        if kind in ("history", "valuation"):
             self.raw = raw
+
+
+class YahooValuationPolicy(YahooPolicy):
+    """Only anonymous bootstrap and one exact bounded valuation request."""
+    def data_kind(self, parts, params):
+        from backend.app.market_valuations import valuation_request
+        url, expected = valuation_request(self.symbol, self.first.isoformat(), self.last.isoformat())
+        if parts.geturl() != url or params != expected or any(type(params.get(k)) is not int for k in ("period1", "period2")):
+            raise ValueError
+        return "valuation"
 
 
 def yahoo_session(policy, *, _base=None):
@@ -175,7 +187,7 @@ def yahoo_session(policy, *, _base=None):
             if set(kwargs) - {"params", "timeout", "allow_redirects"}:
                 policy.fail("request_not_allowed")
             parts, size = [], 0
-            limit = MAX_BYTES if kind in ("history", "timezone") else 65536
+            limit = MAX_BYTES if kind in ("history", "timezone", "valuation") else 65536
             def collect(part):
                 nonlocal size
                 size += len(part)

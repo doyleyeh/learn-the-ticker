@@ -1,5 +1,6 @@
 """Restore a complete synthetic library between two private PostgreSQL clusters."""
 import os
+import json
 import asyncio
 import secrets
 from concurrent.futures import ThreadPoolExecutor
@@ -212,10 +213,14 @@ def main():
         assert restored_market.market.bars[0].volume == "9007199254740993"
         assert restored_market.market.actions[0].value == "0.123456789012345678"
         assert restored_market.market.returns == market.market.returns
+        assert restored_market.market.valuations == market.market.valuations
+        assert len(restored_market.market.valuations.points) == 6
+        assert any(p.value == "28.123456789012345678" for p in restored_market.market.valuations.points)
         assert restored_market.market.returns[-1].price_percent == "27.272727"
         assert restored_market.market.returns[-1].total_return_estimate_percent == "40"
         assert restored_market.sources[-1] == market.sources[-1]
         restored_context = factual_context(restored_market)
+        assert "28.123456789012345678" not in json.dumps(restored_context)
         assert restored_context["context_gaps"] and restored_context["financials"]["observations"]
         assert all(source["id"] != market.market.source_id for source in restored_context["sources"])
         exported, notice = shareable_view(restored_market)

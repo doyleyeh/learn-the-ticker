@@ -10,13 +10,15 @@ from backend.app.market_evidence import attach_market
 from tests.desktop.financial_fixture import AT, financial_bundle, financial_result
 
 
-def market_bundle(*, financials=True):
+def market_bundle(*, financials=True, valuations=False):
     if financials:
         base = financial_bundle()
     else:
         instrument = financial_result().instrument
         base = EvidenceBundle(asset=instrument.asset, identity_verification=instrument.verification, created_at=AT)
     mapped = map_yahoo_history(market_candidate(), ResolvedIdentity(base.asset, base.identity_verification), at=AT)
+    if valuations:
+        mapped = replace(mapped, valuations=valuation_candidate())
     return attach_market(base, mapped, personal_mode=True, created_at=AT)
 
 
@@ -32,3 +34,20 @@ def market_candidate():
     }]}}
     raw = json.dumps(data).encode().replace(b'"amount": 0.5', b'"amount": 0.123456789012345678')
     return replace(parse_yahoo_chart(raw, "SYN", "2026-01-01", "2026-01-31"), retrieved_at=AT)
+
+
+def valuation_candidate():
+    from backend.app.market_valuations import parse_valuations
+    rows = []
+    for kind, period, currency, values in (
+        ("quarterlyPeRatio", "3M", None, ["28.123456789012345678", None]),
+        ("annualMarketCap", "12M", "USD", ["9007199254740993", "9007199254740992"]),
+        ("trailingPeRatio", "TTM", None, ["28.123456789012345678", "29.5"]),
+    ):
+        rows.append({"meta": {"symbol": ["SYN"], "type": [kind]}, kind: [
+            {"asOfDate": date, "periodType": period, "currencyCode": currency,
+             "reportedValue": {"raw": value}} for date, value in zip(("2026-01-02", "2026-01-05"), values)]})
+    raw = json.dumps({"timeseries": {"result": rows, "error": None}}).encode()
+    for value in (b"28.123456789012345678", b"9007199254740993", b"9007199254740992", b"29.5"):
+        raw = raw.replace(b'"' + value + b'"', value)
+    return replace(parse_valuations(raw, "SYN", "2026-01-01", "2026-01-31"), retrieved_at=AT)

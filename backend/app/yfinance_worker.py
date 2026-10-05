@@ -15,7 +15,8 @@ import sys
 import tempfile
 
 from backend.app.market_history import MAX_BYTES, MarketDataError, _window, parse_yahoo_chart, valid_symbol
-from backend.app.market_transport import TRANSPORT_ERRORS, YAHOO_CURL_OPTIONS, YahooPolicy, yahoo_session
+from backend.app.market_transport import TRANSPORT_ERRORS, YAHOO_CURL_OPTIONS, YahooPolicy, YahooValuationPolicy, yahoo_session
+from backend.app.market_valuations import parse_valuations, valuation_request
 from backend.app.owned_process import close_owned, launch_owned
 
 VERSION = "1.7.0"
@@ -26,7 +27,9 @@ ERRORS = TRANSPORT_ERRORS | {"worker_limit", "dependency_unavailable", "invalid_
 
 
 def retrieve(request):
-    if not isinstance(request, dict) or set(request) != {"symbol", "start", "end"}:
+    valuation = isinstance(request, dict) and request.get("operation") == "valuation"
+    expected = {"symbol", "start", "end"} | ({"operation"} if valuation else set())
+    if not isinstance(request, dict) or set(request) != expected:
         raise MarketDataError("invalid_worker_request")
     try:
         symbol = valid_symbol(request["symbol"])
@@ -44,13 +47,17 @@ def retrieve(request):
     YfConfig.network.retries = 0
     YfConfig.network.proxy = None
     YfConfig.debug.hide_exceptions = False
-    policy = YahooPolicy(symbol, first.isoformat(), last.isoformat())
+    policy = (YahooValuationPolicy if valuation else YahooPolicy)(symbol, first.isoformat(), last.isoformat())
     with yahoo_session(policy) as session:
         try:
-            yf.Ticker(symbol, session=session).history(start=first.isoformat(),
-                end=(last + timedelta(days=1)).isoformat(), interval="1d", prepost=False,
-                actions=True, auto_adjust=False, back_adjust=False, repair=False, keepna=True,
-                rounding=False, timeout=10, raise_errors=True)
+            ticker = yf.Ticker(symbol, session=session)
+            if valuation:
+                url, params = valuation_request(symbol, first.isoformat(), last.isoformat())
+                ticker._data.get_raw_json(url, params=params, timeout=10)
+            else:
+                ticker.history(start=first.isoformat(), end=(last + timedelta(days=1)).isoformat(), interval="1d", prepost=False,
+                    actions=True, auto_adjust=False, back_adjust=False, repair=False, keepna=True,
+                    rounding=False, timeout=10, raise_errors=True)
         except Exception:
             raise MarketDataError(policy.error or "history_unavailable") from None
     if policy.error or policy.raw is None:
@@ -176,16 +183,25 @@ async def check_dependencies():
 
 
 async def fetch_yahoo_history(symbol, start, end):
+    return await fetch_candidate(symbol, start, end, valuation=False)
+
+
+async def fetch_yahoo_valuations(symbol, start, end):
+    return await fetch_candidate(symbol, start, end, valuation=True)
+
+
+async def fetch_candidate(symbol, start, end, *, valuation):
     valid_symbol(symbol)
     _window(start, end)
-    value = await run_worker({"symbol": symbol, "start": start, "end": end})
+    value = await run_worker({"symbol": symbol, "start": start, "end": end, **({"operation": "valuation"} if valuation else {})})
     try:
         if (not isinstance(value, dict) or set(value) != {"raw", "requests", "version"}
                 or value["version"] != VERSION or type(value["requests"]) is not int
                 or not 1 <= value["requests"] <= 4):
             raise MarketDataError("worker_limit")
         raw = base64.b64decode(value["raw"], validate=True)
-        return replace(parse_yahoo_chart(raw, symbol, start, end), retrieved_at=datetime.now(timezone.utc)), value["requests"]
+        parser = parse_valuations if valuation else parse_yahoo_chart
+        return replace(parser(raw, symbol, start, end), retrieved_at=datetime.now(timezone.utc)), value["requests"]
     except (ValueError, TypeError):
         raise MarketDataError("worker_limit") from None
 

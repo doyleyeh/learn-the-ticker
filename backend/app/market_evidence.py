@@ -30,6 +30,8 @@ def market_fingerprint(data):
     """Corruption detection, not an authenticity signature or a new source hash."""
     if isinstance(data, MarketEvidence):
         data = data.model_dump(mode="json")
+    if data.get("valuations") is None and data.get("valuation_gap") is None:
+        data = {k: v for k, v in data.items() if k not in ("valuations", "valuation_gap")}
     if data.get("return_method") is None and not data.get("returns"):
         # Pre-calculation snapshots retain their original fingerprint and no results
         # are silently generated when opening an old archive offline.
@@ -45,13 +47,19 @@ def validate_market(bundle):
         if private:
             raise ValueError("Private market source requires typed history")
         return
-    if (len(private) != 1 or private[0].id != data.source_id
+    expected = {data.source_id} | ({data.valuations.source_id} if data.valuations else set())
+    if (len(private) != len(expected) or {s.id for s in private} != expected
             or len({s.id for s in bundle.sources}) != len(bundle.sources)
             or not bundle.identity_verification or bundle.created_at.tzinfo is None
             or not timedelta(0) <= bundle.created_at - data.checked_at < timedelta(days=1)
             or data.fingerprint != market_fingerprint(data)):
         raise ValueError("Market evidence checkpoint or fingerprint is inconsistent")
-    source = private[0]
+    source = next(s for s in private if s.id == data.source_id)
+    if data.valuations:
+        from backend.app.valuation_evidence import validate_valuations
+        if data.valuation_gap is not None or data.valuations.source_id == data.source_id:
+            raise ValueError("Valuation source or availability is inconsistent")
+        validate_valuations(bundle, data.valuations, next(s for s in private if s.id == data.valuations.source_id))
     url = f"https://finance.yahoo.com/quote/{bundle.asset.symbol}/history/"
     if (str(source.url) != url or source.asset_id != bundle.asset.id
             or source.id != market_source_id(url, source.content_hash, source.retrieved_at)
@@ -120,6 +128,9 @@ def attach_market(bundle, mapped, *, personal_mode=False, created_at=None):
         fingerprint="0" * 64)
     data.return_method = METHOD
     data.returns = returns_for_history(data)
+    from backend.app.valuation_evidence import attach_valuations
+    data.valuations, valuation_source = attach_valuations(bundle, mapped, created_at=created_at)
+    data.valuation_gap = mapped.valuation_gap
     data.fingerprint = market_fingerprint(data)
     return EvidenceBundle.model_validate({**bundle.model_dump(), "created_at": created_at,
-        "market": data, "sources": [*bundle.sources, source], "state": "partial"})
+        "market": data, "sources": [*bundle.sources, source, *([valuation_source] if valuation_source else [])], "state": "partial"})

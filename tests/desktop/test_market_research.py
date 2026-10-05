@@ -19,10 +19,10 @@ from backend.app.source_review import SourceReviewDecision, SourceReviewScope
 from tests.desktop.financial_fixture import AT, financial_result
 from tests.desktop.test_market_mapping import history
 from tests.desktop.test_source_review import pending
-from tests.desktop.market_fixture import market_candidate
+from tests.desktop.market_fixture import market_candidate, valuation_candidate
 
 
-def service(tmp_path, *, enabled=True, review=False, credential=None, yahoo=None, primary=None, database=None):
+def service(tmp_path, *, enabled=True, review=False, credential=None, yahoo=None, primary=None, database=None, valuations=None):
     result, calls, prompts = financial_result(), [], []
     class Resolver:
         def resolve(self, query):
@@ -45,6 +45,8 @@ def service(tmp_path, *, enabled=True, review=False, credential=None, yahoo=None
     async def fallback(symbol, start, end):
         calls.append("yahoo")
         return replace(market_candidate(), requested_start=start, requested_end=end), 4
+    async def supplied_valuations(symbol, start, end):
+        return replace(valuation_candidate(), requested_start=start, requested_end=end), 3
     def first(symbol, start, end, credential, cancelled=None):
         calls.append("primary")
         return json.dumps([{"date": start, "open": 1, "high": 1, "low": 1, "close": 1, "adjusted_close": 1, "volume": 100}]).encode()
@@ -52,7 +54,8 @@ def service(tmp_path, *, enabled=True, review=False, credential=None, yahoo=None
     db.put("settings", "settings", {"cloud_enabled": True, "experimental_yahoo_enabled": enabled, "manual_source_review": review})
     value = ResearchService(db, {"codex": Runtime()}, tmp_path, identity_resolver=Resolver(),
         financial_adapter=Financial(), filing_adapter=Filings(), clock=lambda: AT)
-    value.market_adapter = MarketResearch(value, store_factory=Store, primary=primary or first, yahoo=yahoo or fallback)
+    value.market_adapter = MarketResearch(value, store_factory=Store, primary=primary or first, yahoo=yahoo or fallback,
+        valuations=valuations or supplied_valuations)
     return value, result.instrument, calls, prompts
 
 
@@ -103,7 +106,7 @@ def test_private_source_review_has_exact_numeric_scope_and_no_general_text_grant
         task = asyncio.create_task(app.market_adapter.retrieve(instrument, threading.Event(), scope))
         review = await pending(app.source_reviews, task)
         assert not calls and app.retrieval._value == 2 and app.inference._value == 1
-        assert len(review.sources) == 2 and all(row.local_numeric_only for row in review.sources)
+        assert len(review.sources) == 3 and all(row.local_numeric_only for row in review.sources)
         assert all(source_rule(str(row.url)) is None for row in review.sources)
         selected = [row.id for row in review.sources if "yahoo" in str(row.url)] if outcome in ("yahoo_only", "revoke") else []
         if outcome == "revoke":

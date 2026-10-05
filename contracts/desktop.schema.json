@@ -1737,6 +1737,34 @@
           "title": "Returns",
           "type": "array"
         },
+        "valuations": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MarketValuations"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "valuation_gap": {
+          "anyOf": [
+            {
+              "enum": [
+                "source_unavailable",
+                "not_selected",
+                "no_observations"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valuation Gap"
+        },
         "fingerprint": {
           "pattern": "^[0-9a-f]{64}$",
           "title": "Fingerprint",
@@ -1858,6 +1886,55 @@
         "end"
       ],
       "title": "MarketReturn",
+      "type": "object"
+    },
+    "MarketValuations": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "method": {
+          "const": "yahoo-reported-valuation-v1",
+          "default": "yahoo-reported-valuation-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "requested_start": {
+          "format": "date",
+          "title": "Requested Start",
+          "type": "string"
+        },
+        "requested_end": {
+          "format": "date",
+          "title": "Requested End",
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/ValuationObservation"
+          },
+          "maxItems": 600,
+          "minItems": 1,
+          "title": "Points",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_id",
+        "requested_start",
+        "requested_end",
+        "points"
+      ],
+      "title": "MarketValuations",
       "type": "object"
     },
     "ParsedDocument": {
@@ -3145,6 +3222,103 @@
         "basis"
       ],
       "title": "TermResult",
+      "type": "object"
+    },
+    "ValuationObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "metric": {
+          "enum": [
+            "MarketCap",
+            "EnterpriseValue",
+            "PeRatio",
+            "PsRatio",
+            "PbRatio",
+            "EnterprisesValueRevenueRatio",
+            "EnterprisesValueEBITDARatio"
+          ],
+          "title": "Metric",
+          "type": "string"
+        },
+        "sampling": {
+          "enum": [
+            "annual",
+            "quarterly",
+            "trailing"
+          ],
+          "title": "Sampling",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "period_type": {
+          "enum": [
+            "12M",
+            "3M",
+            "TTM"
+          ],
+          "title": "Period Type",
+          "type": "string"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "const": "USD",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "value_missing",
+                "currency_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "metric",
+        "sampling",
+        "date",
+        "period_type"
+      ],
+      "title": "ValuationObservation",
       "type": "object"
     }
   },

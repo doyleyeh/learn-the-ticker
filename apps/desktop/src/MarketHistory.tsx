@@ -62,7 +62,7 @@ function PrivateHistory({ bundle, market, source }: { bundle: EvidenceBundle; ma
       {actions.length ? <ul>{actions.slice(actionPage * 20, (actionPage + 1) * 20).map((action) => <li key={`${action.date}:${action.kind}`}>{action.date} · {action.kind === "capitalGains" ? "Capital-gain distribution" : action.kind === "splits" ? "Split ratio" : "Dividend"} · {action.kind === "splits" ? action.value : `${displayNumber(action.value)} ${market.currency}`}</li>)}</ul> : <p>No corporate actions were returned in this retained response; completeness is unverified.</p>}
       {actionPages > 1 && <nav aria-label="Corporate action pages"><button disabled={!actionPage} onClick={() => setActionPage(actionPage - 1)}>Newer actions</button><p aria-live="polite">Page {actionPage + 1} of {actionPages}</p><button disabled={actionPage + 1 >= actionPages} onClick={() => setActionPage(actionPage + 1)}>Older actions</button></nav>}
     </details>
-    <p className="source-gap-note">Historical valuation: unavailable — price and financial inputs must refer to compatible dates, units and share bases.</p>
+    <p className="source-gap-note">See Key statistics for retained provider valuations when available. App-calculated price/earnings ratios require compatible dates, units and share bases.</p>
   </div>;
 }
 

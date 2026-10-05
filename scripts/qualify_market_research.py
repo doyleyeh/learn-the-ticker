@@ -17,7 +17,7 @@ from backend.app.source_operations import shareable_view
 from backend.app.source_review import SourceReviewScope
 
 
-async def check(*, live=False, asset_id="", service_factory=None):
+async def check(*, live=False, asset_id="", service_factory=None, require_valuations=False):
     if not live:
         return {"status": "not_run", "reason": "Pass --live and an independently selected --asset-id to opt into this private check."}
     if not asset_id.startswith("FIGI:") or not valid_figi(asset_id[5:]):
@@ -54,6 +54,18 @@ async def check(*, live=False, asset_id="", service_factory=None):
                     or exported.market or exported.sources or not notice or db.get("bundle:" + checkpoint["id"]) != checkpoint):
                 raise ValueError
             source = retained.sources[0]
+            valuations = retained.market.valuations
+            if require_valuations and (not valuations or not any(p.metric == "PeRatio" and p.sampling != "trailing" and p.value is not None for p in valuations.points)):
+                return {"status": "blocked", "reason": "Historical provider P/E observations were not admitted; no retry was made."}
+            valuation_report = None
+            if valuations:
+                citation = next(s for s in retained.sources if s.id == valuations.source_id)
+                valuation_report = {"source_url": str(citation.url), "source_hash": citation.content_hash,
+                    "retrieved_at": citation.retrieved_at.isoformat(), "observations": len(valuations.points),
+                    "available": sum(p.value is not None for p in valuations.points),
+                    "series": [{"metric": metric, "sampling": sampling,
+                        "dates": [p.date.isoformat() for p in valuations.points if (p.metric, p.sampling) == (metric, sampling)]}
+                        for metric, sampling in sorted({(p.metric, p.sampling) for p in valuations.points})]}
             return {"status": "qualified", "asset_id": asset_id, "rows": len(retained.market.bars),
                 "actions": len(retained.market.actions), "requested_start": retained.market.requested_start.isoformat(),
                 "first_date": retained.market.bars[0].date.isoformat(), "last_date": retained.market.bars[-1].date.isoformat(),
@@ -61,6 +73,7 @@ async def check(*, live=False, asset_id="", service_factory=None):
                 "retrieved_at": source.retrieved_at.isoformat(), "fingerprint": retained.market.fingerprint,
                 "return_method": retained.market.return_method,
                 "return_windows": {row.period: row.reason or "available" for row in retained.market.returns},
+                "valuations": valuation_report,
                 "checkpoint_preserved": True, "cloud_excluded": True, "shareable_export_excluded": True,
                 "scope": "Actual production retrieval/queue/admission/publication in a discarded in-memory test DB; no model, durable user-library write, PostgreSQL/native/UI qualification or public permission grant."}
     except Exception:
@@ -76,16 +89,17 @@ def main():
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--asset-id", default="")
     parser.add_argument("--packaged-worker", action="store_true")
+    parser.add_argument("--require-valuations", action="store_true")
     args = parser.parse_args()
     if args.packaged_worker:
         executable = Path(__file__).resolve().parents[1] / "dist/ltt-service.exe"
         if not executable.is_file():
             raise SystemExit("Build the Windows sidecar before packaged market qualification")
         with patch("sys.frozen", True, create=True), patch("sys.executable", str(executable)):
-            result = asyncio.run(check(live=args.live, asset_id=args.asset_id))
+            result = asyncio.run(check(live=args.live, asset_id=args.asset_id, require_valuations=args.require_valuations))
         result["worker"] = "frozen Windows sidecar; orchestration/test database run from source"
     else:
-        result = asyncio.run(check(live=args.live, asset_id=args.asset_id))
+        result = asyncio.run(check(live=args.live, asset_id=args.asset_id, require_valuations=args.require_valuations))
     print(json.dumps(result, indent=2))
     return 0 if result["status"] == "qualified" else 2
 

@@ -4,6 +4,7 @@ import asyncio
 import json
 import threading
 from contextlib import aclosing
+from dataclasses import replace
 from pathlib import Path
 
 from backend.app.approvals import ApprovalBroker
@@ -236,8 +237,9 @@ class ResearchService:
         # Revalidate after stripping notes/candidates; no raw model output is stored.
         if not bundle.claims and not (bundle.financials and bundle.financials.observations) and bundle.market is None:
             return
+        market_ids = ({bundle.market.source_id} | ({bundle.market.valuations.source_id} if bundle.market.valuations else set())) if bundle.market else set()
         permitted = [source for source in bundle.sources if source.verified and
-                     (source.policy == SourcePolicy.full_text or (bundle.market and source.id == bundle.market.source_id))]
+                     (source.policy == SourcePolicy.full_text or source.id in market_ids)]
         value = EvidenceBundle.model_validate({**bundle.model_dump(), "id": uid(), "completion": "section_checkpoint", "notes": [], "sources": permitted})
         self.db.checkpoint_research(job_id, value)
 
@@ -444,6 +446,8 @@ class ResearchService:
             bundle = admit_bundle(asset, sources, result.claims, language=request.language, level=request.level, identity_verification=resolved.verification,
                                   created_at=self.clock(), financials=financial.financials if financial else None)
             if market and self.settings().experimental_yahoo_enabled and review.allowed(market.history.source_url):
+                if market.valuations and not review.allowed(market.valuations.source_url):
+                    market = replace(market, valuations=None, valuation_gap="not_selected")
                 bundle = attach_market(bundle, market, personal_mode=True, created_at=self.clock())
             elif market:
                 market_gap = "Private market history awaits source review or renewed personal-mode opt-in."

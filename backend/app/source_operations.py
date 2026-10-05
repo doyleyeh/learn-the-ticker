@@ -1,7 +1,7 @@
 """Operation boundaries apply to current and historical records, not model promises."""
 from urllib.parse import urlsplit
 
-PRIVATE_NOTICE = "Experimental Yahoo history and content derived from it are available only locally and in same-user private backups; omitted from cloud context and shareable exports."
+PRIVATE_NOTICE = "Experimental Yahoo history, valuations and content derived from them are available only locally and in same-user private backups; omitted from cloud context and shareable exports."
 
 
 def private_source(source):

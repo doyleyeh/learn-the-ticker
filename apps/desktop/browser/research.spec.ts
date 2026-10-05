@@ -165,13 +165,14 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await expect(optIn).toBeChecked();
     const review = await research(page, "Synthetic private source review");
     await review.getByRole("button", { name: "Skip these sources" }).click();
-    await expect(review.getByRole("checkbox")).toHaveCount(2);
+    await expect(review.getByRole("checkbox")).toHaveCount(3);
     await expect(review.locator("input:checked")).toHaveCount(0);
-    await expect(review.getByText(/Private numerical retrieval only/)).toHaveCount(2);
+    await expect(review.getByText(/Private numerical retrieval only/)).toHaveCount(3);
     await expect(review.getByRole("checkbox", { name: /finance\.yahoo\.com\/quote\/SYN\/history/ })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
     await review.screenshot({ path: testInfo.outputPath("private-review-narrow.png") });
     await review.getByRole("checkbox", { name: /finance\.yahoo\.com\/quote\/SYN\/history/ }).check();
+    await review.getByRole("checkbox", { name: /finance\.yahoo\.com\/quote\/SYN\/key-statistics/ }).check();
     await review.getByRole("button", { name: "Use selected sources" }).click();
     await expect(page.getByText("Status: completed", { exact: true })).toBeVisible();
   });
@@ -232,6 +233,36 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     expect(new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("bundle")).toBe(new URLSearchParams(new URL(privateVersion).hash.split("?")[1]).get("bundle"));
     await page.reload(); await connect(page);
     await expect(page.locator(".market-history").getByText("27.272727%", { exact: true })).toBeVisible();
+  });
+  await test.step("supplied valuations preserve original dates, gaps, private selection and citations", async () => {
+    await page.getByRole("navigation", { name: "Ticker sections" }).getByRole("button", { name: "Statistics", exact: true }).click();
+    const valuation = page.locator(".provider-valuations");
+    await expect(valuation.getByText("29.5 ×As of 2026-01-05", { exact: true })).toBeVisible();
+    await expect(valuation.getByRole("cell", { name: "28.123456789012345678 ×", exact: true })).toBeVisible();
+    await expect(valuation.getByRole("cell", { name: "Unavailable — source value missing.", exact: true })).toBeVisible();
+    await valuation.getByText("Valuation definitions and limitations", { exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect(valuation.getByText(/not proven point-in-time records/)).toBeVisible();
+    await valuation.getByRole("combobox", { name: "Valuation metric", exact: true }).selectOption("MarketCap");
+    await valuation.getByRole("combobox", { name: "Valuation sampling", exact: true }).selectOption("annual");
+    await expect(valuation.getByRole("cell", { name: "9,007,199,254,740,993 USD", exact: true })).toBeVisible();
+    await valuation.screenshot({ path: testInfo.outputPath("valuations-wide.png") });
+    await page.setViewportSize({ width: 640, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+    await valuation.screenshot({ path: testInfo.outputPath("valuations-narrow.png") });
+    await valuation.locator("td").first().evaluate((node) => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+      node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    await expect(page.locator(".term-selection-bar")).toHaveCount(0);
+    await valuation.getByRole("link", { name: /Open source drawer/ }).click();
+    const sourceId = new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("source");
+    const drawer = page.locator(`details.source-drawer[id="source-${sourceId}"][open]`);
+    await expect(drawer.getByRole("link", { name: "Inspect original source" })).toHaveAttribute("href", "https://finance.yahoo.com/quote/SYN/key-statistics/");
+    expect(new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("bundle")).toBe(new URLSearchParams(new URL(privateVersion).hash.split("?")[1]).get("bundle"));
+    await page.reload(); await connect(page);
+    await expect(page.locator(".provider-valuations").getByText("29.5 ×As of 2026-01-05", { exact: true })).toBeVisible();
   });
   await test.step("revoking private mode stops a pending research and preserves saved history", async () => {
     await research(page, "Synthetic private opt-out");
