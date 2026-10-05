@@ -94,6 +94,8 @@ class PreviewRecoveryRuntime(PreviewIdentityRuntime):
             yield event
 
 if __name__ == "__main__":
+    if "--conversations-demo" in sys.argv and "--source-review-demo" not in sys.argv:
+        raise SystemExit("Conversation preview requires the explicit synthetic source-review fixture")
     preview_directory = tempfile.TemporaryDirectory(prefix="ltt-ui-preview-")
     db = preview_database(preview_directory.name)
     asset = AssetIdentity(id="XTEST:SYNTH", name="Synthetic Research Example", symbol="SYNTH", asset_type="stock", exchange="XTEST")
@@ -169,6 +171,19 @@ if __name__ == "__main__":
             return estimate_candidate(), 3
         service.market_adapter = MarketResearch(service, store_factory=PreviewDataStore, yahoo=preview_yahoo,
             valuations=preview_valuations, estimates=preview_estimates)
+    if "--conversations-demo" in sys.argv:
+        # Exercise explicit provider/model selection with no real runtime or catalog.
+        delegate = app.state.service.adapters["codex"]
+        class ConversationRuntime:
+            def __init__(self, provider):
+                self.provider = provider
+            async def models(self):
+                return RuntimeModelCatalog(provider=self.provider, status="available", models=[
+                    RuntimeModel(id="synthetic-selected", name="Synthetic selected model")])
+            async def stream(self, *args, **kwargs):
+                async for event in delegate.stream(*args, **kwargs):
+                    yield event
+        app.state.service.adapters = {provider: ConversationRuntime(provider) for provider in ("codex", "claude")}
     if "--approvals-demo" in sys.argv:
         adapter = PreviewAccessRuntime(asset)
         adapter.approvals = app.state.service.approvals

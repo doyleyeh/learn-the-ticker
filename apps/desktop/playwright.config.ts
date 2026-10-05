@@ -12,7 +12,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   use: { baseURL: "http://127.0.0.1:1420", viewport: { width: 1280, height: 900 }, trace: "off", screenshot: "only-on-failure" },
   webServer: [
-    { command: `${python} -m tests.desktop.preview_server --financials-demo --source-review-demo --parity-demo`, cwd: root,
+    { command: `${python} -m tests.desktop.preview_server --financials-demo --source-review-demo --parity-demo --conversations-demo`, cwd: root,
       url: "http://127.0.0.1:18764/api/health", reuseExistingServer: false, timeout: 30_000 },
     { command: "npm run start", cwd: root, url: "http://127.0.0.1:1420", reuseExistingServer: false, timeout: 30_000 },
   ],

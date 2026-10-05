@@ -90,8 +90,12 @@ def main():
         source.put("asset:" + identity.id, "asset", latest.model_dump(mode="json"))
         saved = SavedResearch(bundle_id=old.id, title="Original saved version")
         source.put("saved:" + saved.id, "saved", saved.model_dump(mode="json"), identity.id)
-        chat = Conversation(asset_id=identity.id, bookmarked=True)
+        chat = Conversation(asset_id=identity.id, bookmarked=True, messages=[
+            {"role": "assistant", "asset_id": identity.id, "bundle_id": old.id}])
         source.put("conversation:" + chat.id, "conversation", chat.model_dump(mode="json"))
+        source.update_conversation(chat.id, asset_id=financial.asset.id)
+        original_chat = Conversation.model_validate(source.update_conversation(chat.id, asset_id=identity.id)).model_dump(mode="json")
+        assert [message["role"] for message in original_chat["messages"]] == ["assistant", "scope", "scope"]
         source.put("settings", "settings", Settings(cloud_enabled=True, experimental_yahoo_enabled=True, language="zh-TW", model="synthetic-selected-model").model_dump(mode="json"))
         term_request = TermRequest(term="liquidity", bundle_id=old.id)
         term = TermExplanation(id=term_key(term_request), term=term_request.term, bundle_id=old.id, asset_id=identity.id, language="en", level="beginner", provider="codex", basis="general", explanation="Synthetic general explanation for the restore scenario.")
@@ -182,6 +186,7 @@ def main():
         assert restored_jobs[financial_job["id"]] == original_jobs[financial_job["id"]]
         assert target.get("bundle:" + old.id) and target.get("asset:" + identity.id)["id"] == latest.id
         assert target.list("saved")[0]["bundle_id"] == old.id
+        assert target.get("conversation:" + chat.id) == original_chat
         assert target.list("conversation")[0]["bookmarked"]
         assert target.get("term:" + term.id)["bundle_id"] == old.id and target.job("term-job")["result"]["id"] == term.id
         assert target.get("term:" + question.id) == question.model_dump(mode="json")
@@ -222,6 +227,7 @@ def main():
         assert restarted.job(pending_review_job)["status"] == "interrupted"
         assert restarted.job(reviewed_job["id"])["result"] == reviewed_job["result"]
         assert restarted.list("saved")[0]["bundle_id"] == old.id
+        assert restarted.get("conversation:" + chat.id) == original_chat
         assert restarted.get("asset:" + identity.id)["id"] == latest.id
         assert restarted.get("asset:" + identity.id)["identity_verification"] == proof.model_dump(mode="json")
         assert restarted.get("asset:" + identity.id)["level"] == "intermediate"

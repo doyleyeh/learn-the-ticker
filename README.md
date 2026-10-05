@@ -30,6 +30,8 @@ The Sources screen can retain bounded original documents with checksums, provena
 
 ## Development on Windows
 
+Start a conversation from a ticker page, then use its saved conversation link to return after reload. The conversation view shows its current asset and the provider/model selected for the next answer. Earlier responses open their original evidence version; opening them does not change conversation scope. Bookmarks and messages remain readable with cloud research off.
+
 The requested product direction is a populated ticker dashboard with overview, history, statistics, financials, relevant news and permitted analyst insights, feeding cited context into term explanations, questions and comparisons. Existing applicable financial APIs come before agent gap research. These are delivery requirements, not a claim that every section or previously used API is integrated. See [the source/dashboard assessment](docs/verification/2026-10-04-ticker-dashboard-sources.md) for current source candidates and permissions still to establish.
 
 The owner-approved scope is a personal API-to-agent framework: each user keeps their own local library and can send permitted selected context to their chosen agent. Framework distribution is distinct from data redistribution, and a commercial AI vendor alone does not make personal research commercial. Several financial providers explicitly document agent integrations. Provider-specific retrieval, retention, backup and plan limits still apply; see the [updated financial-provider assessment](docs/verification/2026-10-05-personal-api-agent-policy.md). This approval does not mean every candidate adapter or analyst dataset is integrated or qualified.

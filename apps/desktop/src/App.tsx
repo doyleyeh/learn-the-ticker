@@ -2,13 +2,14 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, bootstrap, connect, download } from "./client";
 import type { EvidenceBundle, Settings, Conversation as ConversationContract, SavedResearch, ResearchRequest } from "./contracts";
 import { SnapshotStatus } from "./EvidenceFreshness";
-import { bundleRoute, pages, routeFromHash } from "./routes";
+import { bundleRoute, conversationRoute, pages, routeFromHash } from "./routes";
 import { LibraryBackup } from "./LibraryBackup";
 import { ImportDocuments } from "./ImportDocuments";
 import { EvidenceView } from "./TickerDashboard";
 export { EvidenceView } from "./TickerDashboard";
 import { CodexConnection } from "./CodexConnection";
 import { Connections } from "./Connections";
+import { ConversationPanel } from "./ConversationPanel";
 import { AccessReview } from "./AccessReview";
 import { SourceReview } from "./SourceReview";
 import { TermLearning } from "./TermLearning";
@@ -33,9 +34,9 @@ export function App() {
   const [level, setLevel] = useState<"beginner" | "intermediate">("beginner");
   const [job, setJob] = useState<Job>();
   const [progress, setProgress] = useState("");
-  const [conversation, setConversation] = useState<Conversation>();
+  const [conversationId, setConversationId] = useState<string | null>(routeFromHash(location.hash).conversation);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const activeConversation = conversations.find((item) => item.id === conversation?.id) ?? conversation;
+  const activeConversation = conversations.find((item) => item.id === conversationId);
   const busy = activeResearch(job?.status ?? "");
   const fail = (error: unknown) => setError(error instanceof Error ? error.message : "The operation could not be completed.");
 
@@ -44,6 +45,7 @@ export function App() {
     setLibrary(items); setSettings(preferences); setSaved(reports); setConversations(chats); setReady(true);
     const route = routeFromHash(location.hash);
     setSourceTarget(route.source);
+    setConversationId(route.conversation);
     if (route.page === "asset" && route.bundle) setAsset(await api<EvidenceBundle>(`/api/bundles/${encodeURIComponent(route.bundle)}`));
   }
   useEffect(() => {
@@ -53,6 +55,7 @@ export function App() {
       if (pages.includes(fragment.split("?")[0])) {
         setPage(route.page);
         setSourceTarget(route.source);
+        setConversationId(route.conversation);
         if (route.page === "asset" && route.bundle) void api<EvidenceBundle>(`/api/bundles/${encodeURIComponent(route.bundle)}`).then((value) => { if (location.hash.slice(1) === fragment) setAsset(value); }).catch(fail);
       }
       else if (fragment.startsWith("source-")) {
@@ -78,12 +81,13 @@ export function App() {
     const close = observeResearch<Job>(job.id, (next) => {
       if (!active) return;
       setJob(next);
-      if (next.result?.asset && next.result.completion === "section_checkpoint" && next.result.id !== shownBundle) {
+      if (!next.request?.conversation_id && next.result?.asset && next.result.completion === "section_checkpoint" && next.result.id !== shownBundle) {
         shownBundle = next.result.id;
         setAsset(next.result); location.hash = bundleRoute(next.result.id!);
       }
       if (next.status === "completed" && next.result?.asset) {
-        setAsset(next.result); location.hash = bundleRoute(next.result.id!);
+        if (next.request?.conversation_id) location.hash = conversationRoute(next.request.conversation_id);
+        else { setAsset(next.result); location.hash = bundleRoute(next.result.id!); }
         void reload().catch(fail);
       }
       if (next.error) setError(next.error);
@@ -95,28 +99,38 @@ export function App() {
     const next = await api<Job>(`/api/jobs/${encodeURIComponent(id)}`);
     setJob(next); setProgress(""); setError(next.error ?? ""); setNotice("");
     if (next.request) { setQuery(next.request.query); setLevel(next.request.level ?? "beginner"); }
-    setConversation(next.request?.conversation_id ? conversations.find((item) => item.id === next.request?.conversation_id) : undefined);
-    if (next.result?.asset) { setAsset(next.result); location.hash = bundleRoute(next.result.id!); }
+    if (next.request?.conversation_id) location.hash = conversationRoute(next.request.conversation_id);
+    else if (next.result?.asset) { setAsset(next.result); location.hash = bundleRoute(next.result.id!); }
+    // A fast completion can arrive before an observer is attached (for example
+    // after source review). Refresh persisted chat messages on this path too.
+    if (next.status === "completed") await reload();
   }
 
-  async function research(event?: FormEvent, refresh = false, question?: string) {
+  async function research(event?: FormEvent, refresh = false, question?: string, chat?: Conversation) {
     event?.preventDefault(); setError(""); setProgress("");
     try {
-      const next = await api<Job>("/api/research", { method: "POST", body: JSON.stringify({ query: question || query, provider: settings?.provider ?? "codex", language: settings?.language ?? "en", level, refresh, asset_id: question || refresh ? asset?.asset.id : null, conversation_id: question && !refresh ? conversation?.id : null }) });
+      const next = await api<Job>("/api/research", { method: "POST", body: JSON.stringify({ query: question || query, provider: settings?.provider ?? "codex", language: settings?.language ?? "en", level, refresh, asset_id: chat?.asset_id ?? (question || refresh ? asset?.asset.id : null), conversation_id: chat?.id ?? null }) });
       setJob(next);
       if (next.status === "cached" && next.result) { setAsset(next.result); location.hash = bundleRoute(next.result.id!); }
-    } catch (error) { fail(error); }
+      return true;
+    } catch (error) { fail(error); return false; }
   }
   async function saveSettings(value: Settings) { try { setSettings(await api<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(value) })); setError(""); } catch (error) { fail(error); } }
-  function openAsset(value: EvidenceBundle) { setAsset(value); setConversation(undefined); location.hash = bundleRoute(value.id!); }
+  function openAsset(value: EvidenceBundle) { setAsset(value); setConversationId(null); location.hash = bundleRoute(value.id!); }
+
+  async function startConversation() {
+    if (!asset) return;
+    try {
+      const chat = await api<Conversation>("/api/conversations", { method: "POST", body: JSON.stringify({ asset_id: asset.asset.id }) });
+      setConversations((items) => [...items, chat]);
+      location.hash = conversationRoute(chat.id);
+    } catch (error) { fail(error); }
+  }
 
   async function updateConversation(change: { bookmarked?: boolean; asset_id?: string }) {
     if (!activeConversation) return;
-    try {
-      const updated = await api<Conversation>(`/api/conversations/${activeConversation.id}`, { method: "PUT", body: JSON.stringify(change) });
-      if (change.asset_id) openAsset(await api<EvidenceBundle>(`/api/assets/${encodeURIComponent(change.asset_id)}`));
-      setConversation(updated); await reload();
-    } catch (error) { fail(error); }
+    const updated = await api<Conversation>(`/api/conversations/${activeConversation.id}`, { method: "PUT", body: JSON.stringify(change) });
+    setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));
   }
 
   return <div className="app-shell">
@@ -132,6 +146,7 @@ export function App() {
         {!settings?.cloud_enabled && <p>Online research is off. Enable your chosen provider in <a href="#connections">Connections</a>. Cached pages remain available.</p>}
         <ResearchJobs currentId={job?.id} revision={`${job?.id}:${job?.status}`} onOpen={reopenResearch}/>
         {job?.id && <section aria-live="polite" className="plain-panel research-job-status"><h2>Viewed research job</h2><p>{job.request?.query}</p><p>Status: {job.status.replaceAll("_", " ")}</p>
+          {job.request?.conversation_id && job.result?.completion === "section_checkpoint" && <a href={`#${bundleRoute(job.result.id!, job.request.conversation_id)}`}>Open checked sections (incomplete)</a>}
           {busy ? <><p>{progress || "Reading existing research progress"}</p><button onClick={() => api<Job>(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, { method: "POST" }).then(setJob).catch(fail)}>Cancel research</button></>
             : ["failed", "cancelled", "interrupted"].includes(job.status) && <p>This job has stopped. Earlier saved research is unchanged. Any independently checked section remains labeled incomplete. Review the request and connection before explicitly starting new research.</p>}
         </section>}
@@ -141,13 +156,17 @@ export function App() {
         {page === "imports" && <ImportDocuments online={!!settings?.cloud_enabled} settings={settings} level={level}/>}
         {page === "library" && <section><h1>Your research library</h1><p>Search any asset. Available sections depend on verifiable evidence.</p>{library.length === 0 && <section className="plain-panel"><h2>Start with one asset</h2><p>Connect your subscription runtime, then research a ticker or name. Evidence and dated explanations will be saved here.</p></section>}<div className="library-grid">{library.map((item) => <button className="plain-panel" key={item.asset.id} onClick={() => openAsset(item)}><strong>{item.asset.name}</strong><span>{item.asset.symbol} · {item.asset.asset_type}</span><span>Snapshot {new Date(item.created_at!).toLocaleString()}</span></button>)}</div></section>}
         {page === "saved" && <section><h1>Saved research</h1><p>Bookmarks reference a fixed evidence version; refresh does not overwrite it.</p>{saved.length === 0 && <p>No saved research yet.</p>}{saved.map((report) => <button key={report.id} onClick={() => api<EvidenceBundle>(`/api/bundles/${report.bundle_id}`).then(openAsset).catch(fail)}>{report.title}</button>)}</section>}
-        {page === "conversations" && <section><h1>Persistent conversations</h1><p>Unbookmarked conversations expire after {settings?.retention_days ?? 180} days without activity. Bookmark a conversation to keep it.</p>{conversations.map((chat) => <button key={chat.id} onClick={() => api<EvidenceBundle>(`/api/assets/${encodeURIComponent(chat.asset_id)}`).then((bundle) => { openAsset(bundle); setConversation(chat); }).catch(fail)}>{chat.asset_id} · {chat.messages.length} messages{chat.bookmarked ? " · Bookmarked" : ""}</button>)}</section>}
-        {page === "connections" && <><CodexConnection/><LibraryBackup onRestored={async () => { setConversation(undefined); setAsset(undefined); setJob(undefined); await reload(); }}/></>}
+        {page === "conversations" && <section><h1>Persistent conversations</h1><p>Unbookmarked conversations expire after {settings?.retention_days ?? 180} days without activity. Bookmark a conversation to keep it.</p>
+          <nav aria-label="Saved conversations">{conversations.map((chat) => <a key={chat.id} href={`#${conversationRoute(chat.id)}`}>{chat.asset_id} · {chat.messages.length} messages{chat.bookmarked ? " · Bookmarked" : ""}</a>)}</nav>
+          {activeConversation ? <ConversationPanel key={activeConversation.id} conversation={activeConversation} library={library} settings={settings} busy={!!busy} onUpdate={updateConversation} onAsk={(question) => research(undefined, false, question, activeConversation)}/> : <p>{conversationId ? "This conversation is unavailable or has expired. Saved evidence remains in the library." : "Select a conversation, or start one from a ticker page."}</p>}
+        </section>}
+        {page === "connections" && <><CodexConnection/><LibraryBackup onRestored={async () => { setConversationId(null); setAsset(undefined); setJob(undefined); await reload(); }}/></>}
         {page === "asset" && asset && <>
+          {activeConversation && <a href={`#${conversationRoute(activeConversation.id)}`}>Return to conversation</a>}
           <CheckpointNotice completion={asset.completion}/>
           <section className="plain-panel"><p className="eyebrow">{asset.asset.asset_type} · {asset.asset.exchange ?? "Listing details unconfirmed"}</p><h1>{asset.asset.name} <small>{asset.asset.symbol}</small></h1><SnapshotStatus bundle={asset}/><p>Scope: {asset.asset.id} · {asset.level ? `${asset.level} explanations` : "Reader level not recorded"} · {asset.language}</p><div className="actions"><button disabled={busy || !settings?.cloud_enabled || asset.completion === "section_checkpoint"} onClick={() => void research(undefined, true, `Refresh research for ${asset.asset.name}`)}>Refresh evidence</button><button onClick={() => api("/api/saved", { method: "POST", body: JSON.stringify({ bundle_id: asset.id, title: asset.asset.name }) }).then(async () => { await reload(); setNotice("Research version bookmarked."); }).catch(fail)}>Bookmark this version</button><button onClick={() => download(asset.id!, "markdown").catch(fail)}>Export Markdown</button><button onClick={() => download(asset.id!, "json").catch(fail)}>Export JSON</button></div></section>
           <TermLearning key={`${asset.id}:${level}:${settings?.language}`} bundle={asset} level={level} settings={settings}><EvidenceView bundle={asset}/></TermLearning>
-          {asset.completion !== "section_checkpoint" && <section className="plain-panel"><h2>Continue learning</h2><p>Conversation scope starts with {asset.asset.name}. Resolve a new asset through research before changing scope.</p>{!activeConversation ? <button onClick={() => api<Conversation>("/api/conversations", { method: "POST", body: JSON.stringify({ asset_id: asset.asset.id }) }).then(setConversation).catch(fail)}>Start a conversation</button> : <><p>Conversation {activeConversation.id.slice(0, 8)} · Current scope: {activeConversation.asset_id}</p><button onClick={() => void updateConversation({ bookmarked: !activeConversation.bookmarked })}>{activeConversation.bookmarked ? "Remove conversation bookmark" : "Bookmark conversation"}</button><label>Conversation asset<select disabled={busy} value={activeConversation.asset_id} onChange={(event) => void updateConversation({ asset_id: event.target.value })}>{library.map((entry) => <option key={entry.asset.id} value={entry.asset.id}>{entry.asset.name} · {entry.asset.symbol}</option>)}</select></label>{activeConversation.messages.map((message, i) => <p key={i}>{message.role}: {message.bundle_id ? <a href={`#${bundleRoute(message.bundle_id)}`}>Open cited response</a> : message.text}{message.asset_id && <small> · {message.asset_id}</small>}</p>)}<FollowUp busy={!!busy || !settings?.cloud_enabled} onAsk={(question) => void research(undefined, false, question)}/></>}</section>}
+          {asset.completion !== "section_checkpoint" && <section className="plain-panel"><h2>Continue learning</h2><p>Start a conversation scoped to {asset.asset.name}, or return to an existing conversation. Original cited responses remain separate saved versions.</p><button onClick={() => void startConversation()}>Start a conversation</button></section>}
         </>}
       </>}
     </main></div>;
@@ -158,10 +177,6 @@ function Connect({ onConnect }: { onConnect: (endpoint: string, token: string) =
   return <section className="plain-panel"><h1>Open your local research library</h1><p>The desktop application connects automatically after PostgreSQL and the local service are ready.</p><details><summary>Developer browser connection</summary><form onSubmit={(e) => { e.preventDefault(); void onConnect(endpoint, token).then(() => setToken("")); }}><label>Local endpoint<input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} required/></label><label>Temporary session credential<input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} required/></label><button>Connect locally</button></form></details></section>;
 }
 
-function FollowUp({ onAsk, busy }: { onAsk: (question: string) => void; busy: boolean }) {
-  const [question, setQuestion] = useState("");
-  return <form onSubmit={(e) => { e.preventDefault(); onAsk(question); setQuestion(""); }}><label>Ask a follow-up or explain a term<textarea required value={question} maxLength={1000} onChange={(e) => setQuestion(e.target.value)}/></label><button disabled={busy}>Ask your connected agent</button></form>;
-}
 
 export function CheckpointNotice({ completion }: { completion: EvidenceBundle["completion"] }) {
   return completion === "section_checkpoint" ? <section className="plain-panel" role="status"><h2>Incomplete research — checked sections</h2><p>This version contains only independently admitted evidence available before the overall run finished. The run may still be active or may have stopped. Missing sections remain unavailable. Earlier completed research is unchanged.</p></section> : null;
