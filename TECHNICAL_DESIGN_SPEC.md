@@ -28,6 +28,8 @@ On startup, pending/running jobs become interrupted rather than replaying subscr
 
 ## Local API
 
+`GET /api/bundles/{bundle_id}/freshness` provides a transient authenticated assessment using the current registered source age rules and original saved dates (DEC-047). It never retrieves a source or modifies the bundle, availability, exports or archives. The UI distinguishes saved availability/time from source age, binds the assessment to the exact version and leaves content readable on a failed read. Within-age-limit is not latest-data or complete-coverage qualification.
+
 HTTP endpoints require temporary bearer authentication except CORS preflight, and reject foreign origins and non-local hosts. Native bootstrap carries secrets in memory. WebSockets require an allowed origin and authenticate in the first JSON frame with a five-second deadline. Provider JSON-RPC messages have separate size/queue limits; API WebSocket frame-size hardening is still release work. Never place credentials in a query parameter.
 
 Routes cover authenticated health, settings, connection diagnostics, library, resolved assets, research jobs/cancellation, normalized event replay, conversations, immutable bundles, term lookup/generation, saved reports and personal exports. HTTP errors omit raw provider output and credentials. Generation is gated by global cloud consent, which can cancel active work when revoked.

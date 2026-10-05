@@ -10,6 +10,7 @@ import { ProviderValuations } from "./ProviderValuations";
 import { privateClaims, privateSource } from "./marketPresentation";
 import { concepts, displayNumber, financialSeries } from "./financialSeries";
 import { sourceRoute } from "./routes";
+import { EvidenceFreshness, SourceAgeLabel } from "./EvidenceFreshness";
 
 const sections = [
   ["overview", "Overview"], ["prices", "Charts & returns"], ["statistics", "Statistics"],
@@ -30,6 +31,10 @@ function DashboardSection({ id, title, children }: { id: string; title: string; 
 }
 
 export function EvidenceView({ bundle }: { bundle: EvidenceBundle }) {
+  return <EvidenceFreshness key={bundle.id} bundleId={bundle.id}><TickerContents bundle={bundle}/></EvidenceFreshness>;
+}
+
+function TickerContents({ bundle }: { bundle: EvidenceBundle }) {
   const sources = useMemo(() => new Map((bundle.sources ?? []).map((source) => [source.id, source])), [bundle.sources]);
   const references = useMemo(() => new Map((bundle.context_references ?? []).map((ref) => [ref.id, ref])), [bundle.context_references]);
   const privateIds = useMemo(() => privateClaims(bundle), [bundle]);
@@ -67,7 +72,7 @@ export function EvidenceView({ bundle }: { bundle: EvidenceBundle }) {
       </DashboardSection>
       <DashboardSection id="analysts" title="Analyst insights"><div className="plain-panel"><p className="source-gap-note">Unavailable — this snapshot has no qualified analyst estimates or outlooks.</p><p>External estimates are opinions about the future, separate from reported results. Missing estimates are not inferred from prices or generated explanations.</p></div></DashboardSection>
       <DashboardSection id="sources" title="Sources and evidence">
-        <div className="plain-panel">{[...sources.values()].map((source) => <SourceDetails source={source} key={source.id}/>)}{!sources.size && <p>No source documents have been registered.</p>}</div>
+        <div className="plain-panel">{[...sources.values()].map((source) => <div key={source.id}><SourceAgeLabel sourceId={source.id!}/><SourceDetails source={source}/></div>)}{!sources.size && <p>No source documents have been registered.</p>}</div>
         <section className="plain-panel" data-evidence-layer="notes" data-local-only={privateContent || undefined}><h3>Unverified research notes</h3><p>These explanations have not passed factual validation. Candidate citations may be incomplete. These notes do not feed facts, charts or calculations.</p>{bundle.notes?.map(renderClaim)}{!bundle.notes?.length && <p>No unverified notes.</p>}</section>
       </DashboardSection>
     </div>

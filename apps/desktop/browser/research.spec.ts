@@ -44,6 +44,21 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await expect(page.getByText("Research version bookmarked.", { exact: true })).toBeVisible();
   });
   const original = page.url();
+  await test.step("saved availability is separate from original source age", async () => {
+    await expect(page.locator(".snapshot-status")).toContainText("Availability when saved:");
+    const freshness = page.getByRole("region", { name: "Evidence freshness", exact: true });
+    await expect(freshness).toContainText("from saved dates only. No new source retrieval.");
+    await expect(freshness).toContainText("0 within source age limits.");
+    await freshness.screenshot({ path: testInfo.outputPath("freshness-wide.png") });
+    await page.setViewportSize({ width: 640, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+    await freshness.screenshot({ path: testInfo.outputPath("freshness-narrow.png") });
+    await page.getByRole("navigation", { name: "Ticker sections" }).getByRole("button", { name: "Sources", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("region", { name: "Sources and evidence", exact: true })).toBeFocused();
+    await expect(page.locator('[data-source-age="stale"]').first()).toContainText("Historical evidence remains available");
+    await page.setViewportSize({ width: 1280, height: 900 });
+  });
   await test.step("dashboard navigation keeps the saved version and exact statistics with honest gaps", async () => {
     const navigation = page.getByRole("navigation", { name: "Ticker sections" });
     await navigation.getByRole("button", { name: "Statistics", exact: true }).focus();
@@ -286,6 +301,15 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await expect(page.getByRole("button", { name: "Open cached research", exact: true })).toBeVisible();
   });
   expect(generation).toHaveLength(5);
+  await test.step("failed age reads keep saved evidence and citations available offline", async () => {
+    await page.route("**/api/bundles/*/freshness", (route) => route.abort());
+    await page.reload(); await connect(page);
+    await expect(page.getByRole("region", { name: "Evidence freshness", exact: true })).toContainText("Source-age assessment unavailable. Original saved evidence remains readable.");
+    await expect(page.locator(".market-history").getByText("27.272727%", { exact: true })).toBeVisible();
+    await page.locator(".market-history").getByRole("link", { name: /Open source drawer/ }).click();
+    await expect(page.locator("details.source-drawer[open]").getByRole("link", { name: "Inspect original source" })).toHaveAttribute("href", "https://finance.yahoo.com/quote/SYN/history/");
+    expect(generation).toHaveLength(5);
+  });
   expect(external).toEqual([]);
   expect(failures).toEqual([]);
 });

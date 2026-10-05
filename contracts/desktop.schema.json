@@ -273,6 +273,40 @@
       "title": "BackupSummary",
       "type": "object"
     },
+    "BundleFreshness": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "bundle_id": {
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "assessed_at": {
+          "format": "date-time",
+          "title": "Assessed At",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceAge"
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "assessed_at",
+        "sources"
+      ],
+      "title": "BundleFreshness",
+      "type": "object"
+    },
     "Claim": {
       "additionalProperties": false,
       "properties": {
@@ -2954,6 +2988,62 @@
       "title": "Source",
       "type": "object"
     },
+    "SourceAge": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "within_age_limit",
+            "stale",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "within_age_limit",
+            "old_dates",
+            "missing_dates",
+            "future_dates",
+            "unverified",
+            "unregistered",
+            "rights_changed"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "max_age_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Age Seconds"
+        }
+      },
+      "required": [
+        "source_id",
+        "state",
+        "reason"
+      ],
+      "title": "SourceAge",
+      "type": "object"
+    },
     "SourcePolicy": {
       "enum": [
         "full_text_allowed",
@@ -3455,6 +3545,9 @@
     },
     "SourceReviewRequest": {
       "$ref": "#/$defs/SourceReviewRequest"
+    },
+    "BundleFreshness": {
+      "$ref": "#/$defs/BundleFreshness"
     }
   },
   "additionalProperties": false

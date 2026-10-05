@@ -15,6 +15,7 @@ from backend.app.backup import BackupError, MAX_ARCHIVE_BYTES, make_backup, prev
 from backend.app.codex_login import CodexLogin
 from backend.app.contracts import ApprovalDecision, Conversation, EvidenceBundle, ResearchRequest, RuntimeModelCatalog, SavedResearch, Settings, TermRequest, now
 from backend.app.db import Database
+from backend.app.freshness import BundleFreshness, assess_freshness
 from backend.app.import_previews import ImportPreviews
 from backend.app.import_routes import mount_import_routes
 from backend.app.research import ResearchService
@@ -343,6 +344,10 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
         if not value:
             raise HTTPException(404, "Evidence snapshot not found")
         return value
+
+    @app.get("/api/bundles/{bundle_id}/freshness", response_model=BundleFreshness)
+    def bundle_freshness(bundle_id: str):
+        return assess_freshness(EvidenceBundle.model_validate(bundle(bundle_id)))
 
     @app.get("/api/export/{bundle_id}")
     def export(bundle_id: str, format: str = "json"):

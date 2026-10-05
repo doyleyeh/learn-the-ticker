@@ -21,6 +21,7 @@ from tests.desktop.financial_fixture import publish_financial_snapshot, financia
 from tests.desktop.test_market_research import service as market_service
 from backend.app.evidence import factual_context
 from backend.app.source_operations import shareable_view
+from backend.app.freshness import assess_freshness
 from tests.desktop.source_review_fixture import backup_during_review, publish_review_snapshot
 from tests.desktop.import_fixture import retain_synthetic_documents, explain_synthetic_document
 from backend.app.import_previews import ImportPreview
@@ -226,6 +227,9 @@ def main():
         assert restored_market.market.returns[-1].price_percent == "27.272727"
         assert restored_market.market.returns[-1].total_return_estimate_percent == "40"
         assert restored_market.sources[-1] == market.sources[-1]
+        age_at = now()
+        assert assess_freshness(restored_market, at=age_at) == assess_freshness(market, at=age_at)
+        assert restarted.get("bundle:" + market.id) == market_payload
         restored_context = factual_context(restored_market)
         assert "28.123456789012345678" in json.dumps(restored_context)
         assert restored_context["market"] and restored_context["financials"]["observations"]
@@ -261,6 +265,7 @@ def main():
         print("Typed issuer observations, exact decimals, separate identity proofs and conflict/revision references survived actual restore and restart.")
         print("Yahoo history, exact decimals/actions, cloud interpretations and original-version references survived restore/restart; shared numerical context, shareable export filtering and reset network opt-in passed.")
         print("Stored price/provider-adjusted return results, endpoint dates, original source references and missing-window reasons survived restore/restart.")
+        print("Read-only source-age assessment preserved original restored dates and immutable private history without retrieval.")
         print("Stored SEC net-income/revenue percentages, exact input IDs, method, gaps and original source citations survived restore/restart.")
         print("Financial snapshot originated through production research orchestration with explicit synthetic source/runtime adapters.")
         print("Original conversation facts, version-specific citations, source URLs and dates remain reusable after restore and restart.")

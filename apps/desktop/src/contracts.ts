@@ -989,6 +989,22 @@ export type RightsUrl = string;
 export type ReviewedAt = string;
 export type LocalNumericOnly = boolean;
 export type ExpiresAt2 = string;
+export type SchemaVersion44 = "1";
+export type BundleId5 = string;
+export type AssessedAt = string;
+export type SchemaVersion45 = "1";
+export type SourceId5 = string;
+export type State2 = "within_age_limit" | "stale" | "unknown";
+export type Reason5 =
+  | "within_age_limit"
+  | "old_dates"
+  | "missing_dates"
+  | "future_dates"
+  | "unverified"
+  | "unregistered"
+  | "rights_changed";
+export type MaxAgeSeconds = number | null;
+export type Sources3 = SourceAge[];
 
 export interface DesktopContracts {
   ApprovalDecision?: ApprovalDecision;
@@ -1020,6 +1036,7 @@ export interface DesktopContracts {
   TermResult?: TermResult;
   SourceReviewDecision?: SourceReviewDecision;
   SourceReviewRequest?: SourceReviewRequest;
+  BundleFreshness?: BundleFreshness;
 }
 export interface ApprovalDecision {
   schema_version?: SchemaVersion;
@@ -1523,4 +1540,17 @@ export interface ReviewSource {
   rights_url: RightsUrl;
   reviewed_at: ReviewedAt;
   local_numeric_only?: LocalNumericOnly;
+}
+export interface BundleFreshness {
+  schema_version?: SchemaVersion44;
+  bundle_id: BundleId5;
+  assessed_at: AssessedAt;
+  sources: Sources3;
+}
+export interface SourceAge {
+  schema_version?: SchemaVersion45;
+  source_id: SourceId5;
+  state: State2;
+  reason: Reason5;
+  max_age_seconds?: MaxAgeSeconds;
 }
