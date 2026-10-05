@@ -396,7 +396,8 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
                               f"{ratio.start} through {ratio.end}; inputs {', '.join(ratio.input_ids)}; "
                               f"sources {', '.join(ratio.source_ids)}."]
         lines += ["", "## Unverified research notes", "", "These notes are not factual evidence."]
-        lines += ["\n" + clean(note.text) for note in value.notes]
+        lines += ["\n" + clean(note.text) + (" References (not independent verification): " + ", ".join(clean(sid) for sid in note.source_ids)
+            if note.source_ids else " No source reference supplied.") for note in value.notes]
         lines += ["", "## Sources"]
         for source in value.sources:
             lines += [f"\n{source.id}: {clean(source.title)} — {source.url} (published {source.published_at or 'unknown'}; "

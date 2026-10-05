@@ -38,6 +38,8 @@ HTTP endpoints require temporary bearer authentication except CORS preflight, an
 
 Routes cover authenticated health, settings, connection diagnostics, library, resolved assets, research jobs/cancellation, normalized event replay, conversations, immutable bundles, term lookup/generation, saved reports and personal exports. HTTP errors omit raw provider output and credentials. Generation is gated by global cloud consent, which can cancel active work when revoked.
 
+Markdown exports retain permitted unverified-note reference IDs beside their text, with explicit unverified/no-reference labels and original source metadata. JSON keeps the corresponding structured references. Both paths apply the same private-content filter before rendering and never modify the saved bundle.
+
 Persisted settings are not all operational features. Cloud permission, selected provider/model, explanation language and conversation expiry affect current behavior. Manual source review keeps incoming sources as unverified candidates; there is no admission-review UI yet. Update mode, start-at-login and the document-cache size are stored preferences awaiting their respective services. Connections exposes bounded subscription model discovery and explicit selection; a stored selection does not qualify live model access.
 
 ## Import parser boundary
