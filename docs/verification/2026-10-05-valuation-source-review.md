@@ -51,6 +51,8 @@ An initial helper invocation used an invalid relative Python module name and sto
 
 ## Proposed delivery order — not yet approved
 
+Follow-up below identifies a provider-supplied valuation route that must be evaluated before treating a custom SEC/Yahoo normalizer as the only path. The ordering proposal remains pending; no requirement was changed by this technical finding.
+
 [PLAN.md](../../PLAN.md) currently says: “A blocked dependency prevents dependent milestones; independent tasks within the current milestone may continue.” M5 and M6 depend on M4; M7 also depends on M4. Consequently the unqualified positive historical valuation blocks their current milestone order even though much of their required evidence infrastructure is implemented.
 
 Proposed limited change:
@@ -68,3 +70,17 @@ This would change PLAN dependencies deliberately, not lower completion criteria.
 Current implementation checkpoint `93ea632` passed Q (1,602 Python/62 frontend) and B; `8549152` passed actual D and scoped live SEC. This source review adds documentation only. No live historical-valuation qualification has passed. Record any accepted ordering decision in DECISIONS and PLAN before starting dependent work.
 
 For this documentation checkpoint, `.venv/Scripts/python.exe -m scripts.verify fast` passed correctness lint, non-writing contracts, all 74 local Markdown documents/anchors, whitespace and TypeScript. The complete documentation diff was reviewed. No code, schema, dependency, native artifact or source policy changed; Q/D/B results above retain their original checkpoint scope. The ordering question remains unanswered and M4-T01g3 remains IN_PROGRESS.
+
+## Follow-up: supplied valuation measures are an alternative
+
+Date: 2026-10-05. In response to the user's question about financial websites, reviewed the public Yahoo/yfinance documentation and the already installed yfinance 1.7.0 source without making a valuation API request. The earlier cross-source calculation concern remains valid, but requiring our own normalizer before considering attributed provider-calculated ratios was unnecessarily restrictive. SPEC requires aligned historical valuation; it does not require every ratio to be independently recomputed from SEC facts.
+
+[Yahoo's provider directory](https://help.yahoo.com/kb/yahoo-finance-plus/partnerships-sln2310.html) attributes financial statements, valuation ratios, market cap and shares outstanding to Morningstar, while EPS/revenue estimates and actuals have a separate S&P Global attribution. Its [statistics page](https://ca.finance.yahoo.com/quote/NVDA/key-statistics/) presents current and dated historical valuation measures. These are evidence of supplied datasets, not disclosure of Yahoo's complete internal calculation pipeline or proof that every displayed field uses an identical definition.
+
+[The yfinance Ticker reference](https://ranaroussi.github.io/yfinance/reference/api/yfinance.Ticker.html) documents `get_valuation_measures(freq='quarterly', periods=5)`, with monthly/yearly/trailing options and `periods=None` for all available periods. The installed `yfinance/scrapers/quote.py` implementation reads Yahoo's fundamentals-timeseries endpoint. It does not calculate P/E by joining this project's Yahoo prices to SEC EPS. No package upgrade is needed to investigate it; actual ticker coverage, access and five-year depth remain untested.
+
+The helper alone is not a production adapter: its `periods` argument slices after fetching, its fixed request start is December 2016, numeric JSON is parsed through binary floats, and the synthetic Current column drops each measure's original latest `asOfDate`. An app adapter must bound the actual request and response, preserve original numeric representations, per-observation dates, symbol/currency/metric identity and source fingerprints, reject ambiguity and unsupported values, and retain exact citations through existing private-operation controls. Do not imply that annual/quarterly sampling means the P/E earnings denominator covers that same sampling interval. Do not synthesize daily ratios between observations or claim point-in-time information availability without evidence.
+
+Treat admissible supplied values as attributed third-party calculations, separately from issuer-reported facts and app-calculated ratios. Independent validation can establish instrument/source/metric/date support without claiming a full audit of the vendor's accounting adjustments. The provider's full split/earnings methodology may remain undisclosed and should be labeled accordingly. The next M4-T01g3 step is this scoped adapter/permission/coverage evaluation; a custom cross-source calculation is needed only for gaps where inputs can actually be aligned. The approved private price-history exception is not silently expanded to other datasets or cloud/export operations. No new source was activated, no live valuation was qualified, and PLAN dependencies remain unchanged.
+
+Follow-up verification: `.venv/Scripts/python.exe -m scripts.verify fast` passed after the documentation correction; final local links and whitespace were checked again before the reviewed local commit. No application code or dependency changed.
