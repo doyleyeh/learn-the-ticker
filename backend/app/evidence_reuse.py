@@ -104,7 +104,7 @@ def validate_context_references(bundle, lookup):
             raise ValueError("Original numerical citation does not match its evidence")
 
 
-def conversation_evidence(db, asset, history):
+def conversation_evidence(db, asset, history, *, context_bundle_id=None):
     """Return bounded factual contexts and application-owned candidates for revalidation.
 
     Historical proofs remain in their original bundles. A new response may reuse their
@@ -113,6 +113,10 @@ def conversation_evidence(db, asset, history):
     contexts, candidates, seen = [], {}, set()
     remaining = MAX_HISTORY_CHARACTERS
     pending = list(reversed(history[-20:]))
+    if context_bundle_id:
+        # The selected page gets priority even after a long conversation. It is
+        # historical evidence, never a new assistant answer or current verification.
+        pending.insert(0, {"role": "assistant", "asset_id": asset.id, "bundle_id": context_bundle_id})
     while pending:
         message = pending.pop(0)
         if message.get("role") == "scope":

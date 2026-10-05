@@ -90,12 +90,16 @@ def main():
         source.put("asset:" + identity.id, "asset", latest.model_dump(mode="json"))
         saved = SavedResearch(bundle_id=old.id, title="Original saved version")
         source.put("saved:" + saved.id, "saved", saved.model_dump(mode="json"), identity.id)
-        chat = Conversation(asset_id=identity.id, bookmarked=True, messages=[
+        chat = Conversation(asset_id=identity.id, context_bundle_id=old.id, bookmarked=True, messages=[
+            {"role": "scope", "text": "Selected original page", "asset_id": identity.id, "context_bundle_id": old.id},
             {"role": "assistant", "asset_id": identity.id, "bundle_id": old.id}])
         source.put("conversation:" + chat.id, "conversation", chat.model_dump(mode="json"))
         source.update_conversation(chat.id, asset_id=financial.asset.id)
-        original_chat = Conversation.model_validate(source.update_conversation(chat.id, asset_id=identity.id)).model_dump(mode="json")
-        assert [message["role"] for message in original_chat["messages"]] == ["assistant", "scope", "scope"]
+        source.update_conversation(chat.id, asset_id=identity.id)
+        original_chat = Conversation.model_validate(source.update_conversation(chat.id, context_bundle_id=old.id)).model_dump(mode="json")
+        assert [message["role"] for message in original_chat["messages"]] == ["scope", "assistant", "scope", "scope", "scope"]
+        assert original_chat["context_bundle_id"] == old.id
+        assert original_chat["messages"][-2]["context_bundle_id"] == latest.id
         source.put("settings", "settings", Settings(cloud_enabled=True, experimental_yahoo_enabled=True, language="zh-TW", model="synthetic-selected-model").model_dump(mode="json"))
         term_request = TermRequest(term="liquidity", bundle_id=old.id)
         term = TermExplanation(id=term_key(term_request), term=term_request.term, bundle_id=old.id, asset_id=identity.id, language="en", level="beginner", provider="codex", basis="general", explanation="Synthetic general explanation for the restore scenario.")
@@ -119,7 +123,8 @@ def main():
             session.add(Job(id="estimate-question-job", status="running", request=estimate_request.model_dump(mode="json")))
         source.complete_term("estimate-question-job", estimate_question.model_dump(mode="json"))
         with source.session.begin() as session:
-            session.add(Job(id="pending", status="running", request={"query": "Synthetic pending turn", "conversation_id": chat.id, "asset_id": identity.id}))
+            session.add(Job(id="pending", status="running", request={"query": "Synthetic pending turn", "conversation_id": chat.id,
+                "asset_id": identity.id, "context_bundle_id": old.id}))
         with source.session.begin() as session:
             session.add(Event(job_id="pending", payload=RuntimeEvent(run_id="pending", kind="run.started").model_dump(mode="json")))
         imports = asyncio.run(retain_synthetic_documents(source))

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from backend.app.approvals import ApprovalBroker
 from backend.app.contracts import AssetIdentity, Claim, EvidenceBundle, ResearchRequest, ResearchResult, RuntimeEvent, Settings, Source, SourcePolicy, now, uid
-from backend.app.db import Database, Event, Job
+from backend.app.db import Database, Event
 from backend.app.evidence import SourceFetchError, admit_bundle, candidate_metadata, factual_context, verify_candidate
 from backend.app.evidence_reuse import (admit_numeric_interpretations, cached_context, context_references,
     conversation_evidence, filter_market_context, market_source_ids)
@@ -103,6 +103,8 @@ class ResearchService:
         return [asset for asset in assets if key in {normalized(asset["symbol"]), normalized(asset["name"])}]
 
     async def submit(self, request: ResearchRequest) -> dict:
+        if request.context_bundle_id and not request.conversation_id:
+            raise ValueError("Page context selection requires a conversation")
         if not request.asset_id and not request.conversation_id:
             identities = self.cached_identities(request.query)
             if len(identities) > 1:
@@ -130,16 +132,9 @@ class ResearchService:
             raise ValueError("Research queue is full. Wait for an existing request to finish.")
         if request.asset_id and not cached:
             raise ValueError("Select a resolved asset from the library, or start a new search.")
-        if request.conversation_id:
-            conversation = self.db.get("conversation:" + request.conversation_id)
-            if not conversation:
-                raise ValueError("Conversation does not exist")
-            if request.asset_id != conversation["asset_id"]:
-                raise ValueError("Confirm a conversation scope change before researching another asset")
         job_id = uid()
+        request = self.db.queue_research(job_id, request)
         self.stop_events[job_id] = threading.Event()
-        with self.db.session.begin() as session:
-            session.add(Job(id=job_id, request=request.model_dump(mode="json"), status="queued"))
         task = asyncio.create_task(self.run(job_id, request))
         self.tasks[job_id] = task
         def finished(_):
@@ -261,6 +256,8 @@ class ResearchService:
             work.mkdir(parents=True, exist_ok=True)
             text = ""
             previous = self.cached(request.asset_id)
+            if conversation:
+                previous = self.db.get("bundle:" + request.context_bundle_id) if request.context_bundle_id else None
             identities = await self.resolve(request.asset_id or request.query, cancelled=cancelled)
             initial_identities = identities
             self.require_consent()
@@ -272,14 +269,15 @@ class ResearchService:
                 self.db.transition(job_id, "needs_identity", result={"candidates": [resolved.asset.model_dump(mode="json")], "message": "The independently resolved identity differs from this saved scope. Start a separate search."})
                 return
             prompt = research_prompt(request, None, (conversation or {}).get("messages", []))
-            cached = cached_context(EvidenceBundle.model_validate(previous)) if previous else None
+            cached = cached_context(EvidenceBundle.model_validate(previous)) if previous and not conversation else None
             historical = []
             historical_sources = {}
             if resolved and (conversation or (previous and previous.get("context_references"))):
                 history = list((conversation or {}).get("messages", []))
                 if previous and previous.get("context_references"):
                     history.append({"role": "assistant", "asset_id": resolved.asset.id, "bundle_id": previous["id"]})
-                historical, historical_sources = conversation_evidence(self.db, resolved.asset, history)
+                historical, historical_sources = conversation_evidence(self.db, resolved.asset, history,
+                    context_bundle_id=request.context_bundle_id if conversation else None)
                 prompt += ("\nReuse these source IDs when relevant; the application resolves them to their original URLs. "
                            "Keep original version, publication/as-of/retrieval dates distinct from current verification. "
                            "These historical facts may have changed. New facts still need independent source validation. "

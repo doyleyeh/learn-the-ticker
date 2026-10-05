@@ -51,7 +51,9 @@ def test_followup_preserves_asset_page_and_records_scoped_citations():
     assert messages[-1]["bundle_id"] == answer["id"] and messages[-1]["asset_id"] == "TEST:ONE"
     with pytest.raises(ValueError, match="Resolve"):
         db.update_conversation("chat", asset_id="TEST:MISSING")
-    db.put("asset:TEST:TWO", "asset", snapshot("TEST:TWO"))
+    second = snapshot("TEST:TWO")
+    db.put("bundle:" + second["id"], "bundle", second)
+    db.put("asset:TEST:TWO", "asset", second)
     changed = db.update_conversation("chat", asset_id="TEST:TWO", bookmarked=True)
     assert changed["messages"][-1]["role"] == "scope"
     assert changed["messages"][1]["asset_id"] == "TEST:ONE"

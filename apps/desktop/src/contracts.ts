@@ -48,11 +48,13 @@ export type InputClaimIds = string[];
 export type SchemaVersion5 = "1";
 export type Id3 = string;
 export type AssetId1 = string;
+export type ContextBundleId = string | null;
 export type SchemaVersion6 = "1";
 export type Role = "user" | "assistant" | "scope";
 export type Text1 = string | null;
 export type AssetId2 = string | null;
 export type BundleId = string | null;
+export type ContextBundleId1 = string | null;
 export type Messages = ConversationMessage[];
 export type Bookmarked = boolean;
 export type CreatedAt1 = string;
@@ -431,6 +433,7 @@ export type Language4 = "en" | "zh-TW";
 export type Level4 = "beginner" | "intermediate";
 export type Refresh = boolean;
 export type ConversationId = string | null;
+export type ContextBundleId2 = string | null;
 export type CreatedAt4 = string;
 export type SchemaVersion33 = "1";
 /**
@@ -1151,6 +1154,7 @@ export interface Conversation {
   schema_version?: SchemaVersion5;
   id?: Id3;
   asset_id: AssetId1;
+  context_bundle_id?: ContextBundleId;
   messages?: Messages;
   bookmarked?: Bookmarked;
   created_at?: CreatedAt1;
@@ -1162,6 +1166,7 @@ export interface ConversationMessage {
   text?: Text1;
   asset_id?: AssetId2;
   bundle_id?: BundleId;
+  context_bundle_id?: ContextBundleId1;
 }
 export interface EvidenceBundle {
   schema_version?: SchemaVersion7;
@@ -1487,6 +1492,7 @@ export interface ResearchRequest {
   level?: Level4;
   refresh?: Refresh;
   conversation_id?: ConversationId;
+  context_bundle_id?: ContextBundleId2;
 }
 /**
  * Provider output is a proposal; admission happens separately.

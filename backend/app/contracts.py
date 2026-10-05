@@ -369,6 +369,7 @@ class ResearchRequest(Contract):
     level: Literal["beginner", "intermediate"] = "beginner"
     refresh: bool = False
     conversation_id: str | None = None
+    context_bundle_id: str | None = Field(default=None, max_length=200)
 
 
 class ResearchResult(Contract):
@@ -469,6 +470,7 @@ class ConversationMessage(Contract):
     text: str | None = Field(default=None, max_length=10000)
     asset_id: str | None = Field(default=None, max_length=200)
     bundle_id: str | None = Field(default=None, max_length=200)
+    context_bundle_id: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def cited_answer(self):
@@ -476,12 +478,15 @@ class ConversationMessage(Contract):
             raise ValueError("Assistant answers must reference a cited snapshot")
         if self.role != "assistant" and (not self.text or self.bundle_id):
             raise ValueError("User/scope messages require text and cannot attest a research snapshot")
+        if self.context_bundle_id and (self.role != "scope" or not self.asset_id):
+            raise ValueError("Only a resolved scope entry can select page evidence")
         return self
 
 
 class Conversation(Contract):
     id: str = Field(default_factory=uid, max_length=200)
     asset_id: str = Field(max_length=200)
+    context_bundle_id: str | None = Field(default=None, max_length=200)
     messages: list[ConversationMessage] = Field(default_factory=list)
     bookmarked: bool = False
     created_at: AwareDatetime = Field(default_factory=now)

@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Conversation, EvidenceBundle, Settings } from "./contracts";
 import { bundleRoute, conversationRoute } from "./routes";
 
-type Change = { bookmarked?: boolean; asset_id?: string };
+type Change = { bookmarked?: boolean; asset_id?: string; context_bundle_id?: string };
 
 export function ConversationPanel({ conversation, library, settings, busy, onUpdate, onAsk }: {
   conversation: Conversation; library: EvidenceBundle[]; settings?: Settings; busy: boolean;
@@ -36,9 +36,13 @@ export function ConversationPanel({ conversation, library, settings, busy, onUpd
       {library.map((entry) => <option key={entry.asset.id} value={entry.asset.id}>{entry.asset.name} · {entry.asset.symbol}</option>)}
     </select></label>
     <p>Only independently resolved library assets can be selected. Finish or cancel the active answer before changing scope.</p>
+    {conversation.context_bundle_id ? <p><a href={`#${bundleRoute(conversation.context_bundle_id, conversation.id)}`}>Open selected page evidence</a>. This version stays selected when the ticker page refreshes. Original source dates and units remain historical; new research is checked separately.</p>
+      : <p>This older conversation has no recorded starting page version. Its cited answers remain available. Select current ticker evidence explicitly to supply page context.</p>}
+    {current && current.id !== conversation.context_bundle_id && <p>The current ticker page has a different evidence version. <button disabled={busy || pending} onClick={() => void update({ context_bundle_id: current.id! })}>Use current ticker evidence</button></p>}
     {current && <a href={`#${bundleRoute(current.id!, conversation.id)}`}>Open current ticker evidence</a>}
     <div aria-label="Conversation history">{conversation.messages?.map((message, index) => <p key={index}>
-      {message.role === "scope" ? "Scope changed" : message.role === "assistant" ? "Agent" : "You"}: {message.bundle_id ? <a href={`#${bundleRoute(message.bundle_id, conversation.id)}`}>Open cited response</a> : message.text}
+      {message.role === "scope" ? "Context" : message.role === "assistant" ? "Agent" : "You"}: {message.bundle_id ? <a href={`#${bundleRoute(message.bundle_id, conversation.id)}`}>Open cited response</a> : message.text}
+      {message.context_bundle_id && <> · <a href={`#${bundleRoute(message.context_bundle_id, conversation.id)}`}>Open recorded page evidence</a></>}
       {message.asset_id && <span className="ticker-meta"> · {message.asset_id}</span>}
     </p>)}</div>
     {!conversation.messages?.length && <p>No messages yet. Your question will use admitted ticker evidence and its original references.</p>}

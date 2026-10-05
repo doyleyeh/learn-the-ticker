@@ -30,7 +30,7 @@ The Sources screen can retain bounded original documents with checksums, provena
 
 ## Development on Windows
 
-Start a conversation from a ticker page, then use its saved conversation link to return after reload. The conversation view shows its current asset and the provider/model selected for the next answer. Earlier responses open their original evidence version; opening them does not change conversation scope. Bookmarks and messages remain readable with cloud research off.
+Start a conversation from a ticker page, then use its saved conversation link to return after reload. It retains that exact page version, including when you start from an older saved report. Refreshing the ticker leaves the selected conversation evidence unchanged; Use current ticker evidence explicitly selects the newer page and records the change. The view shows its current asset and the provider/model selected for the next answer. Earlier responses and recorded page selections open their original versions; opening them does not change scope. Bookmarks and messages remain readable with cloud research off. Older conversations without a recorded starting page say so and let you select one.
 
 The requested product direction is a populated ticker dashboard with overview, history, statistics, financials, relevant news and permitted analyst insights, feeding cited context into term explanations, questions and comparisons. Existing applicable financial APIs come before agent gap research. These are delivery requirements, not a claim that every section or previously used API is integrated. See [the source/dashboard assessment](docs/verification/2026-10-04-ticker-dashboard-sources.md) for current source candidates and permissions still to establish.
 

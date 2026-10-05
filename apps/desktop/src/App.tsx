@@ -121,13 +121,13 @@ export function App() {
   async function startConversation() {
     if (!asset) return;
     try {
-      const chat = await api<Conversation>("/api/conversations", { method: "POST", body: JSON.stringify({ asset_id: asset.asset.id }) });
+      const chat = await api<Conversation>("/api/conversations", { method: "POST", body: JSON.stringify({ asset_id: asset.asset.id, context_bundle_id: asset.id }) });
       setConversations((items) => [...items, chat]);
       location.hash = conversationRoute(chat.id);
     } catch (error) { fail(error); }
   }
 
-  async function updateConversation(change: { bookmarked?: boolean; asset_id?: string }) {
+  async function updateConversation(change: { bookmarked?: boolean; asset_id?: string; context_bundle_id?: string }) {
     if (!activeConversation) return;
     const updated = await api<Conversation>(`/api/conversations/${activeConversation.id}`, { method: "PUT", body: JSON.stringify(change) });
     setConversations((items) => items.map((item) => item.id === updated.id ? updated : item));

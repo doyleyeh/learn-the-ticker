@@ -173,10 +173,18 @@ def validate_library(data: LibraryData):
         elif row.kind == "conversation":
             if "asset:" + value["asset_id"] not in records:
                 raise BackupError("Conversation scope is missing from the library")
+            contexts = [(value.get("context_bundle_id"), value["asset_id"])]
             for message in value["messages"]:
                 bundle_id = message.get("bundle_id")
                 if bundle_id and (bundle_id not in bundles or (message.get("asset_id") and bundles[bundle_id].asset.id != message["asset_id"])):
                     raise BackupError("Conversation response references missing or wrong-asset evidence")
+                contexts.append((message.get("context_bundle_id"), message.get("asset_id")))
+            for version, asset_id in contexts:
+                if version and (version not in bundles or bundles[version].asset.id != asset_id):
+                    raise BackupError("Conversation page context references missing or wrong-asset evidence")
+            selected = value.get("context_bundle_id")
+            if selected and identity_hash(bundles[selected].asset) != identity_hash(EvidenceBundle.model_validate(records["asset:" + value["asset_id"]].payload).asset):
+                raise BackupError("Conversation page context does not match its current scope")
 
     jobs = {job.id: job for job in data.jobs}
     if len(jobs) != len(data.jobs) or len({event.id for event in data.events}) != len(data.events):
@@ -206,6 +214,9 @@ def validate_library(data: LibraryData):
             continue
         if job.request.conversation_id and "conversation:" + job.request.conversation_id not in records:
             raise BackupError("Job conversation is missing")
+        version = job.request.context_bundle_id
+        if version and (not job.request.conversation_id or version not in bundles or bundles[version].asset.id != job.request.asset_id):
+            raise BackupError("Job page context is missing or inconsistent")
         if job.result and "asset" in job.result:
             bundle = EvidenceBundle.model_validate(job.result)
             if bundle.completion == "section_checkpoint" and job.status not in ("running", "failed", "cancelled", "interrupted"):

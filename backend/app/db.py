@@ -5,7 +5,7 @@ from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, case, create
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.app.contracts import EvidenceBundle, RuntimeEvent, uid
+from backend.app.contracts import Conversation, EvidenceBundle, RuntimeEvent, uid
 
 
 class Base(DeclarativeBase):
@@ -98,7 +98,8 @@ class Database:
             self._put(session, "bundle:" + bundle_id, "bundle", payload, asset_id)
             if conversation_id:
                 record = session.get(Record, "conversation:" + conversation_id, with_for_update=True)
-                if not record or record.payload["asset_id"] != asset_id:
+                if (not record or record.payload["asset_id"] != asset_id
+                        or record.payload.get("context_bundle_id") != job.request.get("context_bundle_id")):
                     raise ValueError("Conversation scope changed during research; retry explicitly")
                 conversation = {**record.payload, "last_activity": datetime.now(timezone.utc).isoformat()}
                 conversation["messages"] = [*conversation["messages"],
@@ -129,20 +130,69 @@ class Database:
             session.add(Event(job_id=job_id, payload=RuntimeEvent(run_id=job_id, kind="evidence.registered",
                 text="Independently checked evidence is available; research is still incomplete.", data={"bundle_id": value.id}).model_dump(mode="json")))
 
-    def update_conversation(self, conversation_id: str, *, asset_id=None, bookmarked=None) -> dict:
+    @staticmethod
+    def conversation_context(session, asset_id, context_bundle_id=None):
+        from backend.app.identity import identity_hash
+        current = session.get(Record, "asset:" + asset_id)
+        if not current or current.kind != "asset":
+            raise ValueError("Resolve the asset before selecting conversation evidence")
+        version = context_bundle_id or current.payload["id"]
+        original = session.get(Record, "bundle:" + version)
+        if not original or original.kind != "bundle":
+            raise ValueError("Conversation page evidence is missing")
+        bundle = EvidenceBundle.model_validate(original.payload)
+        if bundle.id != version or identity_hash(bundle.asset) != identity_hash(EvidenceBundle.model_validate(current.payload).asset):
+            raise ValueError("Conversation page evidence does not match the resolved asset")
+        return version
+
+    def create_conversation(self, asset_id, context_bundle_id=None):
+        with self.session.begin() as session:
+            version = self.conversation_context(session, asset_id, context_bundle_id)
+            payload = Conversation(asset_id=asset_id, context_bundle_id=version,
+                messages=[{"role": "scope", "text": "Conversation started with selected page evidence",
+                           "asset_id": asset_id, "context_bundle_id": version}],
+                last_activity=datetime.now(timezone.utc)).model_dump(mode="json")
+            self._put(session, "conversation:" + payload["id"], "conversation", payload)
+            return payload
+
+    def queue_research(self, job_id, request):
+        """Freeze page context while holding the same lock as explicit scope changes."""
+        with self.session.begin() as session:
+            if request.conversation_id:
+                record = session.get(Record, "conversation:" + request.conversation_id, with_for_update=True)
+                if not record or record.kind != "conversation":
+                    raise ValueError("Conversation does not exist")
+                if request.asset_id != record.payload["asset_id"]:
+                    raise ValueError("Confirm a conversation scope change before researching another asset")
+                version = record.payload.get("context_bundle_id")
+                if request.context_bundle_id and request.context_bundle_id != version:
+                    raise ValueError("Select conversation evidence before starting an answer")
+                if version:
+                    self.conversation_context(session, request.asset_id, version)
+                request = request.model_copy(update={"context_bundle_id": version})
+            elif request.context_bundle_id:
+                raise ValueError("Page context selection requires a conversation")
+            session.add(Job(id=job_id, request=request.model_dump(mode="json"), status="queued"))
+        return request
+
+    def update_conversation(self, conversation_id: str, *, asset_id=None, context_bundle_id=None, bookmarked=None) -> dict:
         with self.session.begin() as session:
             record = session.get(Record, "conversation:" + conversation_id, with_for_update=True)
             if not record:
                 raise ValueError("Conversation does not exist")
             # Prevent a scope edit from changing the meaning of an in-flight answer.
-            if asset_id and any(job.request.get("conversation_id") == conversation_id for job in session.scalars(select(Job).where(Job.status.in_(["queued", "running"])))):
+            if (asset_id or context_bundle_id) and any(job.request.get("conversation_id") == conversation_id for job in session.scalars(select(Job).where(Job.status.in_(["queued", "running"])))):
                 raise ValueError("Wait for the active answer or cancel it before changing scope")
             payload = {**record.payload, "last_activity": datetime.now(timezone.utc).isoformat()}
-            if asset_id and asset_id != payload["asset_id"]:
-                if not session.get(Record, "asset:" + asset_id):
-                    raise ValueError("Resolve the new asset before changing conversation scope")
-                payload["messages"] = [*payload["messages"], {"role": "scope", "text": "Conversation scope changed", "asset_id": asset_id}]
-                payload["asset_id"] = asset_id
+            changed_asset = asset_id and asset_id != payload["asset_id"]
+            if changed_asset or context_bundle_id:
+                selected_asset = asset_id or payload["asset_id"]
+                version = self.conversation_context(session, selected_asset, context_bundle_id)
+                if changed_asset or version != payload.get("context_bundle_id"):
+                    payload["messages"] = [*payload["messages"], {"role": "scope",
+                        "text": "Conversation scope changed" if changed_asset else "Conversation page evidence changed",
+                        "asset_id": selected_asset, "context_bundle_id": version}]
+                    payload["asset_id"], payload["context_bundle_id"] = selected_asset, version
             if bookmarked is not None:
                 payload["bookmarked"] = bookmarked
             self._put(session, record.id, "conversation", payload)

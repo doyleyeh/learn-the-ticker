@@ -651,6 +651,19 @@
           "title": "Asset Id",
           "type": "string"
         },
+        "context_bundle_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Bundle Id"
+        },
         "messages": {
           "items": {
             "$ref": "#/$defs/ConversationMessage"
@@ -744,6 +757,19 @@
           ],
           "default": null,
           "title": "Bundle Id"
+        },
+        "context_bundle_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Bundle Id"
         }
       },
       "required": [
@@ -2497,6 +2523,19 @@
           ],
           "default": null,
           "title": "Conversation Id"
+        },
+        "context_bundle_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Bundle Id"
         }
       },
       "required": [

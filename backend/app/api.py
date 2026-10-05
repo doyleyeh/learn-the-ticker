@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from backend.app.backup import BackupError, MAX_ARCHIVE_BYTES, make_backup, preview_backup, restore_backup
 from backend.app.codex_login import CodexLogin
-from backend.app.contracts import ApprovalDecision, Conversation, EvidenceBundle, ResearchRequest, RuntimeModelCatalog, SavedResearch, Settings, TermRequest, now
+from backend.app.contracts import ApprovalDecision, EvidenceBundle, ResearchRequest, RuntimeModelCatalog, SavedResearch, Settings, TermRequest
 from backend.app.db import Database
 from backend.app.freshness import BundleFreshness, assess_freshness
 from backend.app.import_previews import ImportPreviews
@@ -33,10 +33,12 @@ class SaveRequest(BaseModel):
 
 class ConversationRequest(BaseModel):
     asset_id: str
+    context_bundle_id: str | None = Field(default=None, max_length=200)
 
 
 class ConversationUpdate(BaseModel):
     asset_id: str | None = Field(default=None, max_length=200)
+    context_bundle_id: str | None = Field(default=None, max_length=200)
     bookmarked: bool | None = None
 
 
@@ -308,10 +310,10 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     def create_conversation(value: ConversationRequest):
         if not service.cached(value.asset_id):
             raise HTTPException(404, "Resolve the asset first")
-        timestamp = now().isoformat()
-        result = Conversation(asset_id=value.asset_id, created_at=timestamp, last_activity=timestamp).model_dump(mode="json")
-        db.put("conversation:" + result["id"], "conversation", result)
-        return result
+        try:
+            return db.create_conversation(value.asset_id, value.context_bundle_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.get("/api/conversations")
     def conversations():
@@ -321,7 +323,8 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     @app.put("/api/conversations/{conversation_id}")
     def update_conversation(conversation_id: str, value: ConversationUpdate):
         try:
-            return db.update_conversation(conversation_id, asset_id=value.asset_id, bookmarked=value.bookmarked)
+            return db.update_conversation(conversation_id, asset_id=value.asset_id,
+                context_bundle_id=value.context_bundle_id, bookmarked=value.bookmarked)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 
