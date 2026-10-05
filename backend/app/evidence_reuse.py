@@ -18,7 +18,7 @@ def citation_id(bundle_id, source_id):
 
 def market_source_ids(context):
     market = context.get("market")
-    return ({market["source_id"]} | ({market["valuations"]["source_id"]} if market.get("valuations") else set())) if market else set()
+    return ({market["source_id"]} | {market[key]["source_id"] for key in ("valuations", "estimates") if market.get(key)}) if market else set()
 
 
 def alias_context(context, aliases):
@@ -35,9 +35,10 @@ def alias_context(context, aliases):
         market["source_id"] = aliases.get(market["source_id"], market["source_id"])
         for row in market["returns"]:
             row["source_id"] = aliases.get(row["source_id"], row["source_id"])
-        if market.get("valuations"):
-            values = market["valuations"]
-            values["source_id"] = aliases.get(values["source_id"], values["source_id"])
+        for key in ("valuations", "estimates"):
+            if market.get(key):
+                values = market[key]
+                values["source_id"] = aliases.get(values["source_id"], values["source_id"])
     return context
 
 
@@ -78,9 +79,11 @@ def filter_market_context(context, permitted):
     if market["source_id"] not in permitted:
         context.pop("market")
         context.pop("market_description", None)
-    elif market.get("valuations") and market["valuations"]["source_id"] not in permitted:
-        market["valuations"] = None
-        market["valuation_gap"] = "not_selected"
+    else:
+        for key, gap in (("valuations", "valuation_gap"), ("estimates", "estimate_gap")):
+            if market.get(key) and market[key]["source_id"] not in permitted:
+                market[key] = None
+                market[gap] = "not_selected"
     keep = market_source_ids(context)
     context["sources"] = [source for source in context["sources"] if source["id"] not in ids or source["id"] in keep]
     return context

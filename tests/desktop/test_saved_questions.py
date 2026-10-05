@@ -126,6 +126,7 @@ def test_live_question_helper_requires_explicit_opt_in(monkeypatch):
     def forbidden(*args): raise AssertionError("No profile/provider access without --live")
     monkeypatch.setattr(qualify_saved_questions, "resolve_profile", forbidden)
     assert asyncio.run(qualify_saved_questions.check()) == {"status": "not_requested", "generation_requested": False}
+    assert asyncio.run(qualify_saved_questions.check(estimates=True)) == {"status": "not_requested", "generation_requested": False}
 
 
 def test_live_helper_diagnostics_exclude_candidate_and_raw_errors(tmp_path):

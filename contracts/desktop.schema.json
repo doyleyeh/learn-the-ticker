@@ -1,5 +1,195 @@
 {
   "$defs": {
+    "AnalystEstimate": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "metric": {
+          "enum": [
+            "eps",
+            "revenue"
+          ],
+          "title": "Metric",
+          "type": "string"
+        },
+        "period": {
+          "enum": [
+            "0q",
+            "+1q",
+            "0y",
+            "+1y"
+          ],
+          "title": "Period",
+          "type": "string"
+        },
+        "period_end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period End"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "const": "USD",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "USD/share",
+                "USD"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "average": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Average"
+        },
+        "low": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Low"
+        },
+        "high": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "High"
+        },
+        "analysts": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Analysts"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "period_missing",
+                "currency_missing",
+                "value_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "metric",
+        "period"
+      ],
+      "title": "AnalystEstimate",
+      "type": "object"
+    },
+    "AnalystEstimates": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "kind": {
+          "const": "analyst_opinion",
+          "default": "analyst_opinion",
+          "title": "Kind",
+          "type": "string"
+        },
+        "method": {
+          "const": "yahoo-consensus-estimates-v1",
+          "default": "yahoo-consensus-estimates-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/AnalystEstimate"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Points",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_id",
+        "points"
+      ],
+      "title": "AnalystEstimates",
+      "type": "object"
+    },
     "ApprovalDecision": {
       "additionalProperties": false,
       "properties": {
@@ -1842,6 +2032,34 @@
           ],
           "default": null,
           "title": "Valuation Gap"
+        },
+        "estimates": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnalystEstimates"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "estimate_gap": {
+          "anyOf": [
+            {
+              "enum": [
+                "source_unavailable",
+                "not_selected",
+                "no_observations"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimate Gap"
         },
         "fingerprint": {
           "pattern": "^[0-9a-f]{64}$",

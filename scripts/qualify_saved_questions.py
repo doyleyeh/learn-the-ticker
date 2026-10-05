@@ -47,7 +47,7 @@ class ObservedRuntime(CodexRuntime):
         self.diagnostic = candidate_diagnostic(output.strip(), self.request, self.bundle)
 
 
-async def check(*, live=False):
+async def check(*, live=False, estimates=False):
     if not live:
         return {"status": "not_requested", "generation_requested": False}
     profile = resolve_profile(None)
@@ -59,7 +59,7 @@ async def check(*, live=False):
     db = Database("sqlite://", testing=True)
     try:
         with tempfile.TemporaryDirectory(prefix="ltt-saved-question-") as directory:
-            bundle = market_bundle(valuations=True)
+            bundle = market_bundle(valuations=True, estimates=estimates)
             payload = bundle.model_dump(mode="json")
             db.put("bundle:" + bundle.id, "bundle", payload, bundle.asset.id)
             db.put("asset:" + bundle.asset.id, "asset", payload)
@@ -68,7 +68,9 @@ async def check(*, live=False):
             research = ResearchService(db, {"codex": runtime}, Path(directory))
             try:
                 service = TermService(research)
-                request = TermRequest(mode="question", term="What does the retained trailing P/E of 29.5 mean, and what observation date belongs to it? Explain only this saved page.", bundle_id=bundle.id, model=report["model"])
+                question = ("Explain the saved EPS consensus estimate. Quote its exact average and unit, identify it as an analyst opinion, and explain whether its forecast end establishes publication time. Use only this saved page."
+                    if estimates else "What does the retained trailing P/E of 29.5 mean, and what observation date belongs to it? Explain only this saved page.")
+                request = TermRequest(mode="question", term=question, bundle_id=bundle.id, model=report["model"])
                 runtime.request, runtime.bundle = request, bundle
                 job = await service.submit(request)
                 await research.tasks[job["id"]]
@@ -78,12 +80,16 @@ async def check(*, live=False):
                         "generation_requested": True, "persistent_library_modified": False}
                 answer = result["result"]
                 checks = {"question_snapshot": answer["mode"] == "question" and answer["basis"] == "snapshot",
-                    "original_citation": bundle.market.valuations.source_id in answer["source_ids"],
-                    "retained_value": "29.5" in answer["explanation"],
+                    "original_citation": (bundle.market.estimates.source_id if estimates else bundle.market.valuations.source_id) in answer["source_ids"],
+                    "retained_value": ("1.25000000000000001" if estimates else "29.5") in answer["explanation"],
                     "original_evidence_unchanged": db.get("bundle:" + bundle.id) == payload and db.get("asset:" + bundle.asset.id) == payload,
                     "interpretation_only": answer["interpretation"],
                     "no_research_job": not db.research_jobs(),
                     "no_tool_or_raw_events": all(row["kind"] not in ("message.delta", "tool.started", "approval.required") for row in db.events(job["id"]))}
+                if estimates:
+                    checks["opinion_label"] = "opinion" in answer["explanation"].lower()
+                    checks["publication_unknown"] = "unknown" in answer["explanation"].lower()
+                    checks["original_unit"] = "USD/share" in answer["explanation"]
                 db.put("settings", "settings", Settings().model_dump(mode="json"))
                 checks["cached_offline"] = (await service.submit(request))["result"] == answer
                 return {**report, "status": "passed" if all(checks.values()) else "blocked", "blocker": None if all(checks.values()) else "acceptance",
@@ -97,9 +103,10 @@ async def check(*, live=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true", help="Use included subscription usage after deterministic checks and guarded preflight")
+    parser.add_argument("--estimates", action="store_true", help="Qualify the saved analyst-opinion context using synthetic data")
     args = parser.parse_args()
     try:
-        report = asyncio.run(check(live=args.live))
+        report = asyncio.run(check(live=args.live, estimates=args.estimates))
     except Exception:
         report = {"status": "blocked", "blocker": "setup_or_cleanup", "generation_requested": None}
     print(json.dumps(report, indent=2))

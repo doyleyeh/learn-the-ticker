@@ -41,6 +41,8 @@ def assess_freshness(bundle: EvidenceBundle, *, at: datetime | None = None) -> B
             numeric_ids = {market.source_id} if market else set()
             if market and market.valuations:
                 numeric_ids.add(market.valuations.source_id)
+            if market and market.estimates:
+                numeric_ids.add(market.estimates.source_id)
             rule = private_market_rule(str(source.url)) if source.id in numeric_ids else None
         state, reason = "unknown", "unregistered"
         if not source.verified or not source.content_hash or source.asset_id != bundle.asset.id:

@@ -225,12 +225,16 @@ def factual_context(bundle: EvidenceBundle) -> dict:
         ids.add(bundle.market.source_id)
         if bundle.market.valuations:
             ids.add(bundle.market.valuations.source_id)
+        if bundle.market.estimates:
+            ids.add(bundle.market.estimates.source_id)
     context = {"bundle_id": bundle.id, "created_at": bundle.created_at.isoformat(), "asset": bundle.asset.model_dump(mode="json"),
                "claims": [c.model_dump(mode="json") for c in claims], "sources": [s.model_dump(mode="json") for s in bundle.sources if s.id in ids]}
     if bundle.market:
         context["market"] = bundle.market.model_dump(mode="json", exclude={"fingerprint"})
         context["market_description"] = ("Unofficial Yahoo observations for personal learning. Preserve original dates, units, "
-            "adjustment bases, gaps and retained calculation methods. These are historical observations, not live quotes. "
+            "adjustment bases, gaps and retained calculation methods. Prices and valuations are historical, not live quotes. "
+            "Estimates are attributed third-party opinions, not reported results or app calculations. Their forecast-period "
+            "ends are not publication/as-of times; that source time and underlying contributing analysts are unknown. "
             "Cite the supplied source IDs for explanations; generated prose is interpretation, never a new numerical fact.")
     if bundle.financials:
         context["financials"] = {"scope": "issuer", "issuer": bundle.financials.issuer.model_dump(mode="json"),

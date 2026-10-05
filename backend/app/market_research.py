@@ -10,14 +10,15 @@ from backend.app.market_mapping import map_yahoo_history
 from backend.app.market_retrieval import retrieve_history
 from backend.app.market_returns import years_before
 from backend.app.market_transport import fetch_free_eodhd_prices
-from backend.app.yfinance_worker import fetch_yahoo_history, fetch_yahoo_valuations
+from backend.app.yfinance_worker import fetch_yahoo_history, fetch_yahoo_valuations, fetch_yahoo_estimates
 
 
 class MarketResearch:
     def __init__(self, research, *, store_factory=DataCredentialStore, primary=fetch_free_eodhd_prices,
-                 yahoo=fetch_yahoo_history, valuations=fetch_yahoo_valuations):
+                 yahoo=fetch_yahoo_history, valuations=fetch_yahoo_valuations, estimates=fetch_yahoo_estimates):
         self.research, self.store_factory, self.primary, self.yahoo = research, store_factory, primary, yahoo
         self.valuations = valuations
+        self.estimates = estimates
 
     def require_enabled(self, cancelled):
         self.research.require_consent()
@@ -34,7 +35,8 @@ class MarketResearch:
         symbol = resolved.asset.symbol
         primary_url, yahoo_url = f"https://eodhd.com/api/eod/{symbol}.US", f"https://finance.yahoo.com/quote/{symbol}/history/"
         valuation_url = f"https://finance.yahoo.com/quote/{symbol}/key-statistics/"
-        allowed = await review.select(resolved.asset.id, [primary_url, yahoo_url, valuation_url], private_market=True)
+        estimate_url = f"https://finance.yahoo.com/quote/{symbol}/analysis/"
+        allowed = await review.select(resolved.asset.id, [primary_url, yahoo_url, valuation_url, estimate_url], private_market=True)
         self.require_enabled(cancelled)
         credential = None
         try:
@@ -74,22 +76,33 @@ class MarketResearch:
             if result.selected is None or result.selected.provider != "yahoo_yfinance" or not review.allowed(yahoo_url):
                 return None, "Private market history is unavailable or was not selected; no equivalent retry was made."
             mapped = map_yahoo_history(result.selected, resolved, at=service.clock())
-            if valuation_url not in allowed or not review.allowed(valuation_url):
-                return replace(mapped, valuation_gap="not_selected"), ""
-            try:
-                async with service.retrieval:
-                    self.require_enabled(cancelled)
-                    if not review.allowed(valuation_url):
-                        return replace(mapped, valuation_gap="not_selected"), ""
-                    values, _ = await self.valuations(symbol, start.isoformat(), end.isoformat())
-                    self.require_enabled(cancelled)
-                if not review.allowed(valuation_url):
-                    return replace(mapped, valuation_gap="not_selected"), ""
-                if not values.points:
-                    return replace(mapped, valuation_gap="no_observations"), ""
-                return replace(mapped, valuations=values), ""
-            except MarketDataError:
-                return replace(mapped, valuation_gap="source_unavailable"), ""
+            denied = False
+            for field, gap_field, url, fetch in (("valuations", "valuation_gap", valuation_url, self.valuations),
+                    ("estimates", "estimate_gap", estimate_url, self.estimates)):
+                if url not in allowed or not review.allowed(url):
+                    mapped = replace(mapped, **{gap_field: "not_selected"})
+                    continue
+                if denied:
+                    mapped = replace(mapped, **{gap_field: "source_unavailable"})
+                    continue
+                try:
+                    async with service.retrieval:
+                        self.require_enabled(cancelled)
+                        if not review.allowed(url):
+                            mapped = replace(mapped, **{gap_field: "not_selected"})
+                            continue
+                        values, _ = await fetch(symbol, start.isoformat(), end.isoformat())
+                        self.require_enabled(cancelled)
+                    if not review.allowed(url):
+                        mapped = replace(mapped, **{gap_field: "not_selected"})
+                    elif not values.points:
+                        mapped = replace(mapped, **{gap_field: "no_observations"})
+                    else:
+                        mapped = replace(mapped, **{field: values})
+                except MarketDataError as exc:
+                    denied = str(exc) in {"source_access_denied", "source_rate_limited"}
+                    mapped = replace(mapped, **{gap_field: "source_unavailable"})
+            return mapped, ""
         except asyncio.CancelledError:
             raise
         except InterruptedError:

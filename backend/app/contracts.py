@@ -209,6 +209,26 @@ class MarketValuations(Contract):
     points: list[ValuationObservation] = Field(min_length=1, max_length=600)
 
 
+class AnalystEstimate(Contract):
+    metric: Literal["eps", "revenue"]
+    period: Literal["0q", "+1q", "0y", "+1y"]
+    period_end: date | None = None
+    currency: Literal["USD"] | None = None
+    unit: Literal["USD/share", "USD"] | None = None
+    average: str | None = Field(default=None, max_length=80)
+    low: str | None = Field(default=None, max_length=80)
+    high: str | None = Field(default=None, max_length=80)
+    analysts: int | None = Field(default=None, strict=True, ge=0, le=10000)
+    reason: Literal["period_missing", "currency_missing", "value_missing"] | None = None
+
+
+class AnalystEstimates(Contract):
+    kind: Literal["analyst_opinion"] = "analyst_opinion"
+    method: Literal["yahoo-consensus-estimates-v1"] = "yahoo-consensus-estimates-v1"
+    source_id: str = Field(max_length=200)
+    points: list[AnalystEstimate] = Field(min_length=1, max_length=8)
+
+
 class MarketEvidence(Contract):
     """Application-owned daily history; never an LLM output field."""
     provider: Literal["yahoo_yfinance"] = "yahoo_yfinance"
@@ -234,6 +254,8 @@ class MarketEvidence(Contract):
     returns: list[MarketReturn] = Field(default_factory=list, max_length=5)
     valuations: MarketValuations | None = None
     valuation_gap: Literal["source_unavailable", "not_selected", "no_observations"] | None = None
+    estimates: AnalystEstimates | None = None
+    estimate_gap: Literal["source_unavailable", "not_selected", "no_observations"] | None = None
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 

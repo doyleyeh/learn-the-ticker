@@ -32,6 +32,8 @@ def market_fingerprint(data):
         data = data.model_dump(mode="json")
     if data.get("valuations") is None and data.get("valuation_gap") is None:
         data = {k: v for k, v in data.items() if k not in ("valuations", "valuation_gap")}
+    if data.get("estimates") is None and data.get("estimate_gap") is None:
+        data = {k: v for k, v in data.items() if k not in ("estimates", "estimate_gap")}
     if data.get("return_method") is None and not data.get("returns"):
         # Pre-calculation snapshots retain their original fingerprint and no results
         # are silently generated when opening an old archive offline.
@@ -48,6 +50,7 @@ def validate_market(bundle):
             raise ValueError("Private market source requires typed history")
         return
     expected = {data.source_id} | ({data.valuations.source_id} if data.valuations else set())
+    expected |= {data.estimates.source_id} if data.estimates else set()
     if (len(private) != len(expected) or {s.id for s in private} != expected
             or len({s.id for s in bundle.sources}) != len(bundle.sources)
             or not bundle.identity_verification or bundle.created_at.tzinfo is None
@@ -60,6 +63,11 @@ def validate_market(bundle):
         if data.valuation_gap is not None or data.valuations.source_id == data.source_id:
             raise ValueError("Valuation source or availability is inconsistent")
         validate_valuations(bundle, data.valuations, next(s for s in private if s.id == data.valuations.source_id))
+    if data.estimates:
+        from backend.app.estimate_evidence import validate_estimates
+        if data.estimate_gap is not None or data.estimates.source_id in {data.source_id, data.valuations.source_id if data.valuations else None}:
+            raise ValueError("Estimate source or availability is inconsistent")
+        validate_estimates(bundle, data.estimates, next(s for s in private if s.id == data.estimates.source_id))
     url = f"https://finance.yahoo.com/quote/{bundle.asset.symbol}/history/"
     if (str(source.url) != url or source.asset_id != bundle.asset.id
             or source.id != market_source_id(url, source.content_hash, source.retrieved_at)
@@ -131,6 +139,9 @@ def attach_market(bundle, mapped, *, personal_mode=False, created_at=None):
     from backend.app.valuation_evidence import attach_valuations
     data.valuations, valuation_source = attach_valuations(bundle, mapped, created_at=created_at)
     data.valuation_gap = mapped.valuation_gap
+    from backend.app.estimate_evidence import attach_estimates
+    data.estimates, estimate_source = attach_estimates(bundle, mapped, created_at=created_at)
+    data.estimate_gap = mapped.estimate_gap
     data.fingerprint = market_fingerprint(data)
     return EvidenceBundle.model_validate({**bundle.model_dump(), "created_at": created_at,
-        "market": data, "sources": [*bundle.sources, source, *([valuation_source] if valuation_source else [])], "state": "partial"})
+        "market": data, "sources": [*bundle.sources, source, *[s for s in (valuation_source, estimate_source) if s]], "state": "partial"})

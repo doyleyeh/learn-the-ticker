@@ -103,7 +103,7 @@ describe("private market presentation", () => {
   it("defaults Connections opt-in off and explains the operation boundaries", () => {
     const html = renderToStaticMarkup(<Connections settings={{ provider: "codex", language: "en" }} onSave={async () => {}}/>);
     expect(html).not.toContain("checked=");
-    expect(html).toContain("Enable experimental private Yahoo history");
+    expect(html).toContain("Enable experimental private Yahoo data");
     expect(html).toContain("Retrieval is off by default and after restore");
     expect(html).toContain("shareable exports");
   });

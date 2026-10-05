@@ -7,6 +7,7 @@ import { MarketHistory } from "./MarketHistory";
 import { FinancialRatios } from "./FinancialRatios";
 import { ValuationAvailability } from "./ValuationAvailability";
 import { ProviderValuations } from "./ProviderValuations";
+import { AnalystInsights } from "./AnalystInsights";
 import { privateClaims, privateSource } from "./marketPresentation";
 import { concepts, displayNumber, financialSeries } from "./financialSeries";
 import { sourceRoute } from "./routes";
@@ -70,7 +71,7 @@ function TickerContents({ bundle }: { bundle: EvidenceBundle }) {
           return <section className="plain-panel" key={section}><h3>{section === "news" ? "Reported filing news" : section === "recent_developments" ? "Other reported developments" : section.replaceAll("_", " ")}</h3>{claims.length ? claims.map(renderClaim) : <p className="source-gap-note">Unavailable — no admitted evidence for this section.</p>}</section>;
         })}</div>
       </DashboardSection>
-      <DashboardSection id="analysts" title="Analyst insights"><div className="plain-panel"><p className="source-gap-note">Unavailable — this snapshot has no qualified analyst estimates or outlooks.</p><p>External estimates are opinions about the future, separate from reported results. Missing estimates are not inferred from prices or generated explanations.</p></div></DashboardSection>
+      <DashboardSection id="analysts" title="Analyst insights"><AnalystInsights bundle={bundle}/></DashboardSection>
       <DashboardSection id="sources" title="Sources and evidence">
         <div className="plain-panel">{[...sources.values()].map((source) => <div key={source.id}><SourceAgeLabel sourceId={source.id!}/><SourceDetails source={source}/></div>)}{!sources.size && <p>No source documents have been registered.</p>}</div>
         <section className="plain-panel" data-evidence-layer="notes" data-local-only={privateContent || undefined}><h3>Unverified research notes</h3><p>These explanations have not passed factual validation. Candidate citations may be incomplete. These notes do not feed facts, charts or calculations.</p>{bundle.notes?.map(renderClaim)}{!bundle.notes?.length && <p>No unverified notes.</p>}</section>

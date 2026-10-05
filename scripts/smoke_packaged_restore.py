@@ -55,7 +55,7 @@ async def check():
     # A synthetic archive is built in memory; the target is actual private PostgreSQL.
     db = Database("sqlite://", testing=True)
     try:
-        bundle = market_bundle(valuations=True)
+        bundle = market_bundle(valuations=True, estimates=True)
         payload = bundle.model_dump(mode="json")
         db.put("bundle:" + bundle.id, "bundle", payload, bundle.asset.id)
         db.put("asset:" + bundle.asset.id, "asset", payload, bundle.asset.id)

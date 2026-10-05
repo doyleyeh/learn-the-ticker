@@ -19,10 +19,10 @@ from backend.app.source_review import SourceReviewDecision, SourceReviewScope
 from tests.desktop.financial_fixture import AT, financial_result
 from tests.desktop.test_market_mapping import history
 from tests.desktop.test_source_review import pending
-from tests.desktop.market_fixture import market_candidate, valuation_candidate
+from tests.desktop.market_fixture import market_candidate, valuation_candidate, estimate_candidate
 
 
-def service(tmp_path, *, enabled=True, review=False, credential=None, yahoo=None, primary=None, database=None, valuations=None):
+def service(tmp_path, *, enabled=True, review=False, credential=None, yahoo=None, primary=None, database=None, valuations=None, estimates=None):
     result, calls, prompts = financial_result(), [], []
     class Resolver:
         def resolve(self, query):
@@ -47,6 +47,8 @@ def service(tmp_path, *, enabled=True, review=False, credential=None, yahoo=None
         return replace(market_candidate(), requested_start=start, requested_end=end), 4
     async def supplied_valuations(symbol, start, end):
         return replace(valuation_candidate(), requested_start=start, requested_end=end), 3
+    async def supplied_estimates(symbol, start, end):
+        return estimate_candidate(), 3
     def first(symbol, start, end, credential, cancelled=None):
         calls.append("primary")
         return json.dumps([{"date": start, "open": 1, "high": 1, "low": 1, "close": 1, "adjusted_close": 1, "volume": 100}]).encode()
@@ -55,7 +57,7 @@ def service(tmp_path, *, enabled=True, review=False, credential=None, yahoo=None
     value = ResearchService(db, {"codex": Runtime()}, tmp_path, identity_resolver=Resolver(),
         financial_adapter=Financial(), filing_adapter=Filings(), clock=lambda: AT)
     value.market_adapter = MarketResearch(value, store_factory=Store, primary=primary or first, yahoo=yahoo or fallback,
-        valuations=valuations or supplied_valuations)
+        valuations=valuations or supplied_valuations, estimates=estimates or supplied_estimates)
     return value, result.instrument, calls, prompts
 
 
@@ -72,8 +74,9 @@ def test_real_research_pipeline_supplies_admitted_market_context_after_opt_in(tm
         assert calls == (["vault", "yahoo"] if enabled else [])
         assert len(prompts) == 1 and ("https://finance.yahoo.com/quote/SYN/" in prompts[0]) == enabled
         if enabled:
-            assert "CURRENT RETRIEVAL OF HISTORICAL MARKET EVIDENCE" in prompts[0] and value.market.source_id in prompts[0]
+            assert "RETRIEVED MARKET OBSERVATIONS AND ANALYST OPINIONS" in prompts[0] and value.market.source_id in prompts[0]
             assert value.market.valuations.source_id in prompts[0]
+            assert value.market.estimates.source_id in prompts[0] and '"kind": "analyst_opinion"' in prompts[0]
             assert factual_context(value)["market"]["bars"] == value.market.model_dump(mode="json")["bars"]
             sections = [r for r in app.db.list("bundle") if r["completion"] == "section_checkpoint"]
             assert len(sections) == 2 and len([r for r in sections if r["market"]]) == 1
@@ -107,7 +110,7 @@ def test_private_source_review_has_exact_numeric_scope_and_no_general_text_grant
         task = asyncio.create_task(app.market_adapter.retrieve(instrument, threading.Event(), scope))
         review = await pending(app.source_reviews, task)
         assert not calls and app.retrieval._value == 2 and app.inference._value == 1
-        assert len(review.sources) == 3 and all(row.local_numeric_only for row in review.sources)
+        assert len(review.sources) == 4 and all(row.local_numeric_only for row in review.sources)
         assert all(source_rule(str(row.url)) is None for row in review.sources)
         selected = [row.id for row in review.sources if "yahoo" in str(row.url)] if outcome in ("yahoo_only", "revoke") else []
         if outcome == "revoke":
@@ -238,7 +241,29 @@ def test_production_live_helper_defaults_to_no_access_and_summarizes_without_val
         value, _, _, _ = service(workspace, database=db)
         return value
     instrument = financial_result().instrument
-    result = asyncio.run(check(live=True, asset_id=instrument.asset.id, service_factory=factory))
+    result = asyncio.run(check(live=True, asset_id=instrument.asset.id, service_factory=factory, require_estimates=True))
     assert result["status"] == "qualified" and result["checkpoint_preserved"]
+    assert result["estimates"]["available"] == 2 and result["estimates"]["publication_time"] == "unknown"
     assert result["cloud_context_included"] and result["shareable_export_excluded"]
     assert "9007199254740993" not in json.dumps(result) and "27.272727" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("stage", ["eodhd_history", "yahoo", "estimates"])
+@pytest.mark.parametrize("code", ["source_access_denied", "source_rate_limited", "private raw diagnostic token"])
+def test_explicit_qualification_preserves_only_fixed_failure_codes_without_retry(tmp_path, stage, code):
+    from scripts.qualify_market_research import check
+    calls = []
+    def denied_sync(*args, **kwargs):
+        calls.append(stage)
+        raise MarketDataError(code)
+    async def denied_async(*args, **kwargs):
+        return denied_sync()
+    def factory(db, workspace):
+        kwargs = {"credential": DataCredential("synthetic"), "primary": denied_sync} if stage == "eodhd_history" else {stage: denied_async}
+        value, _, _, _ = service(workspace, database=db, **kwargs)
+        return value
+    result = asyncio.run(check(live=True, asset_id=financial_result().instrument.asset.id,
+        service_factory=factory, require_estimates=True))
+    assert result["status"] == "blocked" and calls == [stage]
+    assert result["failures"] == [{"stage": stage, "code": code if code.startswith("source_") else "unclassified_failure"}]
+    assert "private raw diagnostic" not in json.dumps(result)

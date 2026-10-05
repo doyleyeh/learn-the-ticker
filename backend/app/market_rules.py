@@ -4,6 +4,9 @@ from backend.app.contracts import SourcePolicy
 from backend.app.source_registry import SourceRule, source_rule
 
 PRIVATE_MARKET_RULES = (
+    SourceRule("private-yahoo-estimates-v1", "finance.yahoo.com", r"/quote/[A-Z0-9][A-Z0-9.-]{0,29}/analysis/",
+        "Yahoo Finance via yfinance — private analyst opinions", SourcePolicy.metadata, False,
+        date(2026, 10, 5), "https://help.yahoo.com/kb/account/SLN2310.html", timedelta(days=1)),
     SourceRule("private-yahoo-valuations-v1", "finance.yahoo.com", r"/quote/[A-Z0-9][A-Z0-9.-]{0,29}/key-statistics/",
         "Yahoo Finance via yfinance — private provider valuations", SourcePolicy.metadata, False,
         date(2026, 10, 5), "https://help.yahoo.com/kb/account/SLN2310.html", timedelta(days=1)),

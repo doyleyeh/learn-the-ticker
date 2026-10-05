@@ -8,6 +8,7 @@ from backend.app.figi_identity import MAPPING_URL, SEARCH_URL, fetch_figi, parse
 from backend.app.identity import ResolvedIdentity, normalized
 from backend.app.market_history import HistoryCandidate, MarketDataError
 from backend.app.market_valuations import ValuationCandidate
+from backend.app.market_estimates import EstimateCandidate
 
 # Require both Yahoo's code and its full label, then match the exact OpenFIGI venue.
 # Do not treat the US country composite or another Nasdaq tier as this listing.
@@ -36,6 +37,8 @@ class MappedHistoryCandidate:
     association: str = "yahoo-openfigi-common-stock-v1"
     valuations: ValuationCandidate | None = None
     valuation_gap: str | None = None
+    estimates: EstimateCandidate | None = None
+    estimate_gap: str | None = None
 
 
 def map_yahoo_history(history: HistoryCandidate, instrument: ResolvedIdentity, *, at: datetime):

@@ -10,6 +10,8 @@ def validate_checkpoint(bundle):
             or not (bundle.claims or (bundle.financials and bundle.financials.observations) or bundle.market)):
         raise ValueError("Section checkpoints require independently admitted evidence")
     numeric_ids = ({bundle.market.source_id} | ({bundle.market.valuations.source_id} if bundle.market.valuations else set())) if bundle.market else set()
+    if bundle.market and bundle.market.estimates:
+        numeric_ids.add(bundle.market.estimates.source_id)
     narrative = [s for s in bundle.sources if s.id not in numeric_ids]
     if any(not source.verified or source.policy != SourcePolicy.full_text
            or source.provenance not in ("verified_retrieval", "structured_adapter") for source in narrative):

@@ -74,6 +74,12 @@ def validate_numbers(explanation, context):
         for row in valuations["points"]:
             if row["value"] is not None:
                 include(row)
+    estimates = market.get("estimates") or {}
+    if estimates.get("source_id") in cited:
+        for row in estimates["points"]:
+            include(row)
+            if row["analysts"] is not None:
+                pieces.append(str(row["analysts"]))
     if number_tokens(explanation.explanation) - number_tokens(" ".join(pieces)):
         raise ValueError("Unsubstantiated number in term explanation")
 

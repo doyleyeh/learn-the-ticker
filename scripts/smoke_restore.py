@@ -106,6 +106,14 @@ def main():
         with source.session.begin() as session:
             session.add(Job(id="question-job", status="running", request=question_request.model_dump(mode="json")))
         source.complete_term("question-job", question.model_dump(mode="json"))
+        estimate_request = TermRequest(mode="question", term="What does the retained EPS estimate mean?", bundle_id=market.id)
+        estimate_question = TermExplanation(id=term_key(estimate_request), mode="question", term=estimate_request.term,
+            bundle_id=market.id, asset_id=market.asset.id, language="en", level="beginner", provider="codex",
+            basis="snapshot", source_ids=[market.market.estimates.source_id],
+            explanation="The supplied EPS opinion averages 1.25000000000000001 USD/share. Its publication time is unknown.")
+        with source.session.begin() as session:
+            session.add(Job(id="estimate-question-job", status="running", request=estimate_request.model_dump(mode="json")))
+        source.complete_term("estimate-question-job", estimate_question.model_dump(mode="json"))
         with source.session.begin() as session:
             session.add(Job(id="pending", status="running", request={"query": "Synthetic pending turn", "conversation_id": chat.id, "asset_id": identity.id}))
         with source.session.begin() as session:
@@ -142,7 +150,7 @@ def main():
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
-        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 16 and summary.saved_reports == 1 and summary.term_explanations == 2
+        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 16 and summary.saved_reports == 1 and summary.term_explanations == 3
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
         assert summary.import_explanations == 1
 
@@ -222,6 +230,8 @@ def main():
         assert restarted.get("term:" + term.id) == term.model_dump(mode="json")
         assert restarted.get("term:" + question.id) == question.model_dump(mode="json")
         assert restarted.job("question-job")["result"] == question.model_dump(mode="json")
+        assert restarted.get("term:" + estimate_question.id) == estimate_question.model_dump(mode="json")
+        assert restarted.job("estimate-question-job")["result"] == estimate_question.model_dump(mode="json")
         assert restarted.get("settings")["model"] == "synthetic-selected-model"
         assert not restarted.get("settings")["experimental_yahoo_enabled"]
         restored_market = EvidenceBundle.model_validate(restarted.get("bundle:" + market.id))
@@ -235,6 +245,10 @@ def main():
         assert restored_market.market.valuations == market.market.valuations
         assert len(restored_market.market.valuations.points) == 6
         assert any(p.value == "28.123456789012345678" for p in restored_market.market.valuations.points)
+        assert restored_market.market.estimates == market.market.estimates
+        assert restored_market.market.estimates.points[0].average == "1.25000000000000001"
+        estimate_source = next(s for s in restored_market.sources if s.id == restored_market.market.estimates.source_id)
+        assert estimate_source.as_of is estimate_source.published_at is None
         assert restored_market.market.returns[-1].price_percent == "27.272727"
         assert restored_market.market.returns[-1].total_return_estimate_percent == "40"
         assert restored_market.sources[-1] == market.sources[-1]

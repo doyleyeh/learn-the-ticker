@@ -10,7 +10,7 @@ from backend.app.market_evidence import attach_market
 from tests.desktop.financial_fixture import AT, financial_bundle, financial_result
 
 
-def market_bundle(*, financials=True, valuations=False):
+def market_bundle(*, financials=True, valuations=False, estimates=False):
     if financials:
         base = financial_bundle()
     else:
@@ -19,6 +19,8 @@ def market_bundle(*, financials=True, valuations=False):
     mapped = map_yahoo_history(market_candidate(), ResolvedIdentity(base.asset, base.identity_verification), at=AT)
     if valuations:
         mapped = replace(mapped, valuations=valuation_candidate())
+    if estimates:
+        mapped = replace(mapped, estimates=estimate_candidate())
     return attach_market(base, mapped, personal_mode=True, created_at=AT)
 
 
@@ -51,3 +53,13 @@ def valuation_candidate():
     for value in (b"28.123456789012345678", b"9007199254740993", b"9007199254740992", b"29.5"):
         raw = raw.replace(b'"' + value + b'"', value)
     return replace(parse_valuations(raw, "SYN", "2026-01-01", "2026-01-31"), retrieved_at=AT)
+
+
+def estimate_candidate():
+    from backend.app.market_estimates import parse_estimates
+    from tests.desktop.test_market_estimates import payload
+    data = payload()
+    row = data["quoteSummary"]["result"][0]["earningsTrend"]["trend"][0]
+    row["endDate"] = "2026-03-31"
+    raw = json.dumps(data).replace("1.25", "1.25000000000000001").encode()
+    return replace(parse_estimates(raw, "SYN"), retrieved_at=AT)

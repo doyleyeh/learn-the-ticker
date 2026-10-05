@@ -81,17 +81,20 @@ def test_shared_research_path_retains_original_refs_and_keeps_interpretations_ou
 
 
 @pytest.mark.parametrize("provider", ["codex", "gemini", "claude"])
-@pytest.mark.parametrize("kind", ["price", "return", "valuation", "wrong_citation", "invented"])
+@pytest.mark.parametrize("kind", ["price", "return", "valuation", "estimate", "wrong_citation", "invented"])
 def test_terms_use_cited_exact_numbers_through_selected_provider(tmp_path, provider, kind):
     async def run():
-        bundle = market_bundle(valuations=True)
+        bundle = market_bundle(valuations=True, estimates=True)
         app, _, _, _ = service(tmp_path, enabled=False)
         seed(app.db, bundle)
         app.db.put("settings", "settings", {"cloud_enabled": True, "provider": provider})
         text = {"price": "The observed close was 14 USD.", "return": "The retained price return is 27.272727%.",
                 "valuation": "The historical P/E observation was 28.123456789012345678.",
+                "estimate": "The supplied EPS opinion averages 1.25000000000000001 USD/share; publication time is unknown.",
                 "wrong_citation": "The P/E observation was 28.123456789012345678.", "invented": "The price was 67890123 USD."}[kind]
         sid = bundle.market.valuations.source_id if kind == "valuation" else bundle.market.source_id
+        if kind == "estimate":
+            sid = bundle.market.estimates.source_id
         runtime = TermRuntime({"explanation": text, "basis": "snapshot", "source_ids": [sid]})
         app.adapters = {provider: runtime}
         try:
@@ -125,7 +128,7 @@ def test_new_source_review_during_generation_does_not_publish_unreviewed_interpr
         app, instrument, _, _ = service(tmp_path)
         class Runtime:
             async def stream(self, prompt, run_id, workspace, model=None):
-                assert "CURRENT RETRIEVAL OF HISTORICAL MARKET EVIDENCE" in prompt
+                assert "RETRIEVED MARKET OBSERVATIONS AND ANALYST OPINIONS" in prompt
                 app.db.put("settings", "settings", {"cloud_enabled": True, "experimental_yahoo_enabled": True, "manual_source_review": True})
                 yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps({
                     "candidates": [instrument.asset.model_dump(mode="json")], "sources": [], "claims": []}))
