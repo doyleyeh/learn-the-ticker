@@ -20,11 +20,12 @@ async function research(page: Page, query: string) {
 }
 
 test("admitted versions, source review and reconnect preserve evidence at normal and narrow widths", async ({ page, context }, testInfo) => {
-  const failures: string[] = [], external: string[] = [], generation: string[] = [], termLookups: { bundle_id: string }[] = [];
+  const failures: string[] = [], external: string[] = [], generation: string[] = [], learningGeneration: string[] = [], termLookups: { bundle_id: string }[] = [];
   page.on("pageerror", (error) => failures.push(error.message));
   page.on("response", (response) => { if (response.url().includes("/api/") && response.status() >= 400) failures.push(`${response.status()} ${new URL(response.url()).pathname}`); });
   page.on("request", (request) => { if (request.method() === "POST" && new URL(request.url()).pathname === "/api/research") generation.push(request.url()); });
   page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/terms/lookup") termLookups.push(request.postDataJSON()); });
+  page.on("request", (request) => { if (request.method() === "POST" && new URL(request.url()).pathname === "/api/terms") learningGeneration.push(request.url()); });
   await context.route("**/*", async (route) => {
     if (new URL(route.request().url()).hostname !== "127.0.0.1") {
       external.push(route.request().url());
@@ -93,7 +94,7 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await history.getByText("Revenue · USD · Annual periods · 5 retained periods", { exact: true }).click();
     await expect(history.getByRole("img")).not.toHaveCount(0);
     await navigation.getByRole("button", { name: "Learn about this ticker", exact: true }).click();
-    await expect(page.getByRole("region", { name: "Understand a term", exact: true })).toBeFocused();
+    await expect(page.getByRole("region", { name: "Understand this page", exact: true })).toBeFocused();
     await page.getByRole("button", { name: "revenue", exact: true }).focus();
     await expect.poll(() => termLookups.length).toBeGreaterThan(0);
     expect(termLookups.at(-1)?.bundle_id).toBe(new URLSearchParams(new URL(original).hash.split("?")[1]).get("bundle"));
@@ -255,6 +256,29 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await page.reload(); await connect(page);
     await expect(page.locator(".market-history").getByText("27.272727%", { exact: true })).toBeVisible();
   });
+  await test.step("saved-page questions retain original evidence without research and report missing latest data", async () => {
+    const before = generation.length;
+    const learning = page.getByRole("region", { name: "Understand this page", exact: true });
+    await learning.getByRole("combobox", { name: "Learning mode" }).selectOption("question");
+    await learning.getByRole("textbox", { name: "Question about this saved page" }).fill("What does this saved page say about the daily close?");
+    const submitted = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/terms");
+    await learning.getByRole("button", { name: "Answer from saved page", exact: true }).click();
+    const request = (await submitted).postDataJSON();
+    expect(request.mode).toBe("question");
+    expect(request.bundle_id).toBe(new URLSearchParams(new URL(privateVersion).hash.split("?")[1]).get("bundle"));
+    await expect(learning.getByText("The retained daily close is 14 USD. It is a historical observation, not a live quote.", { exact: true })).toBeVisible();
+    await learning.screenshot({ path: testInfo.outputPath("saved-question-wide.png") });
+    await learning.locator(".term-result").getByRole("link", { name: /Open source drawer/ }).click();
+    await expect(page.locator("details.source-drawer[open]").getByText(/As of: 2026-01-05/)).toBeVisible();
+    await page.setViewportSize({ width: 640, height: 900 });
+    await learning.getByRole("textbox", { name: "Question about this saved page" }).fill("What is the latest quote today?");
+    await learning.getByRole("button", { name: "Answer from saved page", exact: true }).click();
+    await expect(learning.getByText(/Insufficient saved evidence · No current-data check/)).toBeVisible();
+    await expect(learning.locator(".term-result").getByRole("link")).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+    await learning.screenshot({ path: testInfo.outputPath("saved-question-narrow.png") });
+    expect(generation).toHaveLength(before);
+  });
   await test.step("supplied valuations preserve original dates, gaps, cloud selection and citations", async () => {
     await page.getByRole("navigation", { name: "Ticker sections" }).getByRole("button", { name: "Statistics", exact: true }).click();
     const valuation = page.locator(".provider-valuations");
@@ -308,6 +332,13 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await expect(page.locator(".market-history").getByText("27.272727%", { exact: true })).toBeVisible();
     await page.locator(".market-history").getByRole("link", { name: /Open source drawer/ }).click();
     await expect(page.locator("details.source-drawer[open]").getByRole("link", { name: "Inspect original source" })).toHaveAttribute("href", "https://finance.yahoo.com/quote/SYN/history/");
+    const learningBefore = learningGeneration.length;
+    const learning = page.getByRole("region", { name: "Understand this page", exact: true });
+    await learning.getByRole("combobox", { name: "Learning mode" }).selectOption("question");
+    await learning.getByRole("textbox", { name: "Question about this saved page" }).fill("What does this saved page say about the daily close?");
+    await learning.getByRole("button", { name: "Look up saved explanation", exact: true }).click();
+    await expect(learning.getByText("The retained daily close is 14 USD. It is a historical observation, not a live quote.", { exact: true })).toBeVisible();
+    expect(learningGeneration).toHaveLength(learningBefore);
     expect(generation).toHaveLength(5);
   });
   expect(external).toEqual([]);

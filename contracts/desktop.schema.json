@@ -3144,7 +3144,8 @@
         "basis": {
           "enum": [
             "general",
-            "snapshot"
+            "snapshot",
+            "insufficient"
           ],
           "title": "Basis",
           "type": "string"
@@ -3162,8 +3163,17 @@
           "title": "Id",
           "type": "string"
         },
+        "mode": {
+          "default": "term",
+          "enum": [
+            "term",
+            "question"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
         "term": {
-          "maxLength": 120,
+          "maxLength": 1000,
           "minLength": 1,
           "title": "Term",
           "type": "string"
@@ -3258,8 +3268,17 @@
           "title": "Purpose",
           "type": "string"
         },
+        "mode": {
+          "default": "term",
+          "enum": [
+            "term",
+            "question"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
         "term": {
-          "maxLength": 120,
+          "maxLength": 1000,
           "minLength": 1,
           "title": "Term",
           "type": "string"
@@ -3337,7 +3356,8 @@
         "basis": {
           "enum": [
             "general",
-            "snapshot"
+            "snapshot",
+            "insufficient"
           ],
           "title": "Basis",
           "type": "string"

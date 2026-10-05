@@ -366,7 +366,8 @@ class ResearchJobSummary(Contract):
 
 class TermRequest(Contract):
     purpose: Literal["term_explanation"] = "term_explanation"
-    term: str = Field(min_length=1, max_length=120)
+    mode: Literal["term", "question"] = "term"
+    term: str = Field(min_length=1, max_length=1000)
     bundle_id: str = Field(min_length=1, max_length=200)
     language: Literal["en", "zh-TW"] = "en"
     level: Literal["beginner", "intermediate"] = "beginner"
@@ -378,14 +379,22 @@ class TermRequest(Contract):
     def concise_term(cls, value):
         import unicodedata
         value = " ".join(unicodedata.normalize("NFKC", value).split())
-        if not value or any(unicodedata.category(char).startswith("C") for char in value) or len(value.split()) > 16:
-            raise ValueError("Select a concise term of up to 16 words")
+        if not value or any(unicodedata.category(char).startswith("C") for char in value):
+            raise ValueError("Use readable text for the learning request")
         return value
+
+    @model_validator(mode="after")
+    def bounded_request(self):
+        if self.mode == "term" and (len(self.term) > 120 or len(self.term.split()) > 16):
+            raise ValueError("Select a concise term of up to 16 words")
+        if self.mode == "question" and len(self.term.split()) > 150:
+            raise ValueError("Use a saved-page question of up to 150 words")
+        return self
 
 
 class TermResult(Contract):
     explanation: str = Field(min_length=1, max_length=1600)
-    basis: Literal["general", "snapshot"]
+    basis: Literal["general", "snapshot", "insufficient"]
     source_ids: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("explanation")
@@ -399,8 +408,8 @@ class TermResult(Contract):
     def citation_basis(self):
         if self.basis == "snapshot" and not self.source_ids:
             raise ValueError("Snapshot explanations require citations")
-        if self.basis == "general" and self.source_ids:
-            raise ValueError("General explanations cannot claim snapshot support")
+        if self.basis != "snapshot" and self.source_ids:
+            raise ValueError("Explanations without snapshot support cannot claim citations")
         if len(set(self.source_ids)) != len(self.source_ids):
             raise ValueError("Duplicate citations")
         return self
@@ -408,7 +417,8 @@ class TermResult(Contract):
 
 class TermExplanation(TermResult):
     id: str = Field(pattern=r"^[0-9a-f]{64}$")
-    term: str = Field(min_length=1, max_length=120)
+    mode: Literal["term", "question"] = "term"
+    term: str = Field(min_length=1, max_length=1000)
     bundle_id: str = Field(min_length=1, max_length=200)
     asset_id: str = Field(min_length=1, max_length=200)
     language: Literal["en", "zh-TW"]

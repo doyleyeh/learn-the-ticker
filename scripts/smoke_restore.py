@@ -98,6 +98,14 @@ def main():
         with source.session.begin() as session:
             session.add(Job(id="term-job", status="running", request=term_request.model_dump(mode="json")))
         source.complete_term("term-job", term.model_dump(mode="json"))
+        question_request = TermRequest(mode="question", term="What does the retained valuation measure mean?", bundle_id=cloud_original.id)
+        question = TermExplanation(id=term_key(question_request), mode="question", term=question_request.term,
+            bundle_id=cloud_original.id, asset_id=cloud_original.asset.id, language="en", level="beginner", provider="codex",
+            basis="snapshot", source_ids=[cloud_original.market.valuations.source_id],
+            explanation="The retained trailing P/E is 29.5. It is a historical provider measure, not a forecast.")
+        with source.session.begin() as session:
+            session.add(Job(id="question-job", status="running", request=question_request.model_dump(mode="json")))
+        source.complete_term("question-job", question.model_dump(mode="json"))
         with source.session.begin() as session:
             session.add(Job(id="pending", status="running", request={"query": "Synthetic pending turn", "conversation_id": chat.id, "asset_id": identity.id}))
         with source.session.begin() as session:
@@ -134,7 +142,7 @@ def main():
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
-        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 16 and summary.saved_reports == 1 and summary.term_explanations == 1
+        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 16 and summary.saved_reports == 1 and summary.term_explanations == 2
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
         assert summary.import_explanations == 1
 
@@ -167,7 +175,8 @@ def main():
         assert target.get("bundle:" + old.id) and target.get("asset:" + identity.id)["id"] == latest.id
         assert target.list("saved")[0]["bundle_id"] == old.id
         assert target.list("conversation")[0]["bookmarked"]
-        assert target.list("term")[0]["bundle_id"] == old.id and target.job("term-job")["result"]["id"] == term.id
+        assert target.get("term:" + term.id)["bundle_id"] == old.id and target.job("term-job")["result"]["id"] == term.id
+        assert target.get("term:" + question.id) == question.model_dump(mode="json")
         assert target.job("pending")["status"] == "interrupted" and not target.get("settings")["cloud_enabled"]
         assert target.get("settings")["model"] == "synthetic-selected-model"
         assert not target.get("settings")["experimental_yahoo_enabled"]
@@ -211,6 +220,8 @@ def main():
         assert restarted.get("bundle:" + old.id)["identity_verification"] is None
         assert len(restarted.events("pending")) == 2
         assert restarted.get("term:" + term.id) == term.model_dump(mode="json")
+        assert restarted.get("term:" + question.id) == question.model_dump(mode="json")
+        assert restarted.job("question-job")["result"] == question.model_dump(mode="json")
         assert restarted.get("settings")["model"] == "synthetic-selected-model"
         assert not restarted.get("settings")["experimental_yahoo_enabled"]
         restored_market = EvidenceBundle.model_validate(restarted.get("bundle:" + market.id))

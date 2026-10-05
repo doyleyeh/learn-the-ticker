@@ -170,16 +170,17 @@ def test_deduplication_queue_and_shared_inference_limit(tmp_path):
     asyncio.run(run())
 
 
-def test_cancellation_and_permission_revocation_preserve_saved_versions(tmp_path):
+@pytest.mark.parametrize("mode", ["term", "question"])
+def test_cancellation_and_permission_revocation_preserve_saved_versions(tmp_path, mode):
     async def run():
         db, bundle, runtime, research, service = setup(tmp_path, TermRuntime(wait=True))
-        job = await service.submit(TermRequest(term="revenue", bundle_id=bundle.id))
+        job = await service.submit(TermRequest(term="revenue", mode=mode, bundle_id=bundle.id))
         await runtime.started.wait()
         await research.cancel(job["id"])
         assert db.job(job["id"])["status"] == "cancelled" and runtime.active == 0 and not db.list("term")
         db.put("settings", "settings", {"cloud_enabled": False})
         with pytest.raises(ValueError, match="off"):
-            await service.submit(TermRequest(term="debt", bundle_id=bundle.id))
+            await service.submit(TermRequest(term="debt", mode=mode, bundle_id=bundle.id))
     asyncio.run(run())
 
 

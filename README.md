@@ -118,6 +118,8 @@ For the pinned runtime, `.venv/Scripts/python.exe -m scripts.repair_codex_sandbo
 
 On an asset page, choose a core term, type one or select a short phrase in the evidence to request an explanation. Saved explanations and curated English definitions remain usable offline. Generated interpretations carry their evidence version, language, date and citations when supplied; they never become factual evidence. Hover only reuses saved material.
 
+In **Understand this page**, choose **Question about saved page** to ask about its retained evidence. This mode uses original dates and citations with web research disabled. Missing or newer information is reported as insufficient; start a new research request when current evidence is needed. Questions stay with their selected version and are not rerun automatically on refresh. Previously generated answers remain available with cloud research off.
+
 ## Checks
 
 Run the quality gate after a change. The other checks are explicit, separate operations; PostgreSQL checks create isolated disposable libraries.

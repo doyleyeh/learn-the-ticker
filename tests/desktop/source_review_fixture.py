@@ -35,6 +35,10 @@ def review_service(db, workspace):
         async def stream(self, prompt, run_id, workspace, model=None, *, allow_browsing=True):
             if not allow_browsing:
                 context = json.loads(prompt.split("ADMITTED SNAPSHOT: ")[1])
+                if 'SAVED-PAGE QUESTION: "What is the latest' in prompt:
+                    yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps({
+                        "explanation": "The saved page has no latest quote. Start new research for current evidence.", "basis": "insufficient"}))
+                    return
                 market = context["market"]
                 yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps({
                     "explanation": "The retained daily close is 14 USD. It is a historical observation, not a live quote.",

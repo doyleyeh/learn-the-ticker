@@ -671,7 +671,7 @@ export type RetentionDays = number;
 export type CacheGb = number;
 export type SchemaVersion38 = "1";
 export type Explanation1 = string;
-export type Basis = "general" | "snapshot";
+export type Basis = "general" | "snapshot" | "insufficient";
 /**
  * @maxItems 20
  */
@@ -809,6 +809,7 @@ export type SourceIds2 =
       string
     ];
 export type Id13 = string;
+export type Mode = "term" | "question";
 export type Term = string;
 export type BundleId3 = string;
 export type AssetId5 = string;
@@ -820,6 +821,7 @@ export type CreatedAt6 = string;
 export type Interpretation1 = true;
 export type SchemaVersion39 = "1";
 export type Purpose1 = "term_explanation";
+export type Mode1 = "term" | "question";
 export type Term1 = string;
 export type BundleId4 = string;
 export type Language7 = "en" | "zh-TW";
@@ -828,7 +830,7 @@ export type Provider10 = "codex" | "gemini" | "claude";
 export type Model5 = string | null;
 export type SchemaVersion40 = "1";
 export type Explanation2 = string;
-export type Basis1 = "general" | "snapshot";
+export type Basis1 = "general" | "snapshot" | "insufficient";
 /**
  * @maxItems 20
  */
@@ -1492,6 +1494,7 @@ export interface TermExplanation {
   basis: Basis;
   source_ids?: SourceIds2;
   id: Id13;
+  mode?: Mode;
   term: Term;
   bundle_id: BundleId3;
   asset_id: AssetId5;
@@ -1505,6 +1508,7 @@ export interface TermExplanation {
 export interface TermRequest {
   schema_version?: SchemaVersion39;
   purpose?: Purpose1;
+  mode?: Mode1;
   term: Term1;
   bundle_id: BundleId4;
   language?: Language7;

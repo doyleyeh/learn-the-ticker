@@ -17,5 +17,6 @@ describe("term learning", () => {
     expect(html).toContain("Look up saved explanation");
     expect(html).toContain("Core definitions and previously generated explanations work offline");
     expect(html).toContain("Canonical evidence remains separate");
+    expect(html).toContain("Question about saved page");
   });
 });
