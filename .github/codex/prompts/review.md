@@ -96,3 +96,5 @@ Return:
 - merge recommendation and unresolved verification limits; do not perform the merge
 
 Packaged market changes must use the same owned executable with no host-Python fallback, isolate bootloader extraction/cookies, retain the pinned dependency/native notice inventory and verify final HTTP/1.1/no-auth options. Python advisory scans alone do not cover the curl/HTTP native libraries. Require scoped native dependency/shutdown/startup/restore and separate live retrieval evidence; do not promote a developer/private build to public distribution while runtime upgrades, license obligations or clean-machine gates remain unresolved.
+
+For live market qualification failures, retain only allowlisted stage/error codes and preserve the original failed observation. The 2026-10-06 unchanged-artifact success closes M4's positive history/estimate admission gate; it does not retroactively identify the earlier failure or prove a code fix. A later success is not justification for automatic retries, bypassing access/quota limits or repeating already resolved private-use approval.
