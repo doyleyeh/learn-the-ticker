@@ -158,9 +158,9 @@ class YahooPolicy:
         error = status_error(status, cookie=kind == "cookie")
         if error:
             self.fail(error)
-        if len(raw) > (MAX_BYTES if kind in ("history", "timezone", "valuation") else 65536):
+        if len(raw) > (MAX_BYTES if kind in ("history", "timezone", "valuation", "estimates") else 65536):
             self.fail("response_size")
-        if kind in ("history", "valuation"):
+        if kind in ("history", "valuation", "estimates"):
             self.raw = raw
 
 
@@ -172,6 +172,16 @@ class YahooValuationPolicy(YahooPolicy):
         if parts.geturl() != url or params != expected or any(type(params.get(k)) is not int for k in ("period1", "period2")):
             raise ValueError
         return "valuation"
+
+
+class YahooEstimatePolicy(YahooPolicy):
+    """Anonymous bootstrap and one earningsTrend module; no other quote modules."""
+    def data_kind(self, parts, params):
+        from backend.app.market_estimates import estimate_request
+        url, expected = estimate_request(self.symbol)
+        if parts.geturl() != url or params != expected:
+            raise ValueError
+        return "estimates"
 
 
 def yahoo_session(policy, *, _base=None):
@@ -187,7 +197,7 @@ def yahoo_session(policy, *, _base=None):
             if set(kwargs) - {"params", "timeout", "allow_redirects"}:
                 policy.fail("request_not_allowed")
             parts, size = [], 0
-            limit = MAX_BYTES if kind in ("history", "timezone", "valuation") else 65536
+            limit = MAX_BYTES if kind in ("history", "timezone", "valuation", "estimates") else 65536
             def collect(part):
                 nonlocal size
                 size += len(part)

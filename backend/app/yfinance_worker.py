@@ -15,8 +15,9 @@ import sys
 import tempfile
 
 from backend.app.market_history import MAX_BYTES, MarketDataError, _window, parse_yahoo_chart, valid_symbol
-from backend.app.market_transport import TRANSPORT_ERRORS, YAHOO_CURL_OPTIONS, YahooPolicy, YahooValuationPolicy, yahoo_session
+from backend.app.market_transport import TRANSPORT_ERRORS, YAHOO_CURL_OPTIONS, YahooPolicy, YahooValuationPolicy, YahooEstimatePolicy, yahoo_session
 from backend.app.market_valuations import parse_valuations, valuation_request
+from backend.app.market_estimates import parse_estimates, estimate_request
 from backend.app.owned_process import close_owned, launch_owned
 
 VERSION = "1.7.0"
@@ -27,8 +28,8 @@ ERRORS = TRANSPORT_ERRORS | {"worker_limit", "dependency_unavailable", "invalid_
 
 
 def retrieve(request):
-    valuation = isinstance(request, dict) and request.get("operation") == "valuation"
-    expected = {"symbol", "start", "end"} | ({"operation"} if valuation else set())
+    operation = request.get("operation") if isinstance(request, dict) else None
+    expected = {"symbol", "start", "end"} | ({"operation"} if operation in ("valuation", "estimates") else set())
     if not isinstance(request, dict) or set(request) != expected:
         raise MarketDataError("invalid_worker_request")
     try:
@@ -47,12 +48,14 @@ def retrieve(request):
     YfConfig.network.retries = 0
     YfConfig.network.proxy = None
     YfConfig.debug.hide_exceptions = False
-    policy = (YahooValuationPolicy if valuation else YahooPolicy)(symbol, first.isoformat(), last.isoformat())
+    policy_type = {"valuation": YahooValuationPolicy, "estimates": YahooEstimatePolicy}.get(operation, YahooPolicy)
+    policy = policy_type(symbol, first.isoformat(), last.isoformat())
     with yahoo_session(policy) as session:
         try:
             ticker = yf.Ticker(symbol, session=session)
-            if valuation:
-                url, params = valuation_request(symbol, first.isoformat(), last.isoformat())
+            if operation in ("valuation", "estimates"):
+                url, params = (estimate_request(symbol) if operation == "estimates"
+                               else valuation_request(symbol, first.isoformat(), last.isoformat()))
                 ticker._data.get_raw_json(url, params=params, timeout=10)
             else:
                 ticker.history(start=first.isoformat(), end=(last + timedelta(days=1)).isoformat(), interval="1d", prepost=False,
@@ -190,10 +193,16 @@ async def fetch_yahoo_valuations(symbol, start, end):
     return await fetch_candidate(symbol, start, end, valuation=True)
 
 
-async def fetch_candidate(symbol, start, end, *, valuation):
+async def fetch_yahoo_estimates(symbol, start, end):
+    # The window bounds worker bootstrap validation, not the forecast periods.
+    return await fetch_candidate(symbol, start, end, valuation=False, estimates=True)
+
+
+async def fetch_candidate(symbol, start, end, *, valuation, estimates=False):
     valid_symbol(symbol)
     _window(start, end)
-    value = await run_worker({"symbol": symbol, "start": start, "end": end, **({"operation": "valuation"} if valuation else {})})
+    operation = "estimates" if estimates else "valuation" if valuation else None
+    value = await run_worker({"symbol": symbol, "start": start, "end": end, **({"operation": operation} if operation else {})})
     try:
         if (not isinstance(value, dict) or set(value) != {"raw", "requests", "version"}
                 or value["version"] != VERSION or type(value["requests"]) is not int
@@ -201,7 +210,8 @@ async def fetch_candidate(symbol, start, end, *, valuation):
             raise MarketDataError("worker_limit")
         raw = base64.b64decode(value["raw"], validate=True)
         parser = parse_valuations if valuation else parse_yahoo_chart
-        return replace(parser(raw, symbol, start, end), retrieved_at=datetime.now(timezone.utc)), value["requests"]
+        candidate = parse_estimates(raw, symbol) if estimates else parser(raw, symbol, start, end)
+        return replace(candidate, retrieved_at=datetime.now(timezone.utc)), value["requests"]
     except (ValueError, TypeError):
         raise MarketDataError("worker_limit") from None
 
