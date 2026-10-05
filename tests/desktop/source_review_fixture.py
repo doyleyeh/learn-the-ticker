@@ -32,7 +32,14 @@ def review_service(db, workspace):
         calls.append(str(source.url))
         return verify_candidate(source, asset, lambda _: "SYNTHETIC COMPANY reported a material event.").model_copy(update={"retrieved_at": AT})
     class Runtime:
-        async def stream(self, prompt, run_id, workspace, model=None):
+        async def stream(self, prompt, run_id, workspace, model=None, *, allow_browsing=True):
+            if not allow_browsing:
+                context = json.loads(prompt.split("ADMITTED SNAPSHOT: ")[1])
+                market = context["market"]
+                yield RuntimeEvent(run_id=run_id, kind="message.delta", text=json.dumps({
+                    "explanation": "The retained daily close is 14 USD. It is a historical observation, not a live quote.",
+                    "basis": "snapshot", "source_ids": [market["source_id"]]}))
+                return
             source = Source(id="reviewed-filing", asset_id=result.instrument.asset.id,
                 url=document_url("0000000001", "0000009999-26-000003", "event.htm"), title="Synthetic filing", publisher="candidate")
             payload = {"candidates": [result.instrument.asset.model_dump(mode="json")], "sources": [], "claims": []}

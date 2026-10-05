@@ -33,7 +33,7 @@ describe("private market presentation", () => {
     expect(html).toContain("No observation at or before the required start boundary");
     expect(html).toContain(`source=${encodeURIComponent(data.market!.source_id)}`);
     expect(html).toContain("bundle=synthetic-private-version");
-    expect(html).toContain("data-local-only=\"true\"");
+    expect(html).not.toContain("data-local-only=\"true\"");
     expect(html).toContain("Historical snapshot, not a current quote");
     expect(html).toContain("reinvestment proxy");
     expect(html).toContain("Daily snapshot · 2026-01-05");
@@ -66,7 +66,7 @@ describe("private market presentation", () => {
     expect(renderToStaticMarkup(<MarketHistory bundle={data}/>)).toContain("no earlier observation retained");
     const html = renderToStaticMarkup(<ValuationAvailability bundle={data}/>);
     expect(html).toContain("Historical daily prices are retained");
-    expect(html).toContain("data-local-only=\"true\"");
+    expect(html).not.toContain("data-local-only=\"true\"");
     data.sources = [];
     expect(renderToStaticMarkup(<ValuationAvailability bundle={data}/>)).toContain("verified daily price snapshot is unavailable");
     data.asset.asset_type = "unknown";
@@ -104,7 +104,7 @@ describe("private market presentation", () => {
     const html = renderToStaticMarkup(<Connections settings={{ provider: "codex", language: "en" }} onSave={async () => {}}/>);
     expect(html).not.toContain("checked=");
     expect(html).toContain("Enable experimental private Yahoo history");
-    expect(html).toContain("Off by default and after restore");
+    expect(html).toContain("Retrieval is off by default and after restore");
     expect(html).toContain("shareable exports");
   });
 });

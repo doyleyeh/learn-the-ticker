@@ -13,7 +13,7 @@ describe("supplied private valuation observations", () => {
     expect(html).toContain("As of 2026-01-05");
     expect(html).toContain("Unavailable — source value missing");
     expect(html).toContain("Provider calculations");
-    expect(html).toContain("data-local-only=\"true\"");
+    expect(html).not.toContain("data-local-only=\"true\"");
     expect(html).toContain("Fewer than 12 observations were supplied");
     expect(html).toContain("not proven point-in-time records");
     expect(html).toContain(`source=${encodeURIComponent(data.market!.valuations!.source_id)}`);

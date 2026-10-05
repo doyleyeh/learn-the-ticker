@@ -57,12 +57,12 @@ async def check(*, live=False, symbol="", store=None, retrieve=retrieve_history,
                 restored = EvidenceBundle.model_validate_json(bundle.model_dump_json())
                 context = factual_context(restored)
                 exported, notice = shareable_view(restored)
-                if (restored != bundle or context["claims"] or context["sources"]
-                        or not context.get("context_gaps") or exported.market or exported.sources or not notice):
+                if (restored != bundle or context["claims"] or not context["sources"]
+                        or context.get("market", {}).get("source_id") != bundle.market.source_id or exported.market or exported.sources or not notice):
                     raise ValueError
                 admission = {"status": "passed", "rows": len(bundle.market.bars), "actions": len(bundle.market.actions),
                     "source_id": bundle.market.source_id, "fingerprint": bundle.market.fingerprint,
-                    "usage_scope": bundle.market.usage_scope, "cloud_excluded": True, "shareable_export_excluded": True,
+                    "usage_scope": bundle.market.usage_scope, "cloud_context_included": True, "shareable_export_excluded": True,
                     "gaps": bundle.market.gaps}
         except Exception:
             mapping = {"status": "unverified"}

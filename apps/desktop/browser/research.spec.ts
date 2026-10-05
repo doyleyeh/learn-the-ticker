@@ -167,7 +167,7 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await review.getByRole("button", { name: "Skip these sources" }).click();
     await expect(review.getByRole("checkbox")).toHaveCount(3);
     await expect(review.locator("input:checked")).toHaveCount(0);
-    await expect(review.getByText(/Private numerical retrieval only/)).toHaveCount(3);
+    await expect(review.getByText(/Numerical evidence for personal learning/)).toHaveCount(3);
     await expect(review.getByRole("checkbox", { name: /finance\.yahoo\.com\/quote\/SYN\/history/ })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
     await review.screenshot({ path: testInfo.outputPath("private-review-narrow.png") });
@@ -194,7 +194,8 @@ test("admitted versions, source review and reconnect preserve evidence at normal
       const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
       node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     });
-    await expect(page.locator(".term-selection-bar")).toHaveCount(0);
+    await expect(page.locator(".term-selection-bar")).toBeVisible();
+    await page.getByRole("button", { name: "Dismiss term selection" }).click();
     await market.getByRole("combobox", { name: "Chart period" }).selectOption("1m");
     await expect(market.getByText(/2 retained daily observations/)).toBeVisible();
     await market.getByText("Exact daily values (2)", { exact: true }).click();
@@ -210,7 +211,8 @@ test("admitted versions, source review and reconnect preserve evidence at normal
       const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
       node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     });
-    await expect(page.locator(".term-selection-bar")).toHaveCount(0);
+    await expect(page.locator(".term-selection-bar")).toBeVisible();
+    await page.getByRole("button", { name: "Dismiss term selection" }).click();
     await page.getByRole("heading", { name: "Basic listing information", exact: true }).evaluate((node) => {
       const range = document.createRange(); range.selectNodeContents(node);
       const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
@@ -226,7 +228,11 @@ test("admitted versions, source review and reconnect preserve evidence at normal
       node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     });
     await expect(page.locator(".term-selection-bar")).toHaveCount(0);
-    await market.getByRole("link", { name: /Open source drawer/ }).click();
+    await page.getByRole("textbox", { name: "Term to explain" }).fill("Daily close");
+    await page.getByRole("button", { name: "Explain term", exact: true }).click();
+    await expect(page.locator(".term-result").getByText("The retained daily close is 14 USD. It is a historical observation, not a live quote.")).toBeVisible();
+    await page.locator(".term-result").screenshot({ path: testInfo.outputPath("yahoo-cloud-learning.png") });
+    await page.locator(".term-result").getByRole("link", { name: /Open source drawer/ }).click();
     const drawer = page.locator("details.source-drawer[open]");
     await expect(drawer.getByRole("link", { name: "Inspect original source" })).toHaveAttribute("href", "https://finance.yahoo.com/quote/SYN/history/");
     await expect(drawer.getByText(/As of: 2026-01-05 · Retrieved: 2026-10-04T00:00:00Z/)).toBeVisible();
@@ -234,7 +240,7 @@ test("admitted versions, source review and reconnect preserve evidence at normal
     await page.reload(); await connect(page);
     await expect(page.locator(".market-history").getByText("27.272727%", { exact: true })).toBeVisible();
   });
-  await test.step("supplied valuations preserve original dates, gaps, private selection and citations", async () => {
+  await test.step("supplied valuations preserve original dates, gaps, cloud selection and citations", async () => {
     await page.getByRole("navigation", { name: "Ticker sections" }).getByRole("button", { name: "Statistics", exact: true }).click();
     const valuation = page.locator(".provider-valuations");
     await expect(valuation.getByText("29.5 ×As of 2026-01-05", { exact: true })).toBeVisible();
@@ -255,7 +261,8 @@ test("admitted versions, source review and reconnect preserve evidence at normal
       const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
       node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     });
-    await expect(page.locator(".term-selection-bar")).toHaveCount(0);
+    await expect(page.locator(".term-selection-bar")).toBeVisible();
+    await page.getByRole("button", { name: "Dismiss term selection" }).click();
     await valuation.getByRole("link", { name: /Open source drawer/ }).click();
     const sourceId = new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("source");
     const drawer = page.locator(`details.source-drawer[id="source-${sourceId}"][open]`);

@@ -8,7 +8,7 @@ PRIVATE_MARKET_RULES = (
         "Yahoo Finance via yfinance — private provider valuations", SourcePolicy.metadata, False,
         date(2026, 10, 5), "https://help.yahoo.com/kb/account/SLN2310.html", timedelta(days=1)),
     SourceRule("private-yahoo-history-v1", "finance.yahoo.com", r"/quote/[A-Z0-9][A-Z0-9.-]{0,29}/history/",
-        "Yahoo Finance via yfinance — experimental local-only exception", SourcePolicy.metadata, False,
+        "Yahoo Finance via yfinance — personal numerical history", SourcePolicy.metadata, False,
         date(2026, 10, 4), "https://help.yahoo.com/kb/account/SLN2310.html", timedelta(days=1)),
     SourceRule("private-eodhd-history-v1", "eodhd.com", r"/api/eod/[A-Z0-9][A-Z0-9.-]{0,29}\.US",
         "EODHD — bounded private history candidate", SourcePolicy.metadata, False,

@@ -50,7 +50,7 @@ async def check(*, live=False, asset_id="", service_factory=None, require_valuat
             retained = EvidenceBundle.model_validate(db.get("asset:" + asset_id))
             context = factual_context(retained)
             exported, notice = shareable_view(retained)
-            if (retained != bundle or context["claims"] or context["sources"] or not context.get("context_gaps")
+            if (retained != bundle or context["claims"] or not context["sources"] or context.get("market", {}).get("source_id") != retained.market.source_id
                     or exported.market or exported.sources or not notice or db.get("bundle:" + checkpoint["id"]) != checkpoint):
                 raise ValueError
             source = retained.sources[0]
@@ -74,7 +74,7 @@ async def check(*, live=False, asset_id="", service_factory=None, require_valuat
                 "return_method": retained.market.return_method,
                 "return_windows": {row.period: row.reason or "available" for row in retained.market.returns},
                 "valuations": valuation_report,
-                "checkpoint_preserved": True, "cloud_excluded": True, "shareable_export_excluded": True,
+                "checkpoint_preserved": True, "cloud_context_included": True, "shareable_export_excluded": True,
                 "scope": "Actual production retrieval/queue/admission/publication in a discarded in-memory test DB; no model, durable user-library write, PostgreSQL/native/UI qualification or public permission grant."}
     except Exception:
         return {"status": "blocked", "reason": "Production private retrieval could not be validated; no retry was made."}

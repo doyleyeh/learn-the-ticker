@@ -139,7 +139,7 @@ def test_reused_ratios_keep_version_scoped_citations_and_original_inputs():
         db.engine.dispose()
 
 
-def test_private_market_is_omitted_while_sec_ratios_keep_citations_in_cloud_and_export():
+def test_sec_and_market_share_cloud_context_but_export_keeps_only_sec():
     from backend.app.identity import ResolvedIdentity
     from backend.app.market_evidence import attach_market
     from backend.app.market_mapping import map_yahoo_history
@@ -150,8 +150,8 @@ def test_private_market_is_omitted_while_sec_ratios_keep_citations_in_cloud_and_
     bundle = attach_market(base, mapped, personal_mode=True, created_at=AT)
     context = factual_context(bundle)
     assert context["financials"]["ratios"][0]["percent"] == "33.333333"
-    assert context["context_gaps"] and "market" not in context
-    assert bundle.market.source_id not in json.dumps(context)
+    assert context["market"]["source_id"] == bundle.market.source_id
+    assert bundle.market.source_id in json.dumps(context)
     exported, notice = shareable_view(bundle)
     assert notice and exported.market is None and exported.financials == base.financials
     assert all(sid in {source.id for source in exported.sources} for ratio in exported.financials.ratios for sid in ratio.source_ids)

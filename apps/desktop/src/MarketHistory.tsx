@@ -20,13 +20,13 @@ function PrivateHistory({ bundle, market, source }: { bundle: EvidenceBundle; ma
   const previous = market.bars.at(-2);
   const descending = [...rows].reverse(), actions = [...(market.actions ?? [])].reverse();
   const pages = Math.max(1, Math.ceil(rows.length / 20)), actionPages = Math.max(1, Math.ceil(actions.length / 20));
-  return <div className="plain-panel market-history" data-local-only="true" data-evidence-layer="numeric">
+  return <div className="plain-panel market-history" data-evidence-layer="numeric">
     <p className="eyebrow">Historical prices · Private experimental mode</p>
     <h3>Latest retained daily close</h3><p className="market-close">{displayNumber(latest.close)} <span>{market.currency}</span></p>
     <p>As of {latest.date} · {market.exchange_label} · {market.timezone}</p>
     <p>Historical snapshot, not a current quote. Live session, after-hours price and quote delay are unavailable. Refresh evidence to check for newer observations.</p>
     <p className="ticker-meta">Yahoo Finance via unofficial yfinance · Retrieved {source.retrieved_at} · Publication date {source.published_at ?? "unknown"}</p>
-    <p>Personal use only. Values, returns and derived content stay on this computer and in your same-user private backups; cloud explanations and shareable exports omit them. Automatic term selection is disabled for this panel.</p>
+    <p>For personal learning. With cloud research enabled, these saved values and citations can support explanations from your selected AI provider. Same-user backups retain them; shareable exports omit them.</p>
     <CitationChip href={`#${sourceRoute(bundle.id!, source.id!)}`} label="Inspect original price evidence" citation={{ citationId: source.id!, sourceDocumentId: source.id!, title: source.title, publisher: source.publisher, freshnessState: "unknown" }}/>
     <section aria-label="Retained daily quote fields">
       <h3>Daily snapshot · {latest.date}</h3>

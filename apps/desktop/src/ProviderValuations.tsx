@@ -53,11 +53,11 @@ function RetainedValuations({ bundle, data, source }: { bundle: EvidenceBundle; 
   const [sampling, setSampling] = useState<ValuationObservation["sampling"]>("quarterly");
   const rows = useMemo(() => data.points.filter((point) => point.metric === metric && point.sampling === sampling).sort((a, b) => b.date.localeCompare(a.date)), [data.points, metric, sampling]);
   const limit = sampling === "annual" ? 5 : 12;
-  return <section className="plain-panel provider-valuations" aria-label="Provider valuation measures" data-local-only="true" data-evidence-layer="numeric">
+  return <section className="plain-panel provider-valuations" aria-label="Provider valuation measures" data-evidence-layer="numeric">
     <p className="eyebrow">Provider calculations · Private experimental mode</p><h3>Provider valuation measures</h3>
     <p>Reported by Yahoo Finance through unofficial yfinance. These are supplied calculations, not issuer-reported figures or ratios recalculated by this app.</p>
     <p className="ticker-meta">Retrieved {source.retrieved_at} · Publication date {source.published_at ?? "unknown"}. Each observation has its own as-of date below; retrieval does not make it current.</p>
-    <p>Values and derived content stay local and in same-user backups. Cloud explanations and shareable exports omit them; automatic term selection is disabled here.</p>
+    <p>These saved observations and citations can support consented explanations through your selected AI provider. Same-user backups retain them; shareable exports omit them.</p>
     <CitationChip href={`#${sourceRoute(bundle.id!, source.id!)}`} label="Inspect original valuation evidence" citation={{ citationId: source.id!, sourceDocumentId: source.id!, title: source.title, publisher: source.publisher, freshnessState: "unknown" }}/>
     <h4>Latest retained trailing-series observations</h4><dl className="ticker-facts">{Object.entries(valuationLabels).map(([name, label]) => {
       const latest = data.points.filter((point) => point.metric === name && point.sampling === "trailing").sort((a, b) => b.date.localeCompare(a.date))[0];

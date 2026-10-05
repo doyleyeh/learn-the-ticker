@@ -60,7 +60,7 @@ def service(tmp_path, *, enabled=True, review=False, credential=None, yahoo=None
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_real_research_pipeline_publishes_private_section_and_final_without_model_transmission(tmp_path, enabled):
+def test_real_research_pipeline_supplies_admitted_market_context_after_opt_in(tmp_path, enabled):
     async def run():
         app, instrument, calls, prompts = service(tmp_path, enabled=enabled)
         job = await app.submit(ResearchRequest(query=instrument.asset.id))
@@ -70,10 +70,11 @@ def test_real_research_pipeline_publishes_private_section_and_final_without_mode
         value = EvidenceBundle.model_validate(completed["result"])
         assert bool(value.market) == enabled and value.financials
         assert calls == (["vault", "yahoo"] if enabled else [])
-        assert len(prompts) == 1 and "https://finance.yahoo.com/quote/SYN/" not in prompts[0]
+        assert len(prompts) == 1 and ("https://finance.yahoo.com/quote/SYN/" in prompts[0]) == enabled
         if enabled:
-            assert "LOCAL-ONLY CONTEXT GAP" in prompts[0] and value.market.source_id not in prompts[0]
-            assert "market" not in factual_context(value)
+            assert "CURRENT RETRIEVAL OF HISTORICAL MARKET EVIDENCE" in prompts[0] and value.market.source_id in prompts[0]
+            assert value.market.valuations.source_id in prompts[0]
+            assert factual_context(value)["market"]["bars"] == value.market.model_dump(mode="json")["bars"]
             sections = [r for r in app.db.list("bundle") if r["completion"] == "section_checkpoint"]
             assert len(sections) == 2 and len([r for r in sections if r["market"]]) == 1
             assert all(r["id"] != value.id for r in sections)
@@ -239,5 +240,5 @@ def test_production_live_helper_defaults_to_no_access_and_summarizes_without_val
     instrument = financial_result().instrument
     result = asyncio.run(check(live=True, asset_id=instrument.asset.id, service_factory=factory))
     assert result["status"] == "qualified" and result["checkpoint_preserved"]
-    assert result["cloud_excluded"] and result["shareable_export_excluded"]
+    assert result["cloud_context_included"] and result["shareable_export_excluded"]
     assert "9007199254740993" not in json.dumps(result) and "27.272727" not in json.dumps(result)

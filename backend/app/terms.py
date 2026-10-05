@@ -6,6 +6,7 @@ from contextlib import aclosing
 import hashlib
 import json
 import re
+from decimal import Decimal
 
 from backend.app.contracts import EvidenceBundle, RuntimeEvent, TermExplanation, TermRequest, TermResult, uid
 from backend.app.db import Job
@@ -31,6 +32,46 @@ def validate_explanation(explanation: TermExplanation, bundle: EvidenceBundle):
         raise ValueError("Explanation cites unavailable or unadmitted evidence")
     if find_forbidden_output_phrases(explanation.explanation) or any(phrase in explanation.explanation for phrase in UNSAFE_EXPLANATIONS):
         raise ValueError("Explanation must remain educational")
+    validate_numbers(explanation, factual_context(bundle))
+
+
+def number_tokens(text):
+    text = re.sub(r"\b(\d{4})-(\d{2})-(\d{2})\b", r"\1 \2 \3", text)
+    # Decimal equality/hash is exact; normalize() would round to the ambient
+    # 28-digit context and could accept a different high-precision observation.
+    return {(Decimal(token.rstrip("%％").replace(",", "")), token.endswith(("%", "％")))
+            for token in re.findall(r"-?\d+(?:,\d{3})*(?:\.\d+)?(?:%|％)?", text)}
+
+
+def validate_numbers(explanation, context):
+    """Only cited admitted observations can support copied numerical tokens."""
+    cited = set(explanation.source_ids)
+    pieces = [explanation.term] if explanation.basis == "general" else []
+    pieces += [claim["text"] for claim in context["claims"] if cited.intersection(claim["source_ids"])]
+    def include(row):
+        for key, value in row.items():
+            if key in ("id", "source_id", "source_ids", "input_ids", "input_claim_ids"):
+                continue
+            if isinstance(value, str):
+                pieces.append(value + ("%" if key.endswith("percent") else ""))
+    financials = context.get("financials", {})
+    for row in financials.get("observations", []):
+        if row["source_id"] in cited:
+            include(row)
+    for row in financials.get("ratios", []):
+        if set(row["source_ids"]) <= cited:
+            include(row)
+    market = context.get("market") or {}
+    if market.get("source_id") in cited:
+        for row in [*market["bars"], *market["actions"], *market["returns"]]:
+            include(row)
+    valuations = market.get("valuations") or {}
+    if valuations.get("source_id") in cited:
+        for row in valuations["points"]:
+            if row["value"] is not None:
+                include(row)
+    if number_tokens(explanation.explanation) - number_tokens(" ".join(pieces)):
+        raise ValueError("Unsubstantiated number in term explanation")
 
 
 def term_prompt(request: TermRequest, bundle: EvidenceBundle) -> str:
@@ -129,12 +170,6 @@ class TermService:
                 if output.startswith("```json") and output.endswith("```"):
                     output = output[7:-3].strip()
                 result = TermResult.model_validate_json(output)
-                # Check copied numeral tokens conservatively, including Traditional Chinese output.
-                numeric = r"\d+(?:[.,]\d+)*(?:%|％)?"
-                context = factual_context(bundle)
-                permitted_text = " ".join(claim["text"] for claim in context["claims"]) + " " + request.term
-                if set(re.findall(numeric, result.explanation)) - set(re.findall(numeric, permitted_text)):
-                    raise ValueError("Unsubstantiated number in term explanation")
                 value = TermExplanation(**result.model_dump(exclude={"schema_version"}), id=term_key(request), term=request.term,
                     bundle_id=bundle.id, asset_id=bundle.asset.id, language=request.language, level=request.level,
                     provider=request.provider, model=request.model)

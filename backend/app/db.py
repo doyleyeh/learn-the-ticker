@@ -90,6 +90,11 @@ class Database:
             if not job or job.status != "running":
                 raise ValueError("Only a running job can publish research")
             asset_id, bundle_id = payload["asset"]["id"], payload["id"]
+            from backend.app.evidence_reuse import validate_context_references
+            def original(version):
+                record = session.get(Record, "bundle:" + version)
+                return record.payload if record and record.kind == "bundle" else None
+            validate_context_references(bundle, original)
             self._put(session, "bundle:" + bundle_id, "bundle", payload, asset_id)
             if conversation_id:
                 record = session.get(Record, "conversation:" + conversation_id, with_for_update=True)

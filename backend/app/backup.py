@@ -150,6 +150,9 @@ def validate_library(data: LibraryData):
         # Re-serialize through known models. Unknown fields such as tokens fail validation.
         row.payload = value.model_dump(mode="json")
 
+    from backend.app.evidence_reuse import validate_context_references
+    for bundle in bundles.values():
+        validate_context_references(bundle, bundles.get)
     for row in data.records:
         value = row.payload
         if row.kind == "asset":

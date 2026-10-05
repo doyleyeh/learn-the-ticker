@@ -19,7 +19,7 @@ it("identifies the experimental numerical exception without claiming a text perm
     { id: "s", url: "https://finance.yahoo.com/quote/SYN/history/", publisher: "Yahoo Finance", policy: "metadata_only", local_numeric_only: true, rights_url: "https://help.yahoo.com/", reviewed_at: "2026-10-04" },
   ] }} onDecide={async () => {}}/>);
   expect(html).not.toContain("checked=");
-  expect(html).toContain("Private numerical retrieval only");
+  expect(html).toContain("Numerical evidence for personal learning");
   expect(html).toContain("not a Yahoo permission grant");
-  expect(html).toContain("stay out of cloud prompts and shareable exports");
+  expect(html).toContain("can enter the selected AI provider");
 });

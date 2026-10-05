@@ -14,6 +14,7 @@ export function privateSource(source: Source) {
 
 export function privateClaims(bundle: EvidenceBundle) {
   const sources = new Set(bundle.sources?.filter(privateSource).map((source) => source.id));
+  for (const ref of bundle.context_references ?? []) sources.add(ref.id);
   const rows = [...(bundle.claims ?? []), ...(bundle.notes ?? [])];
   const blocked = new Set(rows.filter((row) => row.source_ids?.some((id) => sources.has(id))).map((row) => row.id));
   let changed = true;

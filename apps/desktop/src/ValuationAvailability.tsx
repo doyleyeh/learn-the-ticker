@@ -11,7 +11,7 @@ export function ValuationAvailability({ bundle }: { bundle: EvidenceBundle }) {
     const latest = group.points.at(-1)?.row, retained = group.rows.at(-1);
     return latest && latest.start === retained?.start && latest.end === retained?.end;
   });
-  return <section aria-label="Valuation availability" className="financial-unavailable" data-local-only={Boolean(bundle.market) || undefined}>
+  return <section aria-label="Valuation availability" className="financial-unavailable">
     <h3>App-calculated valuation and yield</h3>
     {bundle.asset.asset_type !== "stock" ? <p className="source-gap-note">Stock valuation metrics are unavailable for this asset type{bundle.asset.asset_type === "unknown" ? " until its identity is confirmed" : ""}.</p> : <>
       <p className="source-gap-note">{market ? "Historical daily prices are retained. They alone cannot establish these metrics." : "A verified daily price snapshot is unavailable for these metrics."}</p>

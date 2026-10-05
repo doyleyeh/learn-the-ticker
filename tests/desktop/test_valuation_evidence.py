@@ -64,9 +64,9 @@ def test_old_versions_do_not_gain_provider_values_and_duplicates_are_rejected():
         EvidenceBundle.model_validate(payload)
 
 
-def test_live_page_preserves_values_but_context_and_both_exports_omit_them(tmp_path):
+def test_page_and_context_preserve_values_while_shareable_exports_omit_them(tmp_path):
     value = market_bundle(valuations=True, financials=False)
-    assert "28.123456789012345678" not in json.dumps(factual_context(value))
+    assert "28.123456789012345678" in json.dumps(factual_context(value))
     db = Database("sqlite://", testing=True)
     seed(db, value)
     with TestClient(create_app(db, TOKEN, tmp_path, adapters={"codex": object()})) as client:

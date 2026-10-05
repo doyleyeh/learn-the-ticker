@@ -127,9 +127,9 @@ def test_pre_calculation_snapshot_fingerprint_survives_without_offline_generatio
     assert EvidenceBundle.model_validate_json(restored.model_dump_json()).market.fingerprint == original
 
 
-def test_derived_returns_remain_private_in_cloud_context_and_export():
+def test_derived_returns_enter_cloud_context_but_not_shareable_export():
     from backend.app.evidence import factual_context
     bundle = market_bundle()
-    assert "27.272727" not in json.dumps(factual_context(bundle))
+    assert "27.272727" in json.dumps(factual_context(bundle))
     exported, notice = shareable_view(bundle)
     assert notice and exported.market is None and "27.272727" not in exported.model_dump_json()

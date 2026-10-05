@@ -31,11 +31,14 @@ function DashboardSection({ id, title, children }: { id: string; title: string; 
 
 export function EvidenceView({ bundle }: { bundle: EvidenceBundle }) {
   const sources = useMemo(() => new Map((bundle.sources ?? []).map((source) => [source.id, source])), [bundle.sources]);
+  const references = useMemo(() => new Map((bundle.context_references ?? []).map((ref) => [ref.id, ref])), [bundle.context_references]);
   const privateIds = useMemo(() => privateClaims(bundle), [bundle]);
-  const privateContent = Boolean(bundle.market || bundle.sources?.some(privateSource));
+  const privateContent = Boolean(bundle.market || bundle.context_references?.length || bundle.sources?.some(privateSource));
   function renderClaim(claim: Claim) {
     return <article key={claim.id} data-local-only={privateIds.has(claim.id) || undefined}><p>{claim.text}</p><div className="chip-row">{claim.source_ids?.map((id) => {
       const source = sources.get(id);
+      const ref = references.get(id);
+      if (ref) return <CitationChip key={id} href={`#${sourceRoute(ref.bundle_id, ref.source_id)}`} label="Original saved evidence" citation={{ citationId: id, sourceDocumentId: ref.source_id, title: "Original saved numerical evidence", publisher: "Original provider", freshnessState: "unknown" }}/>;
       return source ? <div key={id}><CitationChip href={`#${sourceRoute(bundle.id!, id)}`} citation={{ citationId: id, sourceDocumentId: id, title: source.title, publisher: source.publisher, freshnessState: "unknown" }}/><p className="ticker-meta">Published {source.published_at ?? "unknown"} · As of {source.as_of ?? "unknown"} · Retrieved {source.retrieved_at ?? "unknown"}</p></div> : null;
     })}</div></article>;
   }
@@ -94,5 +97,5 @@ export function KeyStatistics({ bundle }: { bundle: EvidenceBundle }) {
 
 function SourceDetails({ source }: { source: Source }) {
   const restricted = privateSource(source);
-  return <details className="source-drawer" id={`source-${source.id}`} data-local-only={restricted || undefined}><summary>{source.title} · {source.verified ? "Verified retrieval" : "Unverified candidate"}</summary><p>{source.publisher}</p><a href={source.url} target="_blank" rel="noopener noreferrer">Inspect original source</a><p>Published: {source.published_at ?? "Unknown"} · As of: {source.as_of ?? "Unknown"} · Retrieved: {source.retrieved_at}</p><p>Source-use policy: {source.policy} · Provenance: {source.provenance}</p>{restricted && <p>Experimental private numerical use only. Original prices and derived content are excluded from cloud prompts and shareable exports.</p>}{source.content_hash && <details><summary>Original response fingerprint</summary><p>{source.content_hash}</p></details>}{source.excerpt && <blockquote>{source.excerpt}</blockquote>}</details>;
+  return <details className="source-drawer" id={`source-${source.id}`} data-local-only={restricted || undefined}><summary>{source.title} · {source.verified ? "Verified retrieval" : "Unverified candidate"}</summary><p>{source.publisher}</p><a href={source.url} target="_blank" rel="noopener noreferrer">Inspect original source</a><p>Published: {source.published_at ?? "Unknown"} · As of: {source.as_of ?? "Unknown"} · Retrieved: {source.retrieved_at}</p><p>Source-use policy: {source.policy} · Provenance: {source.provenance}</p>{restricted && <p>Experimental private numerical use only. Admitted numerical observations support consented cloud learning with their original citations. Shareable exports omit Yahoo data.</p>}{source.content_hash && <details><summary>Original response fingerprint</summary><p>{source.content_hash}</p></details>}{source.excerpt && <blockquote>{source.excerpt}</blockquote>}</details>;
 }

@@ -95,24 +95,30 @@ class SourceReviewScope:
         self.enabled = service.settings().manual_source_review
         self.accepted, self.considered = {}, set()
         self.private_urls = set()
+        self.context_urls = set()
 
     def active(self):
         self.enabled = self.enabled or self.service.settings().manual_source_review
         return self.enabled
 
     def allowed(self, url):
-        if url in self.private_urls and not self.service.settings().experimental_yahoo_enabled:
+        if url in self.private_urls and url not in self.context_urls and not self.service.settings().experimental_yahoo_enabled:
             return False
         return not self.active() or (url in self.accepted and self.current_rule(url) == self.accepted[url])
 
     def current_rule(self, url):
+        if url in self.context_urls:
+            return private_market_rule(url)
         if url in self.private_urls:
             return private_market_rule(url) if self.service.settings().experimental_yahoo_enabled else None
         return source_rule(url)
 
-    async def select(self, asset_id, urls, *, private_market=False):
+    async def select(self, asset_id, urls, *, private_market=False, numeric_context=False):
         self.service.require_consent()
         urls = list(dict.fromkeys(urls))
+        if numeric_context:
+            urls = [url for url in urls if private_market_rule(url)]
+            self.context_urls.update(urls)
         if private_market:
             if not self.service.settings().experimental_yahoo_enabled:
                 return set()
@@ -122,7 +128,8 @@ class SourceReviewScope:
             return set(urls)
         rules = {url: self.current_rule(url) for url in urls if url not in self.considered}
         # Unknown/limited permissions never offer an override. No model metadata is trusted.
-        rules = {url: rule for url, rule in rules.items() if rule and (rule.policy == SourcePolicy.full_text or (private_market and url in self.private_urls))}
+        rules = {url: rule for url, rule in rules.items() if rule and (rule.policy == SourcePolicy.full_text
+            or (private_market and url in self.private_urls) or (numeric_context and url in self.context_urls))}
         self.considered.update(urls)
         if rules:
             chosen = await self.service.source_reviews.review(self.run_id, asset_id, rules)

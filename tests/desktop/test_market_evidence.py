@@ -139,34 +139,39 @@ def assert_no_private(text):
         assert forbidden not in text
 
 
+def assert_admitted_context(text):
+    for forbidden in ("PRIVATE VALUE", "PRIVATE DERIVED", "PRIVATE SECOND", "PRIVATE INTERPRETATION", "UNATTRIBUTED"):
+        assert forbidden not in text
+    assert "finance.yahoo.com" in text and "0.123456789012345678" in text
+
+
 def test_conversation_term_and_research_context_keep_permitted_original_citations_only():
     value = derived_bundle()
     context = factual_context(value)
-    assert_no_private(json.dumps(context))
+    assert_admitted_context(json.dumps(context))
     assert [c["id"] for c in context["claims"]] == ["permitted"]
-    assert context["financials"]["observations"] and context["context_gaps"]
+    assert context["financials"]["observations"] and context["market"]
     assert context["sources"][0]["retrieved_at"] == value.sources[0].model_dump(mode="json")["retrieved_at"]
-    assert_no_private(research_prompt(ResearchRequest(query="Explain this company"), value.model_dump(mode="json"), []))
+    assert_admitted_context(research_prompt(ResearchRequest(query="Explain this company"), value.model_dump(mode="json"), []))
     request = TermRequest(term="adjusted close", bundle_id=value.id)
-    assert_no_private(term_prompt(request, value))
+    assert_admitted_context(term_prompt(request, value))
     explanation = TermExplanation(id=term_key(request), term=request.term, bundle_id=value.id, asset_id=value.asset.id,
         language="en", level="beginner", provider="codex", explanation="A private interpretation.", basis="snapshot", source_ids=[value.market.source_id])
-    with pytest.raises(ValueError, match="unavailable"):
-        validate_explanation(explanation, value)
+    validate_explanation(explanation, value)
     db = Database("sqlite://", testing=True)
     seed(db, value)
     contexts, candidates = conversation_evidence(db, value.asset, [{"role": "assistant", "asset_id": value.asset.id, "bundle_id": value.id}])
-    assert contexts and candidates and contexts[0]["context_gaps"]
-    assert_no_private(json.dumps(contexts))
-    assert all(str(c.url).startswith("https://data.sec.gov/") for c in candidates.values())
+    assert contexts and candidates and contexts[0]["market"]
+    assert_admitted_context(json.dumps(contexts))
+    assert any(str(c.url).startswith("https://finance.yahoo.com/") for c in candidates.values())
 
 
-def test_only_private_snapshot_still_explains_cloud_context_gap():
+def test_only_market_snapshot_still_supplies_original_cited_context():
     value = market_bundle(financials=False)
     db = Database("sqlite://", testing=True)
     seed(db, value)
     context, candidates = conversation_evidence(db, value.asset, [{"role": "assistant", "asset_id": value.asset.id, "bundle_id": value.id}])
-    assert len(context) == 1 and context[0]["context_gaps"] and not context[0]["sources"] and not candidates
+    assert len(context) == 1 and context[0]["market"] and context[0]["sources"] and candidates
 
 
 def test_authenticated_exports_filter_private_derivatives_but_local_page_keeps_history(tmp_path):
@@ -197,7 +202,7 @@ def test_same_user_backup_retains_local_originals_and_resets_network_opt_in():
     restore_backup(target, raw, summary.fingerprint)
     assert target.get("bundle:" + value.id) == value.model_dump(mode="json")
     assert not target.get("settings")["experimental_yahoo_enabled"] and not target.get("settings")["cloud_enabled"]
-    assert_no_private(json.dumps(factual_context(EvidenceBundle.model_validate(target.get("bundle:" + value.id)))))
+    assert_admitted_context(json.dumps(factual_context(EvidenceBundle.model_validate(target.get("bundle:" + value.id)))))
     def corrupt(data):
         for record in data["records"]:
             if record["kind"] in ("bundle", "asset"):
@@ -238,7 +243,7 @@ def test_optional_live_helper_qualifies_admission_without_printing_prices(monkey
         check_admission=True, at=AT, resolve=lambda value, at: map_yahoo_history(value, instrument, at=at)))
     assert report["status"] == "retrieval_passed" and report["admission"]["status"] == "passed"
     assert "bars" not in json.dumps(report) and "adjusted_close" not in json.dumps(report)
-    assert report["admission"]["cloud_excluded"] and report["admission"]["shareable_export_excluded"]
+    assert report["admission"]["cloud_context_included"] and report["admission"]["shareable_export_excluded"]
     assert asyncio.run(check(check_admission=True))["status"] == "not_run"
 
 

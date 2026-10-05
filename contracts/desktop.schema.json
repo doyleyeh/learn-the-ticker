@@ -372,6 +372,42 @@
       "title": "Claim",
       "type": "object"
     },
+    "ContextReference": {
+      "additionalProperties": false,
+      "description": "Application-owned link to numerical evidence in an immutable earlier version.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^saved:[0-9a-f]{64}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "bundle_id",
+        "source_id"
+      ],
+      "title": "ContextReference",
+      "type": "object"
+    },
     "Conversation": {
       "additionalProperties": false,
       "properties": {
@@ -532,6 +568,14 @@
             "$ref": "#/$defs/Claim"
           },
           "title": "Notes",
+          "type": "array"
+        },
+        "context_references": {
+          "items": {
+            "$ref": "#/$defs/ContextReference"
+          },
+          "maxItems": 100,
+          "title": "Context References",
           "type": "array"
         },
         "state": {

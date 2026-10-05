@@ -52,12 +52,15 @@ def main():
                 await service.tasks[job["id"]]
                 result = source.job(job["id"])
                 assert result["status"] == "completed"
-                assert len(prompts) == 1 and "https://finance.yahoo.com/quote/SYN/" not in prompts[0]
+                assert len(prompts) == 1 and "https://finance.yahoo.com/quote/SYN/" in prompts[0]
                 return EvidenceBundle.model_validate(result["result"])
             finally:
                 await service.close()
         market = asyncio.run(publish_market())
         market_payload = market.model_dump(mode="json")
+        from tests.desktop.test_market_cloud import publish_numeric_followup
+        from backend.app.evidence_reuse import validate_context_references
+        cloud_original, cloud_answer = asyncio.run(publish_numeric_followup(source, roots[0] / "synthetic-cloud-learning"))
         reviewed_job = asyncio.run(publish_review_snapshot(source, roots[0] / "synthetic-source-review"))
         reviewed_ids = {row["id"] for row in source.list("bundle")}
         financial_job = asyncio.run(publish_financial_snapshot(source, roots[0] / "synthetic-research"))
@@ -130,7 +133,7 @@ def main():
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
-        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 13 and summary.saved_reports == 1 and summary.term_explanations == 1
+        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 16 and summary.saved_reports == 1 and summary.term_explanations == 1
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
         assert summary.import_explanations == 1
 
@@ -191,6 +194,10 @@ def main():
         clusters[1].start()
         restarted = Database(clusters[1].url())
         databases.append(restarted)
+        assert restarted.get("bundle:" + cloud_original.id) == cloud_original.model_dump(mode="json")
+        assert restarted.get("bundle:" + cloud_answer.id) == cloud_answer.model_dump(mode="json")
+        validate_context_references(cloud_answer, lambda bid: restarted.get("bundle:" + bid))
+        assert not shareable_view(cloud_answer)[0].notes
         assert {row["id"]: row for row in restarted.research_jobs()} == restored_jobs
         assert restarted.job("progressive-pending")["result"] == progress.model_dump(mode="json")
         assert restarted.get("bundle:" + progress.id) == progress.model_dump(mode="json")
@@ -220,9 +227,9 @@ def main():
         assert restored_market.market.returns[-1].total_return_estimate_percent == "40"
         assert restored_market.sources[-1] == market.sources[-1]
         restored_context = factual_context(restored_market)
-        assert "28.123456789012345678" not in json.dumps(restored_context)
-        assert restored_context["context_gaps"] and restored_context["financials"]["observations"]
-        assert all(source["id"] != market.market.source_id for source in restored_context["sources"])
+        assert "28.123456789012345678" in json.dumps(restored_context)
+        assert restored_context["market"] and restored_context["financials"]["observations"]
+        assert any(source["id"] == market.market.source_id for source in restored_context["sources"])
         exported, notice = shareable_view(restored_market)
         assert notice and exported.market is None and market.sources[-1] not in exported.sources
         assert restarted.get("asset:" + financial.asset.id) == financial.model_dump(mode="json")
@@ -252,7 +259,7 @@ def main():
             assert restored == document and restored.content() == document.content() and not restored.verified
         print("PostgreSQL full-library restore, rollback on failure, preserved saved versions, event sequence and restart passed.")
         print("Typed issuer observations, exact decimals, separate identity proofs and conflict/revision references survived actual restore and restart.")
-        print("Private market history, exact decimals/actions and original citations survived restore/restart; cloud/export exclusions and reset network opt-in passed.")
+        print("Yahoo history, exact decimals/actions, cloud interpretations and original-version references survived restore/restart; shared numerical context, shareable export filtering and reset network opt-in passed.")
         print("Stored price/provider-adjusted return results, endpoint dates, original source references and missing-window reasons survived restore/restart.")
         print("Stored SEC net-income/revenue percentages, exact input IDs, method, gaps and original source citations survived restore/restart.")
         print("Financial snapshot originated through production research orchestration with explicit synthetic source/runtime adapters.")

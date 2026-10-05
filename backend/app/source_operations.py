@@ -1,12 +1,12 @@
 """Operation boundaries apply to current and historical records, not model promises."""
 from urllib.parse import urlsplit
 
-PRIVATE_NOTICE = "Experimental Yahoo history, valuations and content derived from them are available only locally and in same-user private backups; omitted from cloud context and shareable exports."
+PRIVATE_NOTICE = "Yahoo numerical evidence supports personal cloud learning and same-user private backups; Yahoo data and dependent interpretations are omitted from shareable exports."
 
 
 def private_source(source):
     # URL recognition prevents a legacy record or model metadata downgrade from
-    # removing restrictions. No Yahoo Finance source is cloud/export qualified.
+    # removing export restrictions. Typed numeric cloud context is separate (DEC-046).
     host = (urlsplit(str(source.url)).hostname or "").casefold()
     return (source.usage_scope == "private_yahoo_v1" or source.provenance == "market_adapter"
             or host == "finance.yahoo.com" or host.endswith(".finance.yahoo.com")
@@ -15,6 +15,7 @@ def private_source(source):
 
 def external_claims(bundle):
     blocked_sources = {s.id for s in bundle.sources if private_source(s)}
+    blocked_sources.update(ref.id for ref in bundle.context_references)
     rows = [*bundle.claims, *bundle.notes]
     blocked = {c.id for c in rows if blocked_sources.intersection(c.source_ids)}
     # Propagate through calculation references, including multi-hop derivatives.
@@ -27,12 +28,12 @@ def external_claims(bundle):
 
 
 def has_private_content(bundle):
-    return bundle.market is not None or any(private_source(s) for s in bundle.sources)
+    return bool(bundle.market or bundle.context_references or any(private_source(s) for s in bundle.sources))
 
 
 def shareable_view(bundle):
     """A filtered rendering view, never written back as the original snapshot."""
     if not has_private_content(bundle):
         return bundle, None
-    return bundle.model_copy(update={"market": None, "claims": external_claims(bundle), "notes": [],
+    return bundle.model_copy(update={"market": None, "context_references": [], "claims": external_claims(bundle), "notes": [],
         "sources": [s for s in bundle.sources if not private_source(s)]}), PRIVATE_NOTICE

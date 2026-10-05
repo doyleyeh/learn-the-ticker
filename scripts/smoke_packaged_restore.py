@@ -9,7 +9,9 @@ import secrets
 import httpx
 
 from backend.app.backup import make_backup, read_backup
-from backend.app.contracts import Settings
+from backend.app.contracts import Claim, EvidenceBundle, Settings, TermExplanation, TermRequest
+from backend.app.evidence_reuse import admit_numeric_interpretations, cached_context, context_references
+from backend.app.terms import term_key, validate_explanation
 from backend.app.db import Database
 from backend.app.owned_process import close_owned, launch_owned
 from tests.desktop.market_fixture import market_bundle
@@ -57,6 +59,17 @@ async def check():
         payload = bundle.model_dump(mode="json")
         db.put("bundle:" + bundle.id, "bundle", payload, bundle.asset.id)
         db.put("asset:" + bundle.asset.id, "asset", payload, bundle.asset.id)
+        references = context_references([cached_context(bundle)])
+        answer = admit_numeric_interpretations(EvidenceBundle(asset=bundle.asset, created_at=bundle.created_at),
+            [Claim(asset_id=bundle.asset.id, text="Interpretation of original saved numerical evidence.", source_ids=list(references))], references)
+        answer_payload = answer.model_dump(mode="json")
+        db.put("bundle:" + answer.id, "bundle", answer_payload, bundle.asset.id)
+        term_request = TermRequest(term="Historical P/E", bundle_id=bundle.id)
+        term = TermExplanation(id=term_key(term_request), term=term_request.term, bundle_id=bundle.id, asset_id=bundle.asset.id,
+            explanation="The retained historical P/E was 29.5.", basis="snapshot", source_ids=[bundle.market.valuations.source_id],
+            language="en", level="beginner", provider="codex")
+        validate_explanation(term, bundle)
+        db.put("term:" + term.id, "term", term.model_dump(mode="json"), bundle.id)
         db.put("settings", "settings", Settings(cloud_enabled=True, experimental_yahoo_enabled=True).model_dump(mode="json"))
         archive = make_backup(db)
     finally:
@@ -69,17 +82,23 @@ async def check():
                                      headers={"X-Backup-Fingerprint": preview.json()["fingerprint"]})
         assert restored.status_code == 200 and restored.json()["restored"]
         assert (await client.get("/api/bundles/" + bundle.id)).json() == payload
+        assert (await client.get("/api/bundles/" + answer.id)).json() == answer_payload
     async with service(directory) as client:
         assert (await client.get("/api/bundles/" + bundle.id)).json() == payload
+        assert (await client.get("/api/bundles/" + answer.id)).json() == answer_payload
+        exported = await client.get("/api/export/" + answer.id)
+        assert exported.status_code == 200 and not exported.json()["notes"] and not exported.json()["context_references"]
         settings = (await client.get("/api/settings")).json()
         assert settings["cloud_enabled"] is False and settings["experimental_yahoo_enabled"] is False
         backup = await client.get("/api/library/backup")
         assert backup.status_code == 200
         _, data = read_backup(backup.content)
         assert any(row.kind == "bundle" and row.payload == payload for row in data.records)
+        assert any(row.kind == "bundle" and row.payload == answer_payload for row in data.records)
+        assert any(row.kind == "term" and row.payload == term.model_dump(mode="json") for row in data.records)
         preview = await client.post("/api/library/restore/preview", content=archive)
         assert preview.status_code == 200 and not preview.json()["can_restore"]
-    print("Frozen API restored exact synthetic market/issuer evidence, citations and saved returns to PostgreSQL; restart/private backup/non-empty rejection and reset network settings passed. No provider calls.")
+    print("Frozen API restored exact synthetic market/issuer evidence, saved returns, numerical interpretations and original-version references to PostgreSQL; restart/private backup/export filtering/non-empty rejection and reset network settings passed. No provider calls.")
 
 
 if __name__ == "__main__":

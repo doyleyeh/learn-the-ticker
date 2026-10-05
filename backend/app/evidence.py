@@ -191,13 +191,18 @@ def validate_claim_sources(bundle: EvidenceBundle):
     if len(sources) != len(bundle.sources) or any(source.asset_id != bundle.asset.id or source.policy == SourcePolicy.rejected for source in bundle.sources):
         raise ValueError("Invalid evidence sources")
     claims = [*bundle.claims, *bundle.notes]
+    from backend.app.evidence_reuse import citation_id
+    references = {ref.id: ref for ref in bundle.context_references}
+    if (len(references) != len(bundle.context_references) or references.keys() & sources.keys()
+            or any(ref.bundle_id == bundle.id or ref.id != citation_id(ref.bundle_id, ref.source_id) for ref in references.values())):
+        raise ValueError("Invalid original-version citations")
     if len({claim.id for claim in claims}) != len(claims):
         raise ValueError("Duplicate claims")
     for claim in claims:
-        if claim.asset_id != bundle.asset.id or any(sid not in sources for sid in claim.source_ids):
+        if claim.asset_id != bundle.asset.id or any(sid not in sources and sid not in references for sid in claim.source_ids):
             raise ValueError("Missing or wrong-asset citation")
     for claim in bundle.claims:
-        if claim.kind not in ("fact", "calculation") or not claim.source_ids or any(not sources[sid].verified for sid in claim.source_ids):
+        if claim.kind not in ("fact", "calculation") or not claim.source_ids or any(sid not in sources or not sources[sid].verified for sid in claim.source_ids):
             raise ValueError("Facts require verified citations")
     if any(note.kind != "unverified_note" or note.value is not None or note.input_claim_ids for note in bundle.notes):
         raise ValueError("Unverified notes cannot contain calculation inputs")
@@ -207,7 +212,7 @@ def factual_context(bundle: EvidenceBundle) -> dict:
     """Unverified notes and provider raw output never become future factual evidence."""
     from backend.app.financial_evidence import numeric_context
     from backend.app.market_evidence import validate_market
-    from backend.app.source_operations import PRIVATE_NOTICE, external_claims, has_private_content, private_source
+    from backend.app.source_operations import external_claims
     validate_market(bundle)
     validate_claim_sources(bundle)
     observations = numeric_context(bundle)
@@ -216,10 +221,17 @@ def factual_context(bundle: EvidenceBundle) -> dict:
     claims = external_claims(bundle)
     ids = {sid for claim in claims for sid in claim.source_ids}
     ids.update(row["source_id"] for row in observations)
+    if bundle.market:
+        ids.add(bundle.market.source_id)
+        if bundle.market.valuations:
+            ids.add(bundle.market.valuations.source_id)
     context = {"bundle_id": bundle.id, "created_at": bundle.created_at.isoformat(), "asset": bundle.asset.model_dump(mode="json"),
-               "claims": [c.model_dump(mode="json") for c in claims], "sources": [s.model_dump(mode="json") for s in bundle.sources if s.id in ids and not private_source(s)]}
-    if has_private_content(bundle):
-        context["context_gaps"] = [PRIVATE_NOTICE]
+               "claims": [c.model_dump(mode="json") for c in claims], "sources": [s.model_dump(mode="json") for s in bundle.sources if s.id in ids]}
+    if bundle.market:
+        context["market"] = bundle.market.model_dump(mode="json", exclude={"fingerprint"})
+        context["market_description"] = ("Unofficial Yahoo observations for personal learning. Preserve original dates, units, "
+            "adjustment bases, gaps and retained calculation methods. These are historical observations, not live quotes. "
+            "Cite the supplied source IDs for explanations; generated prose is interpretation, never a new numerical fact.")
     if bundle.financials:
         context["financials"] = {"scope": "issuer", "issuer": bundle.financials.issuer.model_dump(mode="json"),
                                  "observations": observations, "gaps": bundle.financials.gaps}

@@ -237,6 +237,13 @@ class MarketEvidence(Contract):
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class ContextReference(Contract):
+    """Application-owned link to numerical evidence in an immutable earlier version."""
+    id: str = Field(pattern=r"^saved:[0-9a-f]{64}$")
+    bundle_id: str = Field(min_length=1, max_length=200)
+    source_id: str = Field(min_length=1, max_length=200)
+
+
 class EvidenceBundle(Contract):
     id: str = Field(default_factory=uid)
     asset: AssetIdentity
@@ -244,6 +251,7 @@ class EvidenceBundle(Contract):
     sources: list[Source] = Field(default_factory=list)
     claims: list[Claim] = Field(default_factory=list)
     notes: list[Claim] = Field(default_factory=list)
+    context_references: list[ContextReference] = Field(default_factory=list, max_length=100)
     state: Literal["partial", "available", "stale", "unavailable"] = "partial"
     completion: Literal["complete", "section_checkpoint"] = "complete"
     language: Literal["en", "zh-TW"] = "en"
