@@ -16,7 +16,7 @@ const fund: Section[] = [
   { id: "costs", title: "Costs and trading context", aliases: ["cost_trading_context"] },
   common[2], common[3], common[4],
 ];
-export const contextSections = ["weekly_news", "earlier_context", "historical_research", "recent_developments"];
+export const contextSections = ["news", "weekly_news", "earlier_context", "historical_research", "recent_developments"];
 
 export function EvidenceSections({ bundle, renderClaim }: { bundle: EvidenceBundle; renderClaim: (claim: Claim) => ReactNode }) {
   const type = bundle.asset.asset_type;

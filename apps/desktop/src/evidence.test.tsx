@@ -26,6 +26,14 @@ it("hides type-dependent claims when the instrument type is unresolved", () => {
   const html = renderToStaticMarkup(<EvidenceView bundle={{ asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "unknown" }, claims: [{ asset_id: "X:TEST", text: "Unconfirmed fund holdings", section: "holdings", source_ids: [] }] }}/>);
   expect(html).toContain("Asset type is unconfirmed");
   expect(html).not.toContain("Unconfirmed fund holdings");
+  expect(html).toContain("Unknown applicability");
+});
+
+it("keeps admitted filing news in the context section instead of stable overview", () => {
+  const html = renderToStaticMarkup(<EvidenceView bundle={{ asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "stock" }, claims: [{ asset_id: "X:TEST", text: "A synthetic filing event.", section: "news", source_ids: [] }] }}/>);
+  expect(html.split('id="ticker-news"')[0]).not.toContain("A synthetic filing event.");
+  expect(html.split('id="ticker-news"')[1].split('id="ticker-analysts"')[0]).toContain("A synthetic filing event.");
+  expect(html).toContain("Reported filing news");
 });
 
 it("distinguishes incomplete research from evidence availability", () => {

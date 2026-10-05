@@ -13,7 +13,7 @@ export function ValuationAvailability({ bundle }: { bundle: EvidenceBundle }) {
   });
   return <section aria-label="Valuation availability" className="financial-unavailable">
     <h3>App-calculated valuation and yield</h3>
-    {bundle.asset.asset_type !== "stock" ? <p className="source-gap-note">Stock valuation metrics are unavailable for this asset type{bundle.asset.asset_type === "unknown" ? " until its identity is confirmed" : ""}.</p> : <>
+    {bundle.asset.asset_type !== "stock" ? <p className="source-gap-note">{bundle.asset.asset_type === "unknown" ? "Unknown applicability — confirm the asset type before using stock valuation metrics." : "Not applicable — individual-stock valuation metrics are not used for this asset type."}</p> : <>
       <p className="source-gap-note">{market ? "Historical daily prices are retained. They alone cannot establish these metrics." : "A verified daily price snapshot is unavailable for these metrics."}</p>
       <dl>
         <dt>Historical P/E</dt><dd>Unavailable — {usableIncome ? "annual diluted EPS is retained, but its share class and stock-split basis have not been independently matched to the price series." : "no single current, unconflicted annual diluted EPS figure in USD per share is available for alignment."} Compatible earnings intervals and share bases are required; prices and EPS are not divided automatically.</dd>

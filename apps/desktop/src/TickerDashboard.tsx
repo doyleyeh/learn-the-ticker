@@ -64,10 +64,10 @@ function TickerContents({ bundle }: { bundle: EvidenceBundle }) {
       <DashboardSection id="statistics" title="Key statistics"><KeyStatistics bundle={bundle}/></DashboardSection>
       <DashboardSection id="financials" title="Reported financials"><FinancialHistory key={bundle.id} bundle={bundle} includePriceAvailability={false}/></DashboardSection>
       <DashboardSection id="news" title="Ticker news and context">
-        <p>Current ticker news: unavailable. The dated evidence below is retained research; it is not a complete or live news feed.</p>
+        <p>Retained filing news and research context, with original source dates. A complete live ticker news feed is unavailable; missing sections remain explicit.</p>
         <div className="library-grid" data-evidence-layer="context">{contextSections.map((section) => {
           const claims = bundle.claims?.filter((claim) => claim.section === section) ?? [];
-          return <section className="plain-panel" key={section}><h3>{section === "recent_developments" ? "Other reported developments" : section.replaceAll("_", " ")}</h3>{claims.length ? claims.map(renderClaim) : <p className="source-gap-note">Unavailable — no admitted evidence for this section.</p>}</section>;
+          return <section className="plain-panel" key={section}><h3>{section === "news" ? "Reported filing news" : section === "recent_developments" ? "Other reported developments" : section.replaceAll("_", " ")}</h3>{claims.length ? claims.map(renderClaim) : <p className="source-gap-note">Unavailable — no admitted evidence for this section.</p>}</section>;
         })}</div>
       </DashboardSection>
       <DashboardSection id="analysts" title="Analyst insights"><div className="plain-panel"><p className="source-gap-note">Unavailable — this snapshot has no qualified analyst estimates or outlooks.</p><p>External estimates are opinions about the future, separate from reported results. Missing estimates are not inferred from prices or generated explanations.</p></div></DashboardSection>

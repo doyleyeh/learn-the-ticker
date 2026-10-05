@@ -313,3 +313,55 @@ test("admitted versions, source review and reconnect preserve evidence at normal
   expect(external).toEqual([]);
   expect(failures).toEqual([]);
 });
+
+test("fund and unresolved asset sections retain citations, risk controls and applicability states", async ({ page, context }, testInfo) => {
+  const generation: string[] = [], failures: string[] = [], external: string[] = [];
+  page.on("pageerror", (error) => failures.push(error.message));
+  page.on("request", (request) => { if (request.method() === "POST" && new URL(request.url()).pathname === "/api/research") generation.push(request.url()); });
+  await context.route("**/*", async (route) => {
+    if (new URL(route.request().url()).hostname !== "127.0.0.1") { external.push(route.request().url()); await route.abort(); }
+    else await route.continue();
+  });
+  await page.goto("/"); await connect(page);
+  await page.getByRole("button", { name: /Synthetic fund parity SYN-FUND/ }).click();
+  const original = page.url();
+  const overview = page.getByRole("region", { name: "Ticker overview", exact: true });
+  for (const name of ["Fund objective and role", "Holdings and exposures", "Fund construction", "Costs and trading context"]) {
+    await expect(overview.getByRole("heading", { name, exact: true })).toBeVisible();
+  }
+  await expect(overview.getByText("The synthetic basket has changing exposures.", { exact: true })).toBeVisible();
+  await expect(overview.getByRole("heading", { name: "Products and services", exact: true })).toHaveCount(0);
+  await expect(overview.getByText("Synthetic risk delta remains uncertain.", { exact: true })).toHaveCount(0);
+  await overview.getByRole("button", { name: "Show 1 more risks", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(overview.getByText("Synthetic risk delta remains uncertain.", { exact: true })).toBeVisible();
+  await overview.screenshot({ path: testInfo.outputPath("fund-overview-wide.png") });
+  const news = page.getByRole("region", { name: "Ticker news and context", exact: true });
+  await page.getByRole("navigation", { name: "Ticker sections" }).getByRole("button", { name: "News & context", exact: true }).click();
+  await expect(news.getByText("The synthetic fund reported a portfolio-method update.", { exact: true })).toBeVisible();
+  await expect(overview.getByText("The synthetic fund reported a portfolio-method update.", { exact: true })).toHaveCount(0);
+  await news.getByRole("link", { name: "Open source drawer for Synthetic fund disclosure", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  const drawer = page.locator("details.source-drawer[open]");
+  await expect(drawer.getByText(/Published: Unknown · As of: Unknown/)).toBeVisible();
+  expect(new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("bundle")).toBe(new URLSearchParams(new URL(original).hash.split("?")[1]).get("bundle"));
+  await page.setViewportSize({ width: 640, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await expect(page.locator('[data-source-age="unknown"]').first()).toContainText("publication and as-of dates are missing");
+  await page.getByRole("navigation", { name: "Ticker sections" }).getByRole("button", { name: "Statistics", exact: true }).click();
+  await expect(page.getByText("Not applicable — individual-stock valuation metrics are not used for this asset type.", { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("fund-applicability-narrow.png") });
+  await page.getByRole("navigation", { name: "Ticker sections" }).getByRole("button", { name: "Overview", exact: true }).click();
+  await overview.getByRole("button", { name: "Show fewer risks", exact: true }).click();
+  await expect(overview.getByText("Synthetic risk delta remains uncertain.", { exact: true })).toHaveCount(0);
+  await overview.screenshot({ path: testInfo.outputPath("fund-overview-narrow.png") });
+  await page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Library", exact: true }).click();
+  await page.getByRole("button", { name: /Synthetic unknown parity SYN-UNKNOWN/ }).click();
+  await expect(overview.getByText("Asset type is unconfirmed. Type-dependent sections are unavailable until identity is resolved.", { exact: true })).toBeVisible();
+  await expect(overview.getByRole("heading", { name: "Holdings and exposures", exact: true })).toHaveCount(0);
+  await expect(overview.getByText("The synthetic basket has changing exposures.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Unknown applicability — confirm the asset type before using stock valuation metrics.", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await overview.screenshot({ path: testInfo.outputPath("unknown-overview-narrow.png") });
+  expect(generation).toEqual([]); expect(external).toEqual([]); expect(failures).toEqual([]);
+});

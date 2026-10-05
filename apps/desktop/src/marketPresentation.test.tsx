@@ -70,7 +70,7 @@ describe("private market presentation", () => {
     data.sources = [];
     expect(renderToStaticMarkup(<ValuationAvailability bundle={data}/>)).toContain("verified daily price snapshot is unavailable");
     data.asset.asset_type = "unknown";
-    expect(renderToStaticMarkup(<ValuationAvailability bundle={data}/>)).toContain("until its identity is confirmed");
+    expect(renderToStaticMarkup(<ValuationAvailability bundle={data}/>)).toContain("Unknown applicability — confirm the asset type before using stock valuation metrics.");
   });
   it("withholds a detached or incomplete stored return without recomputation", () => {
     const data = bundle(), row = data.market!.returns!.at(-1)!;

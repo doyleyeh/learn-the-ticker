@@ -106,6 +106,12 @@ if __name__ == "__main__":
     value = bundle.model_dump(mode="json")
     db.put("asset:" + asset.id, "asset", value)
     db.put("bundle:" + bundle.id, "bundle", value, asset.id)
+    if "--parity-demo" in sys.argv:
+        from tests.desktop.parity_fixture import parity_bundles
+        for example in parity_bundles():
+            data = example.model_dump(mode="json")
+            db.put("asset:" + example.asset.id, "asset", data)
+            db.put("bundle:" + example.id, "bundle", data, example.asset.id)
     if "--restore-demo" in sys.argv:
         archive = Path(".local/restore-demo.lttbackup")
         archive.parent.mkdir(exist_ok=True)

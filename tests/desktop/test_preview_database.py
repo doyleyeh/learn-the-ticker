@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 
 from tests.desktop.preview_server import preview_database
+from tests.desktop.parity_fixture import parity_bundles
 
 
 def test_preview_reads_cannot_observe_or_rollback_another_request_transaction(tmp_path):
@@ -18,3 +19,11 @@ def test_preview_reads_cannot_observe_or_rollback_another_request_transaction(tm
         assert db.get("saved:example")["title"] == "synthetic bookmark"
     finally:
         db.engine.dispose()
+
+
+def test_parity_fixture_uses_admission_and_suppresses_unknown_type_facts():
+    fund, uncertain = list(parity_bundles())
+    assert len(fund.claims) == 10 and not fund.notes
+    assert {claim.section for claim in uncertain.claims} == {"overview"}
+    assert uncertain.notes and all(claim.kind == "unverified_note" for claim in uncertain.notes)
+    assert fund.sources[0].verified and fund.sources[0].published_at is None
