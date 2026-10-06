@@ -501,7 +501,7 @@ class SavedResearch(Contract):
 
 
 class BackupSummary(Contract):
-    format_version: Literal["1", "2"] = "1"
+    format_version: Literal["1", "2", "3"] = "1"
     database_revision: Literal["0001"] = "0001"
     created_at: AwareDatetime
     fingerprint: str

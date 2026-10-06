@@ -4,6 +4,8 @@ The approved reboot replaces hosted Next.js with a local React/Vite/Tauri applic
 
 DEC-062 introduces a temporary disk index for future streaming archives, sharing the existing validation rules. This is scratch storage, not an application database migration; legacy archive formats/limits and HTTP transport remain unchanged. Equal-timestamp library items now use their immutable record IDs to break sort ties, preserving list order through restore. Full large-file archive/transport qualification remains M9-T01g.
 
+DEC-064 adds file-based archive format 3 with three fixed NDJSON table members, original attachment members and per-member checksums/counts. Its reader accepts formats 1/2 under their original limits; their data is never silently upgraded on read. SQL revision `0001` remains unchanged. Older applications cannot read format 3 and are not qualified rollback targets. File-based restore uses the same empty-target transaction, consent reset and pending-job interruption. HTTP/browser/native transport continues to use formats 1/2 and old size bounds until the next integration slice passes.
+
 ## Completed structural changes
 
 - Frontend workspace moved from apps/web to apps/desktop; npm commands delegate there.

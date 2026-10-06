@@ -367,7 +367,8 @@
           "default": "1",
           "enum": [
             "1",
-            "2"
+            "2",
+            "3"
           ],
           "title": "Format Version",
           "type": "string"

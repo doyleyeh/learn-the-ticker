@@ -97,3 +97,15 @@ def test_failed_snapshot_removes_scratch_and_leaves_original_library(monkeypatch
     assert list(tmp_path.iterdir()) == []
     assert read_backup(make_backup(db))[1] == before
     db.engine.dispose()
+
+
+def test_paused_iterator_can_close_after_index_context_without_closed_database_error():
+    db = Database("sqlite://", testing=True)
+    seed(db)
+    with backup_index.indexed_snapshot(db) as index:
+        paused = index.records.values()
+        assert next(paused).id
+        assert len(index.cursors) == 1
+    assert not index.cursors
+    paused.close()
+    db.engine.dispose()

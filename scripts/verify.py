@@ -83,6 +83,7 @@ def verify(tier: str):
             [python, "-m", "scripts.smoke_database"],
             [python, "-m", "scripts.smoke_restore"],
             [python, "-m", "scripts.smoke_library_scale"],
+            [python, "-m", "scripts.smoke_stream_archive"],
             [python, "-m", "scripts.smoke_library_deletion"],
             [python, "-m", "scripts.smoke_library_cache"],
         ):

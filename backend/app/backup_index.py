@@ -21,10 +21,11 @@ TABLES = {"records": StoredRecord, "jobs": StoredJob, "events": StoredEvent}
 
 
 class RowIndex:
-    def __init__(self, connection, table):
+    def __init__(self, connection, table, cursors):
         if table not in TABLES:
             raise ValueError("Unknown scratch table")
         self.connection, self.table, self.model = connection, table, TABLES[table]
+        self.cursors = cursors
 
     def add(self, row):
         if not isinstance(row, self.model):
@@ -58,25 +59,29 @@ class RowIndex:
 
     def values(self):
         cursor = self.connection.execute(f"SELECT data FROM {self.table} ORDER BY id")
+        self.cursors.add(cursor)
         try:
             for row in cursor:
                 yield self.model.model_validate_json(row[0])
         finally:
-            cursor.close()
+            if cursor in self.cursors:
+                self.cursors.remove(cursor)
+                cursor.close()
 
 
 class LibraryIndex:
     def __init__(self, path: Path):
         self.connection = sqlite3.connect(path)
+        self.cursors = set()
         try:
             self.connection.execute("PRAGMA cache_size = -2048")
             self.connection.execute("PRAGMA temp_store = FILE")
             for name in TABLES:
                 key_type = "INTEGER" if name == "events" else "TEXT"
                 self.connection.execute(f"CREATE TABLE {name} (id {key_type} PRIMARY KEY NOT NULL, data TEXT NOT NULL)")
-            self.records = RowIndex(self.connection, "records")
-            self.jobs = RowIndex(self.connection, "jobs")
-            self.events = RowIndex(self.connection, "events")
+            self.records = RowIndex(self.connection, "records", self.cursors)
+            self.jobs = RowIndex(self.connection, "jobs", self.cursors)
+            self.events = RowIndex(self.connection, "events", self.cursors)
         except BaseException:
             self.connection.close()
             raise
@@ -86,6 +91,11 @@ class LibraryIndex:
         self.connection.commit()
 
     def close(self):
+        # Tracebacks can retain paused iterators past the context-manager exit.
+        # Close their cursors before the connection, rather than during later GC.
+        for cursor in self.cursors:
+            cursor.close()
+        self.cursors.clear()
         self.connection.close()
 
 

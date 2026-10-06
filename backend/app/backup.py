@@ -387,6 +387,12 @@ def restore_backup(db: Database, raw: bytes, fingerprint: str) -> BackupSummary:
     if not summary.can_restore:
         raise BackupError(summary.reason)
     _, data = read_backup(raw)
+    restore_rows(db, iter(data.records), iter(data.jobs), iter(data.events))
+    return summary
+
+
+def restore_rows(db: Database, records, jobs, events):
+    """Insert validated rows atomically without retaining the whole ORM graph."""
     with db.session.begin() as session:
         if db.engine.dialect.name == "postgresql":
             # Serializes the empty-library check with every writer; never replace existing work.
@@ -398,21 +404,23 @@ def restore_backup(db: Database, raw: bytes, fingerprint: str) -> BackupSummary:
             session.delete(settings_row)
             session.flush()
         has_settings = False
-        for row in data.records:
+        for row in records:
             payload = row.payload
             if row.kind == "settings":
                 has_settings = True
                 payload = {**payload, "cloud_enabled": False, "experimental_yahoo_enabled": False, "start_at_login": False}
             session.add(Record(id=row.id, kind=row.kind, parent_id=row.parent_id, payload=payload, updated_at=row.updated_at))
+            session.flush()
         if not has_settings:
             session.add(Record(id="settings", kind="settings", payload=Settings().model_dump(mode="json")))
-        for row in data.jobs:
+        for row in jobs:
             interrupted = row.status in ("queued", "running")
             session.add(Job(id=row.id, status="interrupted" if interrupted else row.status, request=row.request.model_dump(mode="json"), result=row.result, error="Restored run requires an explicit retry; no subscription call was repeated." if interrupted else row.error, created_at=row.created_at))
+            session.flush()
         session.flush()
-        for row in data.events:
+        for row in events:
             session.add(Event(id=row.id, job_id=row.job_id, payload=row.payload.model_dump(mode="json")))
+            session.flush()
         session.flush()
         if db.engine.dialect.name == "postgresql":
             session.execute(text("SELECT setval(pg_get_serial_sequence('runtime_events', 'id'), COALESCE(MAX(id), 1), MAX(id) IS NOT NULL) FROM runtime_events"))
-    return summary
