@@ -87,6 +87,7 @@ Commands and prerequisites live in [EVALS](EVALS.md#verification-tiers). Q is th
 
 - Objective: Qualify each provider separately using supported subscription mechanisms.
 - Execution note (2026-10-06, DEC-056): prioritize Gemini; the owner temporarily suspended Claude/Claude Code work because no subscribed account is available. Preserve Claude code/tests and its public-v1 acceptance requirement. Independent M9 work may continue while Claude is paused; M8 remains incomplete.
+- Replacement target (2026-10-06, DEC-061): the owner approved qualifying Antigravity CLI for the Google integration after Gemini CLI consumer retirement. Apply the same acceptance gates; production remains disabled until they pass. This is an explicit runtime change, not a silent fallback or release-requirement waiver.
 - Dependencies: M1, M5.
 - Components: Provider-specific adapters/onboarding, shared AIRuntime contract and Connections.
 - Acceptance: Gemini and Claude each pass isolated tools/auth/models/quotas/session/reconnect/cancellation/evidence checks live; cached-only limits visible; no API billing or silent provider fallback; unsupported integrations remain blockers rather than workarounds.

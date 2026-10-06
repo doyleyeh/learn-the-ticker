@@ -330,7 +330,7 @@ class Database:
         return removed
 
     def list(self, kind: str, parent_id: str | None = None) -> list[dict]:
-        query = select(Record).where(Record.kind == kind).order_by(Record.updated_at.desc())
+        query = select(Record).where(Record.kind == kind).order_by(Record.updated_at.desc(), Record.id)
         if parent_id is not None:
             query = query.where(Record.parent_id == parent_id)
         with self.session() as session:

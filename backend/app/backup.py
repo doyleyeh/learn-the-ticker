@@ -120,12 +120,43 @@ def validate_library(data: LibraryData):
     if len({row.id for row in data.records}) != len(data.records):
         raise BackupError("Duplicate library record")
     records = {row.id: row for row in data.records}
-    bundles: dict[str, EvidenceBundle] = {}
-    imports = [row for row in data.records if row.kind == "import"]
-    if len(imports) > MAX_ATTACHMENTS:
-        raise BackupError("Library exceeds the current 100 retained-document archive limit")
+    jobs = {job.id: job for job in data.jobs}
+    if len(jobs) != len(data.jobs) or len({event.id for event in data.events}) != len(data.events):
+        raise BackupError("Duplicate jobs or events")
+    validate_indexed_library(records, jobs, data.events)
+
+
+class BundleLookup:
+    """Load individual original versions from the record index, without a body cache."""
+
+    def __init__(self, records):
+        self.records = records
+
+    def __contains__(self, key):
+        return "bundle:" + key in self.records
+
+    def __getitem__(self, key):
+        return EvidenceBundle.model_validate(self.records["bundle:" + key].payload)
+
+    def get(self, key):
+        return self[key] if key in self else None
+
+    def values(self):
+        for row in self.records.values():
+            if row.kind == "bundle":
+                yield EvidenceBundle.model_validate(row.payload)
+
+
+def validate_indexed_library(records, jobs, events):
+    """Shared validation for in-memory and private disk indexes.
+
+    Index construction must reject duplicate IDs. Values are re-iterable; updates
+    replace only the current row so a disk index never needs all bodies in RAM.
+    """
+    bundles = BundleLookup(records)
     attachment_bytes = 0
-    for row in data.records:
+    attachment_count = 0
+    for row in records.values():
         model = {"asset": EvidenceBundle, "bundle": EvidenceBundle, "settings": Settings, "conversation": Conversation, "saved": SavedResearch, "term": TermExplanation, "import": RetainedImport, "import_explanation": ImportExplanation, "comparison": ComparisonResult, "report": ResearchReport}[row.kind]
         value = model.model_validate(row.payload)
         suffix = value.asset.id if row.kind == "asset" else getattr(value, "id", "")
@@ -133,6 +164,9 @@ def validate_library(data: LibraryData):
         if row.id != expected:
             raise BackupError("Record identity does not match its content")
         if isinstance(value, RetainedImport):
+            attachment_count += 1
+            if attachment_count > MAX_ATTACHMENTS:
+                raise BackupError("Library exceeds the current 100 retained-document archive limit")
             attachment_bytes += value.byte_count
             if row.parent_id is not None or attachment_bytes > MAX_ATTACHMENT_BYTES:
                 raise BackupError("Retained document references or aggregate size are invalid")
@@ -147,15 +181,14 @@ def validate_library(data: LibraryData):
                 validate_claim_sources(value)
             except ValueError as exc:
                 raise BackupError(str(exc)) from exc
-            if row.kind == "bundle":
-                bundles[value.id] = value
         # Re-serialize through known models. Unknown fields such as tokens fail validation.
         row.payload = value.model_dump(mode="json")
+        records[row.id] = row
 
     from backend.app.evidence_reuse import validate_context_references
     for bundle in bundles.values():
         validate_context_references(bundle, bundles.get)
-    for row in data.records:
+    for row in records.values():
         value = row.payload
         if row.kind == "asset":
             if value["id"] not in bundles or bundles[value["id"]].model_dump(mode="json") != value:
@@ -196,10 +229,7 @@ def validate_library(data: LibraryData):
             if selected and identity_hash(bundles[selected].asset) != identity_hash(EvidenceBundle.model_validate(records["asset:" + value["asset_id"]].payload).asset):
                 raise BackupError("Conversation page context does not match its current scope")
 
-    jobs = {job.id: job for job in data.jobs}
-    if len(jobs) != len(data.jobs) or len({event.id for event in data.events}) != len(data.events):
-        raise BackupError("Duplicate jobs or events")
-    for job in data.jobs:
+    for job in jobs.values():
         if isinstance(job.request, ImportLearningRequest):
             source = records.get("import:" + job.request.document_id)
             if not source or source.kind != "import" or source.payload["document"]["content_hash"] != job.request.content_hash:
@@ -236,7 +266,7 @@ def validate_library(data: LibraryData):
         elif job.result:
             model = IdentityResult if "candidates" in job.result else EducationalResult
             model.model_validate(job.result)
-    for event in data.events:
+    for event in events:
         if event.job_id not in jobs or event.payload.run_id != event.job_id:
             raise BackupError("Event has no matching job")
         if event.payload.kind == "message.delta" or set(event.payload.data) - {"status", "bundle_id"}:

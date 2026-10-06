@@ -2,6 +2,8 @@
 
 The approved reboot replaces hosted Next.js with a local React/Vite/Tauri application. No installed-user migration compatibility is required for the old fixture app. User evidence created by the new desktop app must be protected from schema and application changes.
 
+DEC-062 introduces a temporary disk index for future streaming archives, sharing the existing validation rules. This is scratch storage, not an application database migration; legacy archive formats/limits and HTTP transport remain unchanged. Equal-timestamp library items now use their immutable record IDs to break sort ties, preserving list order through restore. Full large-file archive/transport qualification remains M9-T01g.
+
 ## Completed structural changes
 
 - Frontend workspace moved from apps/web to apps/desktop; npm commands delegate there.

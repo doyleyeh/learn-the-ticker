@@ -2,6 +2,8 @@
 
 [DECISIONS.md](DECISIONS.md) owns architectural decisions; this document defines implementation boundaries. [SPEC.md](SPEC.md) owns behavior. The current implementation is a developer preview, with open release work in [the task queue](TASKS.md).
 
+Archive-validation preparation (DEC-062) shares the original checks across legacy lists and a temporary disk index. `indexed_snapshot` reads records/jobs/events with one-row cursors in one PostgreSQL repeatable-read transaction; scratch SQLite contains typed JSON only, with fixed SQL and owned cleanup. Original references are looked up individually. This foundation is not yet wired into the archive HTTP writer/reader and does not raise existing limits. Library lists order equal timestamps by record ID to preserve their order through restore.
+
 ## Application layout
 
 - apps/desktop/src: Vite entry, route state, authenticated client and generated contract types.

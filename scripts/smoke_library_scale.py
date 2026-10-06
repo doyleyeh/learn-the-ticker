@@ -9,6 +9,7 @@ import json
 import os
 import platform
 import secrets
+import tracemalloc
 from contextlib import contextmanager
 from pathlib import Path
 from time import perf_counter
@@ -16,6 +17,7 @@ from time import perf_counter
 from sqlalchemy import event, func, select, text
 
 from backend.app.backup import BackupError, make_backup, preview_backup, restore_backup
+from backend.app.backup_index import indexed_snapshot
 from backend.app.db import Database, Event, Job, Record
 from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
@@ -53,6 +55,20 @@ def fingerprints(db, *, restored_settings=False):
 def table_counts(db):
     with db.session() as session:
         return [session.scalar(select(func.count()).select_from(model)) for model in (Record, Job, Event)]
+
+
+def index_fingerprints(index):
+    result = {}
+    for row in index.records.values():
+        data = [row.kind, row.parent_id, row.updated_at.isoformat(), row.payload]
+        result[row.id] = hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    for row in index.jobs.values():
+        data = [row.status, row.request.model_dump(mode="json"), row.result, row.error, row.created_at.isoformat()]
+        result["job:" + row.id] = hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    for row in index.events.values():
+        data = [row.job_id, row.payload.model_dump(mode="json")]
+        result["event:" + str(row.id)] = hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return result
 
 
 def verify_attachments(db, expected):
@@ -101,6 +117,16 @@ def main():
         assert results["table_counts"] == [3325, 2000, 2000]
         original = fingerprints(source)
         expected = fingerprints(source, restored_settings=True)
+        with measured(timings, "disk_index_snapshot_validation"):
+            tracemalloc.start()
+            try:
+                with indexed_snapshot(source) as index:
+                    assert [len(index.records), len(index.jobs), len(index.events)] == results["table_counts"]
+                    assert index_fingerprints(index) == original
+                results["disk_index_python_peak_bytes"] = tracemalloc.get_traced_memory()[1]
+            finally:
+                tracemalloc.stop()
+        assert fingerprints(source) == original
         with measured(timings, "cache_reference_inventory"):
             from backend.app.library_cache import manage_cache
             results["cache_inventory"] = manage_cache(source).model_dump(mode="json")
