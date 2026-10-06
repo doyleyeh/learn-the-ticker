@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -46,7 +47,24 @@ def executable_command(provider: str) -> list[str]:
     if Path(binary).suffix.lower() in (".cmd", ".bat", ".ps1"):
         # npm's Windows shim is a shell script; resolve the known package entry point instead.
         package = {"codex": "@openai/codex/bin/codex.js", "gemini": "@google/gemini-cli/dist/index.js", "claude": "@anthropic-ai/claude-code/cli.js"}.get(provider)
-        entry = Path(binary).parent / "node_modules" / (package or "missing")
+        shim_directory = Path(binary).parent
+        modules = shim_directory.parent if shim_directory.name == ".bin" and shim_directory.parent.name == "node_modules" else shim_directory / "node_modules"
+        entry = modules / (package or "missing")
+        if provider == "gemini":
+            root = modules / "@google/gemini-cli"
+            try:
+                manifest = root / "package.json"
+                if manifest.stat().st_size > 64 * 1024:
+                    raise ValueError("Package metadata exceeds bounds")
+                data = json.loads(manifest.read_text(encoding="utf-8"))
+                declared = data.get("bin", {}).get("gemini")
+                if data.get("name") != "@google/gemini-cli" or declared not in ("dist/index.js", "bundle/gemini.js"):
+                    raise ValueError("Unreviewed Gemini package entry")
+                entry = root / declared
+                if not entry.resolve().is_relative_to(root.resolve()):
+                    raise ValueError("Gemini entry leaves its package")
+            except (OSError, ValueError, AttributeError, TypeError, RecursionError) as exc:
+                raise RuntimeFailure("Gemini package entry could not be verified; reinstall the official runtime.") from exc
         node = shutil.which("node")
         if not node or not entry.is_file():
             raise RuntimeFailure("A compatible native executable or Node runtime is required.")
