@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -23,6 +24,7 @@ from backend.app.runtimes import runtimes
 from backend.app.terms import TermService
 from backend.app.source_review import SourceReviewDecision
 from backend.app.comparisons import ComparisonRequest, ComparisonResult, create_comparison
+from backend.app.reports import ReportRequest, ResearchReport, create_report, report_markdown
 
 ORIGINS = ("tauri://localhost", "http://tauri.localhost", "https://tauri.localhost", "http://localhost:1420", "http://127.0.0.1:1420")
 
@@ -348,6 +350,36 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
                 context_bundle_id=value.context_bundle_id, bookmarked=value.bookmarked)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/reports", response_model=ResearchReport)
+    async def generate_report(value: ReportRequest):
+        async with settings_lock:
+            try:
+                return create_report(db, value)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/reports")
+    def reports():
+        return [{key: item[key] for key in ("id", "created_at", "bundle_id", "asset", "evidence_saved_at")} for item in db.list("report")]
+
+    @app.get("/api/reports/{report_id}", response_model=ResearchReport)
+    def report(report_id: str):
+        value = db.get("report:" + report_id)
+        if value is None:
+            raise HTTPException(404, "Saved report is unavailable")
+        return value
+
+    @app.get("/api/reports/{report_id}/export")
+    def export_report(report_id: str, format: str = "json"):
+        value = ResearchReport.model_validate(report(report_id))
+        # Reuse the same original-version export filter as ordinary research.
+        original = export(value.bundle_id, format)
+        if format == "json":
+            return JSONResponse({"report": value.model_dump(mode="json"), "evidence": json.loads(original.body)},
+                headers={"Content-Disposition": 'attachment; filename="report.json"'})
+        return Response(report_markdown(value) + original.body.decode(), media_type="text/markdown",
+            headers={"Content-Disposition": 'attachment; filename="report.md"'})
 
     @app.get("/api/saved")
     def saved():

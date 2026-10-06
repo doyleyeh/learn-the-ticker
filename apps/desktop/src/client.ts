@@ -39,6 +39,9 @@ export async function download(bundle: string, format: "markdown" | "json") {
 export async function downloadBackup() {
   return downloadFile("/api/library/backup", "learn-the-ticker-library.lttbackup");
 }
+export async function downloadReport(id: string, format: "markdown" | "json") {
+  return downloadFile(`/api/reports/${encodeURIComponent(id)}/export?format=${format}`, format === "json" ? "report.json" : "report.md");
+}
 async function downloadFile(path: string, filename: string) {
   if (!connection) throw new Error("Local service is disconnected");
   const response = await fetch(connection.endpoint + path, { redirect: "error", headers: { Authorization: `Bearer ${connection.token}` } });

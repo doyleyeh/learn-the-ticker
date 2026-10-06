@@ -76,11 +76,20 @@ class Database:
                 source = session.get(Record, "bundle:" + version)
                 return source.payload if source and source.kind == "bundle" else None
             validate_comparison(result, original)
+        if kind == "report":
+            from backend.app.reports import ResearchReport, validate_report
+            result = ResearchReport.model_validate(payload)
+            if record_id != "report:" + result.id or parent_id != result.bundle_id:
+                raise ValueError("Report identity is inconsistent")
+            def report_original(version):
+                source = session.get(Record, "bundle:" + version)
+                return source.payload if source and source.kind == "bundle" else None
+            validate_report(result, report_original)
         record = session.get(Record, record_id)
         if record:
             if record.kind != kind:
                 raise ValueError("Record type cannot change")
-            if kind in ("bundle", "term", "import", "import_explanation", "comparison") and record.payload != payload:
+            if kind in ("bundle", "term", "import", "import_explanation", "comparison", "report") and record.payload != payload:
                 raise ValueError("Evidence snapshots are immutable")
             record.payload = payload
             record.updated_at = datetime.now(timezone.utc)

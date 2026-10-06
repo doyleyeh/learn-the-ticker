@@ -2,8 +2,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, bootstrap, connect, download } from "./client";
 import type { EvidenceBundle, Settings, Conversation as ConversationContract, SavedResearch, ResearchRequest } from "./contracts";
 import { SnapshotStatus } from "./EvidenceFreshness";
-import { bundleRoute, comparisonRoute, conversationRoute, pages, routeFromHash } from "./routes";
+import { bundleRoute, comparisonRoute, conversationRoute, pages, reportRoute, routeFromHash } from "./routes";
 import { Comparisons } from "./Comparisons";
+import { Reports } from "./Reports";
 import { LibraryBackup } from "./LibraryBackup";
 import { ImportDocuments } from "./ImportDocuments";
 import { EvidenceView } from "./TickerDashboard";
@@ -137,7 +138,7 @@ export function App() {
   }
 
   return <div className="app-shell">
-    <header className="topbar"><a className="brand" href="#library">Learn the Ticker</a><nav aria-label="Primary navigation"><a href="#library">Library</a><a href="#saved">Saved research</a><a href="#conversations">Conversations</a><a href="#comparisons">Comparisons</a><a href="#imports">Sources</a><a href="#connections">Connections</a></nav></header>
+    <header className="topbar"><a className="brand" href="#library">Learn the Ticker</a><nav aria-label="Primary navigation"><a href="#library">Library</a><a href="#saved">Saved research</a><a href="#conversations">Conversations</a><a href="#comparisons">Comparisons</a><a href="#reports">Reports</a><a href="#imports">Sources</a><a href="#connections">Connections</a></nav></header>
     <main className="desktop-main">
       <p className="notice-text">Desktop developer preview · Your library stays on this computer. Educational research, not investment advice.</p>
       {error && <div role="alert" className="notice-text error"><p>{error}</p><button onClick={() => setError("")}>Dismiss</button></div>}
@@ -158,6 +159,7 @@ export function App() {
         {page === "connections" && settings && <Connections key={settings.provider} settings={settings} onSave={saveSettings}/> }
         {page === "imports" && <ImportDocuments online={!!settings?.cloud_enabled} settings={settings} level={level}/>}
         {page === "comparisons" && <Comparisons key={`${comparisonSelection.comparison}:${comparisonSelection.bundle}`} library={library} saved={saved} settings={settings} resultId={comparisonSelection.comparison} initialLeft={comparisonSelection.bundle}/>}
+        {page === "reports" && <Reports key={`${comparisonSelection.report}:${comparisonSelection.bundle}`} library={library} saved={saved} settings={settings} reportId={comparisonSelection.report} initialBundle={comparisonSelection.bundle}/>}
         {page === "library" && <section><h1>Your research library</h1><p>Search any asset. Available sections depend on verifiable evidence.</p>{library.length === 0 && <section className="plain-panel"><h2>Start with one asset</h2><p>Connect your subscription runtime, then research a ticker or name. Evidence and dated explanations will be saved here.</p></section>}<div className="library-grid">{library.map((item) => <button className="plain-panel" key={item.asset.id} onClick={() => openAsset(item)}><strong>{item.asset.name}</strong><span>{item.asset.symbol} · {item.asset.asset_type}</span><span>Snapshot {new Date(item.created_at!).toLocaleString()}</span></button>)}</div></section>}
         {page === "saved" && <section><h1>Saved research</h1><p>Bookmarks reference a fixed evidence version; refresh does not overwrite it.</p>{saved.length === 0 && <p>No saved research yet.</p>}{saved.map((report) => <button key={report.id} onClick={() => api<EvidenceBundle>(`/api/bundles/${report.bundle_id}`).then(openAsset).catch(fail)}>{report.title}</button>)}</section>}
         {page === "conversations" && <section><h1>Persistent conversations</h1><p>Unbookmarked conversations expire after {settings?.retention_days ?? 180} days without activity. Bookmark a conversation to keep it.</p>
@@ -170,7 +172,7 @@ export function App() {
           <CheckpointNotice completion={asset.completion}/>
           <section className="plain-panel"><p className="eyebrow">{asset.asset.asset_type} · {asset.asset.exchange ?? "Listing details unconfirmed"}</p><h1>{asset.asset.name} <small>{asset.asset.symbol}</small></h1><SnapshotStatus bundle={asset}/><p>Scope: {asset.asset.id} · {asset.level ? `${asset.level} explanations` : "Reader level not recorded"} · {asset.language}</p><div className="actions"><button disabled={busy || !settings?.cloud_enabled || asset.completion === "section_checkpoint"} onClick={() => void research(undefined, true, `Refresh research for ${asset.asset.name}`)}>Refresh evidence</button><button onClick={() => api("/api/saved", { method: "POST", body: JSON.stringify({ bundle_id: asset.id, title: asset.asset.name }) }).then(async () => { await reload(); setNotice("Research version bookmarked."); }).catch(fail)}>Bookmark this version</button><button onClick={() => download(asset.id!, "markdown").catch(fail)}>Export Markdown</button><button onClick={() => download(asset.id!, "json").catch(fail)}>Export JSON</button></div></section>
           <TermLearning key={`${asset.id}:${level}:${settings?.language}`} bundle={asset} level={level} settings={settings}><EvidenceView bundle={asset}/></TermLearning>
-          {asset.completion !== "section_checkpoint" && <section className="plain-panel"><h2>Continue learning</h2><p>Start a conversation scoped to {asset.asset.name}, or return to an existing conversation. Original cited responses remain separate saved versions.</p><button onClick={() => void startConversation()}>Start a conversation</button><a href={`#${comparisonRoute(undefined, asset.id)}`}>Compare this saved page</a></section>}
+          {asset.completion !== "section_checkpoint" && <section className="plain-panel"><h2>Continue learning</h2><p>Start a conversation scoped to {asset.asset.name}, or return to an existing conversation. Original cited responses remain separate saved versions.</p><button onClick={() => void startConversation()}>Start a conversation</button><a href={`#${comparisonRoute(undefined, asset.id)}`}>Compare this saved page</a><a href={`#${reportRoute(undefined, asset.id)}`}>Create report from this page</a></section>}
         </>}
       </>}
     </main></div>;

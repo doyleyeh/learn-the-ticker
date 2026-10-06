@@ -25,6 +25,7 @@ from backend.app.terms import term_key, validate_explanation
 from backend.app.import_learning import ImportExplanation, ImportLearningRequest, learning_key, validate_learning
 from backend.app.import_storage import RetainedImportView, summary as import_summary
 from backend.app.comparisons import ComparisonResult, validate_comparison
+from backend.app.reports import ResearchReport, validate_report
 
 MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
 MAX_CONTENT_BYTES = 256 * 1024 * 1024
@@ -42,7 +43,7 @@ class StrictModel(BaseModel):
 
 class StoredRecord(StrictModel):
     id: str = Field(max_length=200)
-    kind: Literal["asset", "bundle", "conversation", "saved", "settings", "term", "import", "import_explanation", "comparison"]
+    kind: Literal["asset", "bundle", "conversation", "saved", "settings", "term", "import", "import_explanation", "comparison", "report"]
     parent_id: str | None = Field(default=None, max_length=200)
     updated_at: AwareDatetime
     payload: dict
@@ -125,7 +126,7 @@ def validate_library(data: LibraryData):
         raise BackupError("Library exceeds the current 100 retained-document archive limit")
     attachment_bytes = 0
     for row in data.records:
-        model = {"asset": EvidenceBundle, "bundle": EvidenceBundle, "settings": Settings, "conversation": Conversation, "saved": SavedResearch, "term": TermExplanation, "import": RetainedImport, "import_explanation": ImportExplanation, "comparison": ComparisonResult}[row.kind]
+        model = {"asset": EvidenceBundle, "bundle": EvidenceBundle, "settings": Settings, "conversation": Conversation, "saved": SavedResearch, "term": TermExplanation, "import": RetainedImport, "import_explanation": ImportExplanation, "comparison": ComparisonResult, "report": ResearchReport}[row.kind]
         value = model.model_validate(row.payload)
         suffix = value.asset.id if row.kind == "asset" else getattr(value, "id", "")
         expected = "settings" if row.kind == "settings" else row.kind + ":" + suffix
@@ -165,6 +166,10 @@ def validate_library(data: LibraryData):
             if row.parent_id is not None:
                 raise BackupError("Comparison cannot belong to one asset only")
             validate_comparison(ComparisonResult.model_validate(value), bundles.get)
+        elif row.kind == "report":
+            if row.parent_id != value["bundle_id"]:
+                raise BackupError("Report parent differs from its original evidence")
+            validate_report(ResearchReport.model_validate(value), bundles.get)
         elif row.kind == "term":
             if value["bundle_id"] not in bundles or row.parent_id != value["bundle_id"]:
                 raise BackupError("Term explanation references missing evidence")
@@ -342,7 +347,7 @@ def preview_backup(db: Database, raw: bytes) -> BackupSummary:
     manifest, data = read_backup(raw)
     counts = Counter(record.kind for record in data.records)
     allowed = restore_allowed(db)
-    return BackupSummary(format_version=manifest.format_version, created_at=manifest.created_at, fingerprint=hashlib.sha256(raw).hexdigest(), assets=counts["asset"], evidence_versions=counts["bundle"], conversations=counts["conversation"], saved_reports=counts["saved"], term_explanations=counts["term"], retained_imports=counts["import"], import_explanations=counts["import_explanation"], comparisons=counts["comparison"], attachment_bytes=sum(entry.byte_count for entry in manifest.attachments), jobs=len(data.jobs), can_restore=allowed, reason=None if allowed else "Restore requires an empty library. Keep this installation intact and restore into a new library to preserve newer research.")
+    return BackupSummary(format_version=manifest.format_version, created_at=manifest.created_at, fingerprint=hashlib.sha256(raw).hexdigest(), assets=counts["asset"], evidence_versions=counts["bundle"], conversations=counts["conversation"], saved_reports=counts["saved"], term_explanations=counts["term"], retained_imports=counts["import"], import_explanations=counts["import_explanation"], comparisons=counts["comparison"], dated_reports=counts["report"], attachment_bytes=sum(entry.byte_count for entry in manifest.attachments), jobs=len(data.jobs), can_restore=allowed, reason=None if allowed else "Restore requires an empty library. Keep this installation intact and restore into a new library to preserve newer research.")
 
 
 def restore_backup(db: Database, raw: bytes, fingerprint: str) -> BackupSummary:

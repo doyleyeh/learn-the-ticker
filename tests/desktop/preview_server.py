@@ -127,6 +127,16 @@ if __name__ == "__main__":
         for example, title in ((bundle, "Comparison original SYN page"), (previous, "Earlier SECOND page")):
             saved = SavedResearch(bundle_id=example.id, title=title)
             db.put("saved:" + saved.id, "saved", saved.model_dump(mode="json"), example.asset.id)
+    if "--reports-demo" in sys.argv:
+        from backend.app.contracts import SavedResearch
+        from backend.app.weekly import weekly_window
+        from tests.desktop.weekly_fixture import weekly_bundle
+        stamp = now()
+        window = weekly_window(stamp)
+        example = weekly_bundle([str(window.previous_start), str(window.previous_end), str(window.earlier_end)], at=stamp)
+        db.put("bundle:" + example.id, "bundle", example.model_dump(mode="json"), example.asset.id)
+        bookmark = SavedResearch(bundle_id=example.id, title="Dated filing report example")
+        db.put("saved:" + bookmark.id, "saved", bookmark.model_dump(mode="json"), example.asset.id)
     if "--restore-demo" in sys.argv:
         archive = Path(".local/restore-demo.lttbackup")
         archive.parent.mkdir(exist_ok=True)

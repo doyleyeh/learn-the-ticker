@@ -30,6 +30,7 @@ export type TermExplanations = number;
 export type RetainedImports = number;
 export type ImportExplanations = number;
 export type Comparisons = number;
+export type DatedReports = number;
 export type AttachmentBytes = number;
 export type Jobs = number;
 export type CredentialsIncluded = false;
@@ -1125,6 +1126,79 @@ export type Alignment =
   | "different_periods"
   | "different_methods"
   | "share_basis_unverified";
+export type SchemaVersion53 = "1";
+export type BundleId7 = string;
+export type SchemaVersion54 = "1";
+export type Id18 = string;
+export type Method3 = "saved-research-report-v1";
+export type CreatedAt8 = string;
+export type BundleId8 = string;
+export type Fingerprint3 = string;
+export type EvidenceSavedAt = string;
+export type SchemaVersion55 = "1";
+export type Method4 = "verified-filing-week-v1";
+export type SchemaVersion56 = "1";
+export type AsOf2 = string;
+export type Timezone1 = "America/New_York";
+export type PreviousStart = string;
+export type PreviousEnd = string;
+export type CurrentStart = string | null;
+export type CurrentEnd = string | null;
+export type EarlierStart = string;
+export type EarlierEnd = string;
+/**
+ * @maxItems 8
+ */
+export type Weekly =
+  | []
+  | [DatedItem]
+  | [DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem, DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem];
+export type SchemaVersion57 = "1";
+export type EventId = string;
+export type SourceId7 = string;
+export type ClaimId = string | null;
+export type Title3 = string;
+export type Text6 = string | null;
+export type Published = string;
+export type Effective = string | null;
+export type Bucket = "previous_week" | "current_week" | "earlier_context";
+export type DateBasis = "verified_sec_filing_date";
+/**
+ * @maxItems 8
+ */
+export type Earlier =
+  | []
+  | [DatedItem]
+  | [DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem, DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem]
+  | [DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem, DatedItem];
+export type EarlierRequested = boolean;
+export type AnalysisAvailable = boolean;
+export type Coverage = "saved_verified_filings_only";
+export type ReadingGuide = string | null;
+/**
+ * @maxItems 8
+ */
+export type GuideSourceIds =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string];
 
 export interface DesktopContracts {
   ApprovalDecision?: ApprovalDecision;
@@ -1159,6 +1233,8 @@ export interface DesktopContracts {
   BundleFreshness?: BundleFreshness;
   ComparisonRequest?: ComparisonRequest;
   ComparisonResult?: ComparisonResult;
+  ReportRequest?: ReportRequest;
+  ResearchReport?: ResearchReport;
 }
 export interface ApprovalDecision {
   schema_version?: SchemaVersion;
@@ -1203,6 +1279,7 @@ export interface BackupSummary {
   retained_imports?: RetainedImports;
   import_explanations?: ImportExplanations;
   comparisons?: Comparisons;
+  dated_reports?: DatedReports;
   attachment_bytes?: AttachmentBytes;
   jobs: Jobs;
   credentials_included?: CredentialsIncluded;
@@ -1746,4 +1823,54 @@ export interface ComparisonCell {
   basis?: Basis2;
   source_ids?: SourceIds5;
   evidence_ids?: EvidenceIds;
+}
+export interface ReportRequest {
+  schema_version?: SchemaVersion53;
+  bundle_id: BundleId7;
+}
+export interface ResearchReport {
+  schema_version?: SchemaVersion54;
+  id?: Id18;
+  method?: Method3;
+  created_at?: CreatedAt8;
+  bundle_id: BundleId8;
+  fingerprint: Fingerprint3;
+  asset: AssetIdentity;
+  evidence_saved_at: EvidenceSavedAt;
+  focus: WeeklyFocus;
+  reading_guide?: ReadingGuide;
+  guide_source_ids?: GuideSourceIds;
+}
+export interface WeeklyFocus {
+  schema_version?: SchemaVersion55;
+  method?: Method4;
+  window: WeeklyWindow;
+  weekly?: Weekly;
+  earlier?: Earlier;
+  earlier_requested: EarlierRequested;
+  analysis_available: AnalysisAvailable;
+  coverage?: Coverage;
+}
+export interface WeeklyWindow {
+  schema_version?: SchemaVersion56;
+  as_of: AsOf2;
+  timezone?: Timezone1;
+  previous_start: PreviousStart;
+  previous_end: PreviousEnd;
+  current_start: CurrentStart;
+  current_end: CurrentEnd;
+  earlier_start: EarlierStart;
+  earlier_end: EarlierEnd;
+}
+export interface DatedItem {
+  schema_version?: SchemaVersion57;
+  event_id: EventId;
+  source_id: SourceId7;
+  claim_id?: ClaimId;
+  title: Title3;
+  text?: Text6;
+  published: Published;
+  effective: Effective;
+  bucket: Bucket;
+  date_basis?: DateBasis;
 }

@@ -423,6 +423,11 @@
           "title": "Comparisons",
           "type": "integer"
         },
+        "dated_reports": {
+          "default": 0,
+          "title": "Dated Reports",
+          "type": "integer"
+        },
         "attachment_bytes": {
           "default": 0,
           "title": "Attachment Bytes",
@@ -1090,6 +1095,95 @@
         "role"
       ],
       "title": "ConversationMessage",
+      "type": "object"
+    },
+    "DatedItem": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "claim_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Id"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "published": {
+          "format": "date",
+          "title": "Published",
+          "type": "string"
+        },
+        "effective": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effective"
+        },
+        "bucket": {
+          "enum": [
+            "previous_week",
+            "current_week",
+            "earlier_context"
+          ],
+          "title": "Bucket",
+          "type": "string"
+        },
+        "date_basis": {
+          "const": "verified_sec_filing_date",
+          "default": "verified_sec_filing_date",
+          "title": "Date Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "source_id",
+        "title",
+        "published",
+        "effective",
+        "bucket"
+      ],
+      "title": "DatedItem",
       "type": "object"
     },
     "EvidenceBundle": {
@@ -2706,6 +2800,28 @@
       "title": "ProviderLogin",
       "type": "object"
     },
+    "ReportRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Bundle Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_id"
+      ],
+      "title": "ReportRequest",
+      "type": "object"
+    },
     "ResearchJobSummary": {
       "additionalProperties": false,
       "description": "Read-only recovery metadata; no raw events, provider output or credentials.",
@@ -2751,6 +2867,84 @@
         "created_at"
       ],
       "title": "ResearchJobSummary",
+      "type": "object"
+    },
+    "ResearchReport": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "method": {
+          "const": "saved-research-report-v1",
+          "default": "saved-research-report-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "#/$defs/AssetIdentity"
+        },
+        "evidence_saved_at": {
+          "format": "date-time",
+          "title": "Evidence Saved At",
+          "type": "string"
+        },
+        "focus": {
+          "$ref": "#/$defs/WeeklyFocus"
+        },
+        "reading_guide": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reading Guide"
+        },
+        "guide_source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Guide Source Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "fingerprint",
+        "asset",
+        "evidence_saved_at",
+        "focus"
+      ],
+      "title": "ResearchReport",
       "type": "object"
     },
     "ResearchRequest": {
@@ -4045,6 +4239,140 @@
       ],
       "title": "ValuationObservation",
       "type": "object"
+    },
+    "WeeklyFocus": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "method": {
+          "const": "verified-filing-week-v1",
+          "default": "verified-filing-week-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "window": {
+          "$ref": "#/$defs/WeeklyWindow"
+        },
+        "weekly": {
+          "items": {
+            "$ref": "#/$defs/DatedItem"
+          },
+          "maxItems": 8,
+          "title": "Weekly",
+          "type": "array"
+        },
+        "earlier": {
+          "items": {
+            "$ref": "#/$defs/DatedItem"
+          },
+          "maxItems": 8,
+          "title": "Earlier",
+          "type": "array"
+        },
+        "earlier_requested": {
+          "title": "Earlier Requested",
+          "type": "boolean"
+        },
+        "analysis_available": {
+          "title": "Analysis Available",
+          "type": "boolean"
+        },
+        "coverage": {
+          "const": "saved_verified_filings_only",
+          "default": "saved_verified_filings_only",
+          "title": "Coverage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "window",
+        "earlier_requested",
+        "analysis_available"
+      ],
+      "title": "WeeklyFocus",
+      "type": "object"
+    },
+    "WeeklyWindow": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "title": "As Of",
+          "type": "string"
+        },
+        "timezone": {
+          "const": "America/New_York",
+          "default": "America/New_York",
+          "title": "Timezone",
+          "type": "string"
+        },
+        "previous_start": {
+          "format": "date",
+          "title": "Previous Start",
+          "type": "string"
+        },
+        "previous_end": {
+          "format": "date",
+          "title": "Previous End",
+          "type": "string"
+        },
+        "current_start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Start"
+        },
+        "current_end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current End"
+        },
+        "earlier_start": {
+          "format": "date",
+          "title": "Earlier Start",
+          "type": "string"
+        },
+        "earlier_end": {
+          "format": "date",
+          "title": "Earlier End",
+          "type": "string"
+        }
+      },
+      "required": [
+        "as_of",
+        "previous_start",
+        "previous_end",
+        "current_start",
+        "current_end",
+        "earlier_start",
+        "earlier_end"
+      ],
+      "title": "WeeklyWindow",
+      "type": "object"
     }
   },
   "title": "DesktopContracts",
@@ -4145,6 +4473,12 @@
     },
     "ComparisonResult": {
       "$ref": "#/$defs/ComparisonResult"
+    },
+    "ReportRequest": {
+      "$ref": "#/$defs/ReportRequest"
+    },
+    "ResearchReport": {
+      "$ref": "#/$defs/ResearchReport"
     }
   },
   "additionalProperties": false

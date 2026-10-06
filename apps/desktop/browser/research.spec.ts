@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { ComparisonResult } from "../src/contracts";
+import { readFile } from "node:fs/promises";
+import type { ComparisonResult, ResearchReport } from "../src/contracts";
 
 async function connect(page: Page) {
   await page.getByText("Developer browser connection", { exact: true }).click();
@@ -655,5 +656,94 @@ test("saved comparisons preserve original pages, incompatibilities and offline r
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
   await revenue.screenshot({ path: testInfo.outputPath("comparison-offline-narrow.png") });
   expect(generations).toEqual(["/api/comparisons", "/api/comparisons", "/api/comparisons"]);
+  expect(external).toEqual([]); expect(errors).toEqual([]);
+});
+
+test("historical reports retain original evidence, separate dated context and offline exports", async ({ page, context }, testInfo) => {
+  const external: string[] = [], generations: string[] = [], errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "POST" && ["/api/reports", "/api/research", "/api/terms"].includes(path)) generations.push(path);
+  });
+  await context.route("**/*", async (route) => {
+    if (new URL(route.request().url()).hostname !== "127.0.0.1") { external.push(route.request().url()); await route.abort(); }
+    else await route.continue();
+  });
+  await page.goto("/#saved"); await connect(page);
+  await page.getByRole("button", { name: "Comparison original SYN page", exact: true }).click();
+  await expect(page).toHaveURL(/#asset\?bundle=/);
+  const original = new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("bundle")!;
+  await page.getByRole("link", { name: "Create report from this page", exact: true }).click();
+  const selection = page.getByRole("combobox", { name: "Report saved page", exact: true });
+  await expect(selection).toHaveValue(original);
+  await page.getByRole("link", { name: "Connections", exact: true }).first().click();
+  const cloud = page.getByRole("checkbox", { name: "Allow cloud research", exact: true });
+  if (!(await cloud.isChecked())) {
+    const saved = page.waitForResponse((r) => r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/settings");
+    await cloud.click(); expect((await saved).status()).toBe(200);
+  }
+  await expect(cloud).toBeChecked();
+  await page.getByRole("link", { name: "Reports", exact: true }).click();
+  await selection.selectOption(original);
+  async function save(): Promise<ResearchReport> {
+    const response = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/reports");
+    await page.getByRole("button", { name: "Save dated report", exact: true }).click();
+    const value = await response;
+    expect(value.status()).toBe(200);
+    const report = await value.json() as ResearchReport;
+    await expect(page).toHaveURL(new RegExp(`report=${report.id}`));
+    await expect(page.getByRole("region", { name: "Saved historical report", exact: true })).toBeVisible();
+    return report;
+  }
+  const historical = await save();
+  expect(historical.bundle_id).toBe(original);
+  await expect(page.getByRole("region", { name: "Weekly analysis", exact: true })).toContainText("Fewer than two verified weekly items");
+  await expect(page.locator("#ticker-statistics")).toContainText("9,007,199,254,740,992");
+  const exportResponse = page.waitForResponse((r) => r.request().method() === "GET" && new URL(r.url()).pathname === `/api/reports/${historical.id}/export`);
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export report JSON", exact: true }).click();
+  const jsonDownload = await download;
+  expect(jsonDownload.suggestedFilename()).toBe("report.json");
+  expect((await exportResponse).status()).toBe(200);
+  expect(await jsonDownload.failure()).toBeNull();
+  const exported = JSON.parse(await readFile((await jsonDownload.path())!, "utf8"));
+  expect(exported.report.bundle_id).toBe(original); expect(exported.evidence.id).toBe(original);
+  await selection.selectOption({ label: "Bookmarked: Dated filing report example" });
+  const dated = await save(), datedUrl = page.url();
+  expect(dated.focus.weekly).toHaveLength(2); expect(dated.focus.earlier).toHaveLength(1);
+  await expect(page.getByRole("region", { name: "Weekly items", exact: true })).toContainText("Weekly items (2)");
+  await expect(page.getByRole("region", { name: "Earlier context", exact: true })).toContainText("Excluded from weekly counts and analysis");
+  await expect(page.getByRole("region", { name: "Weekly analysis", exact: true })).toContainText("2 distinct verified filing publications");
+  const citation = page.getByRole("region", { name: "Weekly items", exact: true }).getByRole("link").first();
+  expect(await citation.getAttribute("href")).toContain(`bundle=${dated.bundle_id}`);
+  await citation.focus(); await page.keyboard.press("Enter");
+  await expect(page.locator('details[id^="source-"][open]')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("region", { name: "Dated report context", exact: true })).toBeVisible();
+  await page.getByRole("region", { name: "Dated report context", exact: true }).screenshot({ path: testInfo.outputPath("report-wide.png") });
+  await page.setViewportSize({ width: 640, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.getByRole("region", { name: "Dated report context", exact: true }).screenshot({ path: testInfo.outputPath("report-narrow.png") });
+  await page.getByRole("link", { name: "Connections", exact: true }).first().click();
+  const offlineSave = page.waitForResponse((r) => r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/settings");
+  await cloud.click(); expect((await offlineSave).status()).toBe(200); await expect(cloud).not.toBeChecked();
+  await page.evaluate((url) => { location.hash = new URL(url).hash; }, datedUrl);
+  await page.reload(); await connect(page);
+  await expect(page.getByRole("button", { name: "Save dated report", exact: true })).toBeDisabled();
+  await expect(page.getByRole("region", { name: "Weekly items", exact: true })).toContainText("Weekly items (2)");
+  const markdown = page.waitForResponse((r) => r.request().method() === "GET" && new URL(r.url()).pathname === `/api/reports/${dated.id}/export`);
+  const offlineDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export report Markdown", exact: true }).click();
+  const markdownDownload = await offlineDownload;
+  expect(markdownDownload.suggestedFilename()).toBe("report.md");
+  expect((await markdown).status()).toBe(200);
+  expect(await markdownDownload.failure()).toBeNull();
+  expect(await readFile((await markdownDownload.path())!, "utf8")).toContain("Earlier context (excluded from weekly counts)");
+  await page.route(`**/api/bundles/${dated.bundle_id}`, (route) => route.abort());
+  await page.reload(); await connect(page);
+  await expect(page.getByRole("alert").filter({ hasText: "Original page could not be read" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Weekly items", exact: true })).toContainText("Weekly items (2)");
+  expect(generations).toEqual(["/api/reports", "/api/reports"]);
   expect(external).toEqual([]); expect(errors).toEqual([]);
 });

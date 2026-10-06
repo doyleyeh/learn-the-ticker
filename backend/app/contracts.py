@@ -513,6 +513,7 @@ class BackupSummary(Contract):
     retained_imports: int = 0
     import_explanations: int = 0
     comparisons: int = 0
+    dated_reports: int = 0
     attachment_bytes: int = 0
     jobs: int
     credentials_included: Literal[False] = False

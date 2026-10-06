@@ -40,8 +40,9 @@ def test_generated_schema_matches_backend_contracts():
     from backend.app.source_review import SourceReviewDecision, SourceReviewRequest
     from backend.app.freshness import BundleFreshness
     from backend.app.comparisons import ComparisonRequest, ComparisonResult
+    from backend.app.reports import ReportRequest, ResearchReport
     models = [ApprovalDecision, ApprovalRequest, AssetIdentity, BackupSummary, Claim, Conversation, EvidenceBundle, ImportPreview, RetainedImportSummary, RetainedImportView, ImportExplanation, ImportLearningRequest, ImportLearningScope, ProviderLogin, ResearchJobSummary, ResearchRequest, ResearchResult, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, SavedResearch, Settings, Source, TermExplanation, TermRequest, TermResult]
-    models.extend([SourceReviewDecision, SourceReviewRequest, BundleFreshness, ComparisonRequest, ComparisonResult])
+    models.extend([SourceReviewDecision, SourceReviewRequest, BundleFreshness, ComparisonRequest, ComparisonResult, ReportRequest, ResearchReport])
     _, schema = models_json_schema([(model, "validation") for model in models], title="DesktopContracts")
     stored = json.loads((ROOT / "contracts/desktop.schema.json").read_text())
     assert stored["$defs"] == schema["$defs"]

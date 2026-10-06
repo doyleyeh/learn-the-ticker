@@ -111,6 +111,18 @@ def main():
         legacy_comparison = build_comparison(*pair, method="saved-evidence-alignment-v1").model_dump(mode="json")
         source.put("comparison:" + legacy_comparison["id"], "comparison", legacy_comparison)
         comparisons.append(legacy_comparison)
+        from datetime import timedelta
+        from backend.app.reports import build_report
+        from tests.desktop.weekly_fixture import weekly_bundle
+        dated = weekly_bundle()
+        source.put("bundle:" + dated.id, "bundle", dated.model_dump(mode="json"), dated.asset.id)
+        reports = []
+        for original in (dated, pair[0], market):
+            report = build_report(original, created_at=original.created_at + timedelta(hours=12)).model_dump(mode="json")
+            source.put("report:" + report["id"], "report", report, original.id)
+            reports.append(report)
+        assert len(reports[0]["focus"]["weekly"]) == 2 and len(reports[0]["focus"]["earlier"]) == 1
+        assert not reports[1]["focus"]["weekly"] and reports[1]["reading_guide"] is None
         assert any(row["alignment"] == "aligned" and row["left"]["value"] == "9007199254740992" for row in comparisons[0]["rows"])
         term_request = TermRequest(term="liquidity", bundle_id=old.id)
         term = TermExplanation(id=term_key(term_request), term=term_request.term, bundle_id=old.id, asset_id=identity.id, language="en", level="beginner", provider="codex", basis="general", explanation="Synthetic general explanation for the restore scenario.")
@@ -170,10 +182,11 @@ def main():
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
-        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 18 and summary.saved_reports == 1 and summary.term_explanations == 3
+        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 19 and summary.saved_reports == 1 and summary.term_explanations == 3
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
         assert summary.import_explanations == 1
         assert summary.comparisons == 3
+        assert summary.dated_reports == 3
 
         def fail_event(*args):
             raise RuntimeError("Simulated restored-event write failure")
@@ -192,9 +205,12 @@ def main():
         assert not target.list("import")
         assert not target.list("import_explanation")
         assert not target.list("comparison")
+        assert not target.list("report")
         restore_backup(target, archive, summary.fingerprint)
         for comparison in comparisons:
             assert target.get("comparison:" + comparison["id"]) == comparison
+        for report in reports:
+            assert target.get("report:" + report["id"]) == report
         restored_jobs = {row["id"]: row for row in target.research_jobs()}
         assert restored_jobs["pending"]["status"] == "interrupted"
         assert restored_jobs["pending"]["request"] == original_jobs["pending"]["request"]
@@ -239,6 +255,8 @@ def main():
         databases.append(restarted)
         for comparison in comparisons:
             assert restarted.get("comparison:" + comparison["id"]) == comparison
+        for report in reports:
+            assert restarted.get("report:" + report["id"]) == report
         assert restarted.get("bundle:" + cloud_original.id) == cloud_original.model_dump(mode="json")
         assert restarted.get("bundle:" + cloud_answer.id) == cloud_answer.model_dump(mode="json")
         validate_context_references(cloud_answer, lambda bid: restarted.get("bundle:" + bid))
@@ -324,6 +342,7 @@ def main():
         print("Financial snapshot originated through production research orchestration with explicit synthetic source/runtime adapters.")
         print("Original conversation facts, version-specific citations, source URLs and dates remain reusable after restore and restart.")
         print("Five retained documents across four formats preserved exact bytes, checksums, locators, original provenance and permission through atomic restore and restart; concurrent capacity enforcement passed.")
+        print("Historical reports, sparse dated context and weekly reading guides retained original evidence and citations through actual rollback/restore/restart.")
         print("Non-empty restore was rejected; cloud consent reset and no provider calls were made.")
     finally:
         for db in databases:
