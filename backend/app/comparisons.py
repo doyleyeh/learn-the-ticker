@@ -19,7 +19,7 @@ from backend.app.sec_financials import CONCEPTS
 from backend.app.source_registry import source_rule
 from backend.safety import find_forbidden_output_phrases
 
-METHOD = "saved-evidence-alignment-v1"
+METHOD = "saved-evidence-alignment-v2"
 MAX_CONTEXT = 800_000
 
 
@@ -59,7 +59,7 @@ class ComparisonRow(Contract):
 
 class ComparisonResult(Contract):
     id: str = Field(default_factory=uid, pattern=r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$")
-    method: Literal["saved-evidence-alignment-v1"] = METHOD
+    method: Literal["saved-evidence-alignment-v1", "saved-evidence-alignment-v2"] = METHOD
     created_at: AwareDatetime = Field(default_factory=now)
     left: ComparisonSide
     right: ComparisonSide
@@ -143,13 +143,19 @@ def valuation_cell(bundle, metric, sampling):
         evidence_ids=["valuation:" + metric + ":" + row.sampling + ":" + row.date.isoformat()])
 
 
-def narrative_cell(bundle, section):
+def narrative_cell(bundle, section, *, method):
     types = {"etf", "fund"} if section in ("benchmark", "holdings", "construction", "costs", "expense_ratio", "holdings_count", "breadth") else None
     absent = missing(bundle, types=types)
+    if method == METHOD and section == "overview" and absent.state == "unknown_type":
+        # An unresolved type suppresses type-dependent metrics, not an admitted overview.
+        absent = ComparisonCell()
     if absent.state != "missing":
         return absent
+    aliases = {"holdings": "holdings_exposure", "construction": "construction_methodology",
+        "costs": "cost_trading_context", "risks": "etf_specific_risks", "beginner_role": "fund_objective_role"}
+    sections = {section, aliases.get(section, section)} if method == METHOD else {section}
     for claim in bundle.claims:
-        if (claim.section != section or claim.kind != "fact" or claim.value is not None
+        if (claim.section not in sections or claim.kind != "fact" or claim.value is not None
                 or len(claim.source_ids) > 10 or find_forbidden_output_phrases(claim.text)):
             continue
         sources = {s.id: s for s in bundle.sources}
@@ -183,7 +189,7 @@ def alignment(left, right, left_type, right_type):
     return "aligned"
 
 
-def aligned_rows(left, right):
+def aligned_rows(left, right, *, method):
     rows = []
     def add(key, label, getter):
         a, b = getter(left), getter(right)
@@ -192,7 +198,7 @@ def aligned_rows(left, right):
     for section, label in (("overview", "Overview"), ("benchmark", "Benchmark"), ("holdings", "Holdings"),
                            ("expense_ratio", "Expense ratio"), ("holdings_count", "Holdings count"), ("breadth", "Breadth"),
                            ("construction", "Construction"), ("costs", "Costs"), ("risks", "Risks"), ("beginner_role", "Educational role")):
-        add("description:" + section, label, lambda bundle: narrative_cell(bundle, section))
+        add("description:" + section, label, lambda bundle: narrative_cell(bundle, section, method=method))
     for concept, (kind, _) in CONCEPTS.items():
         for period in (["instant"] if kind == "instant" else ["annual", "quarter"]):
             add("financial:" + concept + ":" + period, concept + " — " + period, lambda bundle: financial_cell(bundle, concept, period))
@@ -206,7 +212,7 @@ def aligned_rows(left, right):
     return rows
 
 
-def build_comparison(left, right, *, created_at=None, result_id=None):
+def build_comparison(left, right, *, created_at=None, result_id=None, method=METHOD):
     if len(left.model_dump_json()) + len(right.model_dump_json()) > MAX_CONTEXT:
         raise ValueError("Selected comparison evidence exceeds the bounded context limit")
     left, right = checked_bundle(left), checked_bundle(right)
@@ -215,7 +221,7 @@ def build_comparison(left, right, *, created_at=None, result_id=None):
         raise ValueError("Select two different independently resolved assets")
     if max(left.created_at, right.created_at) > at:
         raise ValueError("Comparison evidence cannot be newer than its result")
-    return ComparisonResult(id=result_id or uid(), created_at=at, left=side(left), right=side(right), rows=aligned_rows(left, right))
+    return ComparisonResult(id=result_id or uid(), method=method, created_at=at, left=side(left), right=side(right), rows=aligned_rows(left, right, method=method))
 
 
 def validate_comparison(result, lookup):
@@ -224,7 +230,7 @@ def validate_comparison(result, lookup):
     if not all(original):
         raise ValueError("Comparison references missing original evidence")
     left, right = (checked_bundle(payload) for payload in original)
-    expected = build_comparison(left, right, created_at=result.created_at, result_id=result.id)
+    expected = build_comparison(left, right, created_at=result.created_at, result_id=result.id, method=result.method)
     if expected != result:
         raise ValueError("Comparison differs from its original evidence or alignment method")
 

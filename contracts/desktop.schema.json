@@ -418,6 +418,11 @@
           "title": "Import Explanations",
           "type": "integer"
         },
+        "comparisons": {
+          "default": 0,
+          "title": "Comparisons",
+          "type": "integer"
+        },
         "attachment_bytes": {
           "default": 0,
           "title": "Attachment Bytes",
@@ -760,8 +765,11 @@
           "type": "string"
         },
         "method": {
-          "const": "saved-evidence-alignment-v1",
-          "default": "saved-evidence-alignment-v1",
+          "default": "saved-evidence-alignment-v2",
+          "enum": [
+            "saved-evidence-alignment-v1",
+            "saved-evidence-alignment-v2"
+          ],
           "title": "Method",
           "type": "string"
         },

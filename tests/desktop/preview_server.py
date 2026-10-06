@@ -111,9 +111,22 @@ if __name__ == "__main__":
     if "--parity-demo" in sys.argv:
         from tests.desktop.parity_fixture import parity_bundles
         for example in parity_bundles():
+            if "--comparisons-demo" in sys.argv:
+                example.identity_verification = IdentityVerification(authority="synthetic-preview", source_url="https://identity.example/preview",
+                    retrieved_at=example.created_at, content_hash="c" * 64, identity_hash=identity_hash(example.asset))
             data = example.model_dump(mode="json")
             db.put("asset:" + example.asset.id, "asset", data)
             db.put("bundle:" + example.id, "bundle", data, example.asset.id)
+    if "--comparisons-demo" in sys.argv:
+        from backend.app.contracts import SavedResearch
+        from tests.desktop.comparison_fixture import comparison_pair
+        previous, current = comparison_pair()[1], comparison_pair(end="2025-12-30")[1]
+        for example in (previous, current):
+            db.put("bundle:" + example.id, "bundle", example.model_dump(mode="json"), example.asset.id)
+        db.put("asset:" + current.asset.id, "asset", current.model_dump(mode="json"))
+        for example, title in ((bundle, "Comparison original SYN page"), (previous, "Earlier SECOND page")):
+            saved = SavedResearch(bundle_id=example.id, title=title)
+            db.put("saved:" + saved.id, "saved", saved.model_dump(mode="json"), example.asset.id)
     if "--restore-demo" in sys.argv:
         archive = Path(".local/restore-demo.lttbackup")
         archive.parent.mkdir(exist_ok=True)

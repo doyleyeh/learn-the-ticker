@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { ComparisonResult } from "../src/contracts";
 
 async function connect(page: Page) {
   await page.getByText("Developer browser connection", { exact: true }).click();
@@ -568,4 +569,91 @@ test("conversation scope survives reload, provider selection and original-respon
   await panel.screenshot({ path: testInfo.outputPath("conversation-selected-context-wide.png") });
   expect(requests).toHaveLength(4);
   expect(external).toEqual([]); expect(failures).toEqual([]);
+});
+
+test("saved comparisons preserve original pages, incompatibilities and offline reads", async ({ page, context }, testInfo) => {
+  const external: string[] = [], generations: string[] = [], errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "POST" && ["/api/comparisons", "/api/research", "/api/terms"].includes(path)) generations.push(path);
+  });
+  await context.route("**/*", async (route) => {
+    if (new URL(route.request().url()).hostname !== "127.0.0.1") { external.push(route.request().url()); await route.abort(); }
+    else await route.continue();
+  });
+  await page.goto("/#saved"); await connect(page);
+  await page.getByRole("button", { name: "Comparison original SYN page", exact: true }).click();
+  await expect(page).toHaveURL(/#asset\?bundle=/);
+  const originalId = new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("bundle")!;
+  await page.getByRole("link", { name: "Compare this saved page" }).click();
+  await expect(page.getByRole("combobox", { name: "Left saved page", exact: true })).toHaveValue(originalId);
+  await page.getByRole("link", { name: "Connections", exact: true }).first().click();
+  const cloud = page.getByRole("checkbox", { name: "Allow cloud research", exact: true });
+  if (!(await cloud.isChecked())) await cloud.click();
+  await expect(cloud).toBeChecked();
+  await page.getByRole("link", { name: "Comparisons", exact: true }).click();
+  const left = page.getByRole("combobox", { name: "Left saved page", exact: true }), right = page.getByRole("combobox", { name: "Right saved page", exact: true });
+  await left.selectOption(originalId);
+  const earlier = await right.getByRole("option", { name: /Bookmarked: Earlier SECOND page/ }).getAttribute("value");
+  await right.selectOption(earlier!);
+  async function save(): Promise<ComparisonResult> {
+    const response = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/comparisons");
+    await page.getByRole("button", { name: "Create and save comparison", exact: true }).click();
+    const value = await response;
+    expect(value.status()).toBe(200);
+    const result = await value.json() as ComparisonResult;
+    await expect(page.getByRole("region", { name: "Saved comparison", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`comparison=${result.id}`));
+    return result;
+  }
+  const result = await save(), originalResultUrl = page.url();
+  expect(result.left.bundle_id).toBe(originalId); expect(result.right.bundle_id).toBe(earlier);
+  const revenue = page.locator('[data-comparison-row="financial:Revenues:annual"]');
+  await expect(revenue).toContainText("9,007,199,254,740,992 USD");
+  await expect(revenue).toContainText("9,007,199,254,740,993 USD");
+  await expect(revenue).toContainText("Matching type, units, period and method");
+  await revenue.screenshot({ path: testInfo.outputPath("comparison-wide.png") });
+  const source = revenue.getByRole("link", { name: "Original source 1 for SYN", exact: true });
+  const sourceHref = await source.getAttribute("href");
+  expect(sourceHref).toContain(`bundle=${originalId}`);
+  await source.focus(); await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`bundle=${originalId}`));
+  await expect(page.locator('details[id^="source-"][open]')).toBeVisible();
+  await page.goBack();
+  await expect(revenue).toContainText("9,007,199,254,740,993 USD");
+  const currentSecond = await right.getByRole("option", { name: /^SECOND SYNTHETIC COMPANY/ }).getAttribute("value");
+  await left.selectOption(originalId); await right.selectOption(currentSecond!);
+  await save();
+  await expect(revenue).toContainText("Different dates or reporting periods");
+  await expect(revenue).toContainText("2025-12-30");
+  const fund = await left.getByRole("option", { name: /^Synthetic fund parity/ }).getAttribute("value");
+  await left.selectOption(fund!); await right.selectOption(currentSecond!);
+  await save();
+  await expect(revenue).toContainText("Not applicable to this asset type");
+  await expect(page.locator('[data-comparison-row="description:holdings"]')).toContainText("The synthetic basket has changing exposures.");
+  await page.setViewportSize({ width: 640, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await revenue.screenshot({ path: testInfo.outputPath("comparison-mixed-narrow.png") });
+  await page.getByText(/^Other dimensions and missing evidence/).focus(); await page.keyboard.press("Enter");
+  await expect(page.locator(".comparison-gaps")).toHaveAttribute("open", "");
+  await page.getByRole("link", { name: "Connections", exact: true }).first().click();
+  const offlineSave = page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/settings");
+  await cloud.click(); expect((await offlineSave).status()).toBe(200); await expect(cloud).not.toBeChecked();
+  await page.evaluate((url) => { location.hash = new URL(url).hash; }, originalResultUrl);
+  await expect(page.getByRole("button", { name: "Create and save comparison", exact: true })).toBeDisabled();
+  await expect(revenue).toContainText("9,007,199,254,740,992 USD");
+  await expect(page.getByRole("status").filter({ hasText: "Offline: previously generated" })).toBeVisible();
+  await page.reload(); await connect(page);
+  await expect(revenue).toContainText("9,007,199,254,740,993 USD");
+  await expect(page.getByRole("button", { name: "Create and save comparison", exact: true })).toBeDisabled();
+  await expect(page.getByRole("region", { name: "Original evidence for SYN", exact: true })).toContainText("stale");
+  await page.route(`**/api/bundles/${originalId}`, (route) => route.abort());
+  await page.reload(); await connect(page);
+  await expect(page.getByText("Original source details could not be read. The saved comparison remains available.", { exact: true })).toBeVisible();
+  await expect(revenue).toContainText("9,007,199,254,740,992 USD");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await revenue.screenshot({ path: testInfo.outputPath("comparison-offline-narrow.png") });
+  expect(generations).toEqual(["/api/comparisons", "/api/comparisons", "/api/comparisons"]);
+  expect(external).toEqual([]); expect(errors).toEqual([]);
 });

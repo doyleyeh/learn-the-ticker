@@ -128,6 +128,43 @@ def test_cited_fund_descriptions_preserve_both_sides_and_never_infer_numeric_met
     assert next(r for r in restricted.rows if r.id == row.id).right.state == "missing"
 
 
+def test_current_fund_sections_are_adapted_without_rewriting_v1_saved_results():
+    from tests.desktop.parity_fixture import parity_bundles
+    left, right = empty_comparison_asset("fund"), empty_comparison_asset("etf")
+    original = next(parity_bundles())
+    # Keep the production section vocabulary and original admitted source support.
+    left.sources = [s.model_copy(update={"asset_id": left.asset.id, "retrieved_at": AT}) for s in original.sources]
+    left.claims = [c.model_copy(update={"asset_id": left.asset.id}) for c in original.claims]
+    legacy = build_comparison(left, right, method="saved-evidence-alignment-v1")
+    current = build_comparison(left, right)
+    field = "description:holdings"
+    assert next(r for r in legacy.rows if r.id == field).left.state == "missing"
+    assert next(r for r in current.rows if r.id == field).left.text == "The synthetic basket has changing exposures."
+    db = Database("sqlite://", testing=True)
+    seed_comparison(db, (left, right))
+    for result in (legacy, current):
+        db.put("comparison:" + result.id, "comparison", result.model_dump(mode="json"))
+    raw = make_backup(db)
+    target = Database("sqlite://", testing=True)
+    preview = preview_backup(target, raw)
+    assert preview.comparisons == 2
+    restore_backup(target, raw, preview.fingerprint)
+    for result in (legacy, current):
+        assert target.get("comparison:" + result.id) == result.model_dump(mode="json")
+
+
+def test_unknown_type_keeps_admitted_general_overview_but_suppresses_stock_metrics():
+    from tests.desktop.parity_fixture import parity_bundles
+    left = empty_comparison_asset("unknown")
+    original = list(parity_bundles())[1]
+    left.sources = [s.model_copy(update={"asset_id": left.asset.id, "retrieved_at": AT}) for s in original.sources]
+    left.claims = [c.model_copy(update={"asset_id": left.asset.id}) for c in original.claims if c.section == "overview"]
+    result = build_comparison(left, comparison_pair()[0])
+    overview = next(r for r in result.rows if r.id == "description:overview")
+    assert overview.left.state == "available" and "fictional browser example" in overview.left.text
+    assert revenue(result).left.state == "unknown_type"
+
+
 def test_immutable_publication_restore_and_offline_api_reads_never_generate(tmp_path, monkeypatch):
     db = Database("sqlite://", testing=True)
     left, right = seed_comparison(db)

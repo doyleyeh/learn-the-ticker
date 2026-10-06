@@ -342,7 +342,7 @@ def preview_backup(db: Database, raw: bytes) -> BackupSummary:
     manifest, data = read_backup(raw)
     counts = Counter(record.kind for record in data.records)
     allowed = restore_allowed(db)
-    return BackupSummary(format_version=manifest.format_version, created_at=manifest.created_at, fingerprint=hashlib.sha256(raw).hexdigest(), assets=counts["asset"], evidence_versions=counts["bundle"], conversations=counts["conversation"], saved_reports=counts["saved"], term_explanations=counts["term"], retained_imports=counts["import"], import_explanations=counts["import_explanation"], attachment_bytes=sum(entry.byte_count for entry in manifest.attachments), jobs=len(data.jobs), can_restore=allowed, reason=None if allowed else "Restore requires an empty library. Keep this installation intact and restore into a new library to preserve newer research.")
+    return BackupSummary(format_version=manifest.format_version, created_at=manifest.created_at, fingerprint=hashlib.sha256(raw).hexdigest(), assets=counts["asset"], evidence_versions=counts["bundle"], conversations=counts["conversation"], saved_reports=counts["saved"], term_explanations=counts["term"], retained_imports=counts["import"], import_explanations=counts["import_explanation"], comparisons=counts["comparison"], attachment_bytes=sum(entry.byte_count for entry in manifest.attachments), jobs=len(data.jobs), can_restore=allowed, reason=None if allowed else "Restore requires an empty library. Keep this installation intact and restore into a new library to preserve newer research.")
 
 
 def restore_backup(db: Database, raw: bytes, fingerprint: str) -> BackupSummary:
