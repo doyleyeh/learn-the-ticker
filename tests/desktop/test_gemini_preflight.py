@@ -1,4 +1,5 @@
 import copy
+import json
 import shutil
 import subprocess
 
@@ -8,8 +9,8 @@ from scripts import qualify_gemini as probe
 from backend.app.runtime_base import provider_environment
 
 
-@pytest.mark.parametrize("scenario", ["preflight", "onboarding"])
-def test_preflight_behavior_without_provider_account_vault_or_network(scenario):
+def test_preflight_behavior_without_provider_account_vault_or_network():
+    scenario = "preflight"
     result = subprocess.run(
         [shutil.which("node") or "node", str(probe.ROOT / f"tests/desktop/gemini_{scenario}_scenarios.mjs")],
         capture_output=True, timeout=20, env=provider_environment(),
@@ -17,6 +18,37 @@ def test_preflight_behavior_without_provider_account_vault_or_network(scenario):
     assert result.returncode == 0, "Synthetic account/transport/usage scenario failed"
     assert result.stdout == f"{scenario}_scenarios_passed\n".encode()
     assert result.stderr == b""
+
+
+def test_retired_consumer_setup_stops_before_python_runtime_or_vault(monkeypatch, capsys):
+    def forbidden(*args, **kwargs):
+        pytest.fail("Retired consumer setup must not access the provider")
+    monkeypatch.setattr(probe, "run", forbidden)
+    assert probe.main(["--complete-free-setup"]) == 2
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert probe.validate_report(json.loads(output.out)) == {
+        "status": "consumer_setup_retired", "inference_requested": False,
+        "generation_qualified": False, "credits_enabled": False,
+    }
+
+
+def test_retired_direct_javascript_setup_never_imports_provider(tmp_path):
+    marker = tmp_path / "unexpected-import"
+    entry = tmp_path / "fake-provider.mjs"
+    entry.write_text("import {writeFileSync} from 'node:fs'; writeFileSync("
+                     + json.dumps(str(marker)) + ", 'imported');", encoding="utf-8")
+    result = subprocess.run(
+        [shutil.which("node") or "node", str(probe.ROOT / "scripts/gemini_preflight.mjs"),
+         "--complete-free-setup", str(entry)], capture_output=True, timeout=15,
+        env=provider_environment(),
+    )
+    assert result.returncode == 2
+    assert result.stderr == b""
+    report = probe.validate_report(json.loads(result.stdout))
+    assert report["status"] == "consumer_setup_retired"
+    assert report["phase"] == "runtime_load"
+    assert not marker.exists()
 
 
 def test_no_implicit_live_access():

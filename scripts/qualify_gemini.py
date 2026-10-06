@@ -1,4 +1,4 @@
-"""Explicit Gemini inventory, account preflight or default free setup; no inference."""
+"""Explicit Gemini inventory or account preflight; consumer setup is retired."""
 import argparse
 import json
 import os
@@ -18,7 +18,7 @@ STATUSES = {
     "credential_persistence_failed", "tool_inventory_drift", "tool_policy_drift", "unexpected_failure", "cancelled",
     "timed_out", "invalid_launcher", "file_credentials_present",
     "account_service_unavailable", "account_scope_denied", "project_access_denied",
-    "onboarding_complete", "already_onboarded", "onboarding_pending", "free_tier_not_offered", "onboarding_failed",
+    "consumer_setup_retired",
 }
 
 
@@ -83,7 +83,7 @@ def run(mode, profile):
         raise ValueError("Oversized report")
     report = validate_report(json.loads(result.stdout))
     print(json.dumps(report, separators=(",", ":")))
-    return 0 if result.returncode == 0 and report["status"] in {"inventory_verified", "metadata_verified", "onboarding_complete", "already_onboarded"} else 2
+    return 0 if result.returncode == 0 and report["status"] in {"inventory_verified", "metadata_verified"} else 2
 
 
 def main(argv=None):
@@ -91,16 +91,19 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--inventory", action="store_true", help="Inspect isolated tool declarations without auth/network")
     mode.add_argument("--live", action="store_true", help="Read existing account tier/quota; never infer, onboard or sign in")
-    mode.add_argument("--complete-free-setup", action="store_true", help="Complete only the provider-offered default free tier on the signed-in account")
+    mode.add_argument("--complete-free-setup", action="store_true", help="Retired: returns locally without contacting Google")
     args = parser.parse_args(argv)
     try:
+        if args.complete_free_setup:
+            print('{"status":"consumer_setup_retired","inference_requested":false,"generation_qualified":false,"credits_enabled":false}')
+            return 2
         if args.inventory:
             with tempfile.TemporaryDirectory(prefix="ltt-gemini-inventory-") as directory:
                 return run("--inventory", Path(directory))
         if os.name != "nt" or not os.environ.get("LOCALAPPDATA"):
             raise ValueError("Windows native credentials required")
         profile = Path(os.environ["LOCALAPPDATA"]) / "org.learntheticker.desktop/connections/gemini-qualification"
-        return run("--complete-free-setup" if args.complete_free_setup else "--live", profile)
+        return run("--live", profile)
     except KeyboardInterrupt:
         print('{"status":"cancelled","inference_requested":false,"generation_qualified":false,"credits_enabled":false}')
         return 2

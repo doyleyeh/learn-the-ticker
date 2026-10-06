@@ -2,7 +2,6 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { accountPreflight, existingAccount, toolInventory, PreflightFailure } from './gemini_preflight_guard.mjs';
-import { completeFreeSetup } from './gemini_onboarding_guard.mjs';
 
 const emit = process.stdout.write.bind(process.stdout);
 const discard = (_chunk, encoding, callback) => {
@@ -21,8 +20,11 @@ process.on('SIGINT', () => failed('cancelled'));
 setTimeout(() => failed('timed_out'), 75_000);
 try {
   const [mode, entry] = process.argv.slice(2);
+  // Google's consumer CLI service ended on 2026-06-18. Stop before loading
+  // any runtime, touching its profile/keyring or attempting account setup.
+  if (mode === '--complete-free-setup') throw new PreflightFailure('consumer_setup_retired');
   const profile = process.env.GEMINI_CLI_HOME;
-  if (!['--inventory', '--live', '--complete-free-setup'].includes(mode) || !profile
+  if (!['--inventory', '--live'].includes(mode) || !profile
       || process.env.GEMINI_FORCE_ENCRYPTED_FILE_STORAGE !== 'true' || process.env.GEMINI_FORCE_FILE_STORAGE) {
     throw new PreflightFailure('invalid_launcher');
   }
@@ -40,8 +42,8 @@ try {
     phase = 'authentication';
     const client = await existingAccount(core);
     phase = 'metadata';
-    const report = mode === '--complete-free-setup' ? await completeFreeSetup(core, client) : await accountPreflight(core, client);
-    finish(report, ['metadata_verified', 'onboarding_complete', 'already_onboarded'].includes(report.status) ? 0 : 2);
+    const report = await accountPreflight(core, client);
+    finish(report, report.status === 'metadata_verified' ? 0 : 2);
   }
 } catch (error) {
   failed(error instanceof PreflightFailure ? error.code : 'unexpected_failure');
