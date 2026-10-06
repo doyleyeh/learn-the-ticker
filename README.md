@@ -182,6 +182,8 @@ Use the shared fast check with `python -m scripts.verify fast`; the existing Pow
 
 Requirements describe the destination; STATUS records verified progress. Historical documents retain original dates under docs/archive/2026-10-04.
 
+The database verification lane now includes a measured 1,000-asset library and approximately 60 MiB of retained attachments, with actual PostgreSQL rollback, restore and restart checks. See the [dataset, timings and limits](docs/verification/2026-10-06-library-scale.md). This qualifies the tested bounded archive; protected cache eviction, deletion controls and larger streamed archives remain unfinished.
+
 This is educational software, not investment advice or a trading application. Distribution is Apache-2.0; data and runtime dependencies retain their own terms.
 
 

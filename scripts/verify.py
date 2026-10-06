@@ -82,6 +82,7 @@ def verify(tier: str):
             [python, "scripts/smoke_local_service.py"],
             [python, "-m", "scripts.smoke_database"],
             [python, "-m", "scripts.smoke_restore"],
+            [python, "-m", "scripts.smoke_library_scale"],
         ):
             run(command)
     if tier in ("packaged", "full"):
