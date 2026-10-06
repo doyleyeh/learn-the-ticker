@@ -66,7 +66,21 @@ def main():
         postgres.start()
         database = Database(postgres.url())
         assert database.get("bundle:" + bundle["id"])["asset"]["id"] == "TEST:ONLY"
+        from tests.desktop.retention_fixture import concurrent_retention
+        retained = concurrent_retention(database)
+        database.engine.dispose()
+        database = None
+        postgres.stop()
+        postgres.start()
+        database = Database(postgres.url())
+        assert all(database.get(key) == value for key, value in retained.items())
+        assert database.job("queue-first-retention-job")["status"] == "queued"
+        assert database.get("conversation:expiry-first-retention") is None
+        assert database.job("expiry-first-retention-job") is None
+        from backend.app.backup import make_backup, read_backup
+        read_backup(make_backup(database))  # No orphan references after either ordering/restart.
         print("Private PostgreSQL lock, atomic rollback/commit, supervisor recovery and restart persistence passed.")
+        print("Concurrent conversation admission/expiry passed in both lock orderings; original saved evidence remained unchanged.")
     finally:
         if database:
             database.engine.dispose()

@@ -115,6 +115,8 @@ def test_restore_rejects_broken_context_references(target, version):
     foreign = EvidenceBundle(id="foreign", asset=IDENTITY.model_copy(update={"id": "OTHER"}))
     save(db, foreign)
     db.queue_research("pending", ResearchRequest(query="Explain", asset_id=IDENTITY.id, conversation_id=chat["id"]))
+    # Admitting the question renews idle retention; restore that exact newer state.
+    chat = db.get("conversation:" + chat["id"])
     raw = make_backup(db)
     def tamper(data):
         if target == "job":

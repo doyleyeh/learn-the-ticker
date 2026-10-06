@@ -188,6 +188,10 @@ class Database:
                 if version:
                     self.conversation_context(session, request.asset_id, version)
                 request = request.model_copy(update={"context_bundle_id": version})
+                # An admitted question is user activity even if its answer later
+                # fails or is cancelled. Renew within the same locked transaction.
+                self._put(session, record.id, "conversation", {
+                    **record.payload, "last_activity": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")})
             elif request.context_bundle_id:
                 raise ValueError("Page context selection requires a conversation")
             session.add(Job(id=job_id, request=request.model_dump(mode="json"), status="queued"))
@@ -249,19 +253,27 @@ class Database:
         cutoff = (at or datetime.now(timezone.utc)) - timedelta(days=retention_days)
         removed = 0
         with self.session.begin() as session:
-            jobs = list(session.scalars(select(Job)))
-            active = {job.request.get("conversation_id") for job in jobs if job.status in ("queued", "running")}
-            for record in session.scalars(select(Record).where(Record.kind == "conversation").with_for_update()):
+            # Admission takes this same row lock before inserting its job. Read
+            # job metadata only after acquiring the locks, so a waiter observes
+            # committed admission instead of deleting from an earlier snapshot.
+            records = list(session.scalars(select(Record).where(Record.kind == "conversation").with_for_update()))
+            conversation_id = Job.request["conversation_id"].as_string()
+            jobs = session.execute(select(Job.id, Job.status, conversation_id.label("conversation_id"))
+                .where(conversation_id.is_not(None)))
+            by_conversation = {}
+            for job in jobs:
+                by_conversation.setdefault(job.conversation_id, []).append(job)
+            for record in records:
                 payload = record.payload
+                related = by_conversation.get(payload["id"], [])
                 last = datetime.fromisoformat((payload.get("last_activity") or payload["created_at"]).replace("Z", "+00:00"))
-                if payload.get("bookmarked") or payload["id"] in active or last >= cutoff:
+                if payload.get("bookmarked") or any(job.status in ("queued", "running") for job in related) or last >= cutoff:
                     continue
                 # Expiring messages also removes their job requests and transport events.
                 # Evidence snapshots remain available to saved reports and prior citations.
-                for job in jobs:
-                    if job.request.get("conversation_id") == payload["id"]:
-                        session.execute(delete(Event).where(Event.job_id == job.id))
-                        session.delete(job)
+                for job in related:
+                    session.execute(delete(Event).where(Event.job_id == job.id))
+                    session.execute(delete(Job).where(Job.id == job.id))
                 session.delete(record)
                 removed += 1
         return removed
