@@ -1,13 +1,13 @@
 """Explicit removal of saved artifacts; cited evidence is never cascaded away."""
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 from sqlalchemy import delete, select
 
 from backend.app.contracts import Contract
 from backend.app.db import Event, Job, Record
 
-SavedItemKind = Literal["saved", "conversation", "comparison", "report"]
+SavedItemKind = Literal["saved", "conversation", "comparison", "report", "term"]
 RetainedItemKind = Literal["import", "import_explanation"]
 
 
@@ -20,7 +20,7 @@ class SavedItemDeletion(Contract):
 
 def delete_saved_item(db, kind: SavedItemKind, item_id: str) -> SavedItemDeletion:
     result = SavedItemDeletion(kind=kind, id=item_id, deleted=False)
-    with db.session.begin() as session:
+    with db.session(info={"cache_maintenance": kind == "term"}) as session, session.begin():
         record = session.get(Record, kind + ":" + item_id, with_for_update=True)
         if record is None:
             return result
@@ -34,6 +34,32 @@ def delete_saved_item(db, kind: SavedItemKind, item_id: str) -> SavedItemDeletio
                 raise ValueError("Wait for the active answer or cancel it before deleting this conversation")
             session.execute(delete(Event).where(Event.job_id.in_(select(Job.id).where(related))))
             session.execute(delete(Job).where(related))
+        if kind == "term":
+            from backend.app.contracts import TermExplanation, TermRequest
+            from backend.app.terms import term_key
+            try:
+                value = TermExplanation.model_validate(record.payload)
+                scope = TermRequest(**value.model_dump(include={"term", "mode", "bundle_id", "language", "level"}))
+            except ValidationError:
+                raise ValueError("Saved explanation scope is inconsistent; nothing was deleted") from None
+            if value.id != item_id or term_key(scope) != item_id:
+                raise ValueError("Saved explanation scope is inconsistent; nothing was deleted")
+            # The exclusive gate precedes admission's shared gate. Compare the
+            # canonical key in Python: SQL lower() is not Unicode casefold().
+            rows = session.execute(select(Job.id, Job.status, Job.request).where(
+                Job.request["purpose"].as_string() == "term_explanation",
+                Job.request["bundle_id"].as_string() == value.bundle_id))
+            try:
+                matching = [row for row in rows if term_key(TermRequest.model_validate(row.request)) == item_id]
+            except ValidationError:
+                raise ValueError("Saved explanation jobs are inconsistent; nothing was deleted") from None
+            if any(row.status in ("queued", "running") for row in matching):
+                raise ValueError("Wait for the active explanation or cancel it before deleting this item")
+            identifiers = [row.id for row in matching]
+            for start in range(0, len(identifiers), 500):
+                selected = identifiers[start:start + 500]
+                session.execute(delete(Event).where(Event.job_id.in_(selected)))
+                session.execute(delete(Job).where(Job.id.in_(selected)))
         session.delete(record)
     return result.model_copy(update={"deleted": True})
 

@@ -961,3 +961,74 @@ test("offline cache status explains protected work and cleanup performs no resea
   await expect(page.locator("#ticker-statistics")).toContainText("9,007,199,254,740,992");
   expect(inference).toEqual([]); expect(external).toEqual([]); expect(errors).toEqual([]);
 });
+
+test("offline term and question deletion clears saved interpretations while preserving other scopes", async ({ page, context }, testInfo) => {
+  const errors: string[] = [], external: string[] = [], inference: string[] = [], removed: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "DELETE") removed.push(path);
+    if (request.method() === "POST" && ["/api/research", "/api/terms", "/api/imports/explanations"].includes(path)) inference.push(path);
+  });
+  await context.route("**/*", async (route) => {
+    if (new URL(route.request().url()).hostname !== "127.0.0.1") { external.push(route.request().url()); await route.abort(); }
+    else await route.continue();
+  });
+  await page.goto("/#connections"); await connect(page);
+  const cloud = page.getByRole("checkbox", { name: "Allow cloud research", exact: true });
+  if (await cloud.isChecked()) {
+    const response = page.waitForResponse((r) => r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/settings");
+    await cloud.click(); expect((await response).status()).toBe(200);
+  }
+  const language = page.getByRole("combobox", { name: "Explanation language", exact: true });
+  if (await language.inputValue() !== "en") {
+    const response = page.waitForResponse((r) => r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/settings");
+    await language.selectOption("en"); expect((await response).status()).toBe(200);
+  }
+  await page.getByRole("link", { name: "Saved research", exact: true }).click();
+  await page.getByRole("button", { name: "Comparison original SYN page", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Understand this page", exact: true });
+  const definition = "This saved definition explains revenue without adding facts.";
+  const revenue = panel.getByRole("button", { name: "revenue", exact: true });
+  await revenue.focus(); await expect(revenue).toHaveAttribute("title", definition);
+  await revenue.click(); await expect(panel.getByText(definition, { exact: true })).toBeVisible();
+  const toggle = panel.getByText("Delete saved explanation", { exact: true });
+  await toggle.focus(); await page.keyboard.press("Enter");
+  const confirmation = panel.getByRole("region", { name: "Delete saved explanation confirmation", exact: true });
+  await expect(confirmation).toContainText("selected evidence version, language and reader level");
+  await confirmation.screenshot({ path: testInfo.outputPath("delete-term-wide.png") });
+  await confirmation.getByRole("button", { name: "Cancel deletion", exact: true }).click();
+  await expect(toggle).toBeFocused(); expect(removed).toEqual([]);
+  await page.keyboard.press("Enter");
+  const deleted = page.waitForResponse((r) => r.request().method() === "DELETE");
+  await confirmation.getByRole("button", { name: "Delete permanently", exact: true }).click();
+  expect((await deleted).status()).toBe(200);
+  await expect(panel.getByText(definition, { exact: true })).toHaveCount(0);
+  await expect(revenue).not.toHaveAttribute("title", definition);
+  await revenue.click();
+  await expect(panel.getByText("No saved explanation for this evidence version. A core definition is shown when available.", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "revenue · Core definition", exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "Explanation level", exact: true }).selectOption("intermediate");
+  await revenue.click(); await expect(panel.getByText(definition, { exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "Explanation level", exact: true }).selectOption("beginner");
+  await panel.getByRole("combobox", { name: "Learning mode", exact: true }).selectOption("question");
+  await panel.getByRole("textbox", { name: "Question about this saved page", exact: true }).fill("Revenue");
+  await panel.getByRole("button", { name: "Look up saved explanation", exact: true }).click();
+  await expect(panel.getByText("This saved page does not answer this question.", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 640, height: 900 });
+  await toggle.focus(); await page.keyboard.press("Enter");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await confirmation.screenshot({ path: testInfo.outputPath("delete-question-narrow.png") });
+  const deletedQuestion = page.waitForResponse((r) => r.request().method() === "DELETE");
+  await confirmation.getByRole("button", { name: "Delete permanently", exact: true }).click();
+  expect((await deletedQuestion).status()).toBe(200);
+  await panel.getByRole("button", { name: "Look up saved explanation", exact: true }).click();
+  await expect(panel.getByText("No saved answer for this question and evidence version.", { exact: true })).toBeVisible();
+  await page.reload(); await connect(page);
+  await revenue.click(); await expect(panel.getByText(definition, { exact: true })).toHaveCount(0);
+  await page.getByRole("navigation", { name: "Ticker sections", exact: true }).getByRole("button", { name: "Statistics", exact: true }).click();
+  await expect(page.locator("#ticker-statistics")).toContainText("9,007,199,254,740,992");
+  expect(removed).toHaveLength(2); expect(new Set(removed).size).toBe(2);
+  expect(removed.every((path) => /^\/api\/library\/items\/term\/[a-f0-9]{64}$/.test(path))).toBe(true);
+  expect(inference).toEqual([]); expect(external).toEqual([]); expect(errors).toEqual([]);
+});

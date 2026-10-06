@@ -5,6 +5,7 @@ import { api, watchJob } from "./client";
 import { sourceRoute } from "./routes";
 import { privateSource } from "./marketPresentation";
 import type { EvidenceBundle, Settings, TermExplanation, TermRequest } from "./contracts";
+import { DeleteSavedItem } from "./DeleteSavedItem";
 
 type TermJob = { id?: string; status: string; result?: TermExplanation; error?: string };
 const core = Object.values(glossaryTerms);
@@ -61,8 +62,10 @@ export function TermLearning({ bundle, level, settings, children }: { bundle: Ev
     const key = normalizeTerm(value);
     if (requests.current.has(key)) return;
     requests.current.add(key);
+    const current = revision.current;
     try {
       const result = await api<TermJob>("/api/terms/lookup", { method: "POST", body: JSON.stringify(request(value)) });
+      if (current !== revision.current) { requests.current.delete(key); return; }
       if (result.result) setCached((previous) => ({ ...previous, [key]: result.result! }));
     } catch { requests.current.delete(key); }
   }
@@ -106,6 +109,12 @@ export function TermLearning({ bundle, level, settings, children }: { bundle: Ev
       {fallback && !answer && <div className="term-result"><h3>{fallback.term} · Core definition</h3><p>{fallback.definition}</p><p>{fallback.whyItMatters}</p><p>Common misunderstanding: {fallback.beginnerMistake}</p><p className="term-meta">Curated learning material in English. General definition; it does not describe this asset’s current figures.</p></div>}
       {answer && <div className="term-result" aria-live="polite"><h3>{answer.term}</h3><p>{answer.explanation}</p><p className="term-meta">{answer.basis === "snapshot" ? "Interpretation of this evidence version" : answer.basis === "insufficient" ? "Insufficient saved evidence · No current-data check" : "General explanation · No source citation supplied"} · {answer.language} · {answer.level} · {answer.provider}</p><p>Generated {new Date(answer.created_at!).toLocaleString()}. This explanation has not been independently verified and is never used as factual evidence.</p><div className="chip-row">{answer.source_ids?.map((id) => { const source = bundle.sources?.find((entry) => entry.id === id); return source ? <CitationChip key={id} label={source.title} href={`#${sourceRoute(bundle.id!, id)}`} citation={{ citationId: id, sourceDocumentId: id, title: source.title, publisher: source.publisher, freshnessState: "unknown" }}/> : null; })}</div></div>}
       {progress && <p role="status">{progress}</p>}
+      {answer && <DeleteSavedItem key={`delete:${answer.id}`} kind="term" id={answer.id} title={`${answer.term} · ${answer.language} · ${answer.level}`} onDeleted={() => {
+        const removed = answer.id;
+        revision.current += 1; requests.current.clear();
+        setCached((previous) => Object.fromEntries(Object.entries(previous).filter(([, value]) => value.id !== removed)));
+        setAnswer(undefined); setJob(undefined); setError(""); setProgress("Saved explanation deleted. Other saved interpretations and original evidence remain available.");
+      }}/>}
       {busy && <p role="status">{requesting ? "Checking saved explanations…" : "Your selected provider is preparing an explanation."}</p>}
       {job?.id && ["queued", "running"].includes(job.status) && <button onClick={() => api<TermJob>(`/api/jobs/${job.id}/cancel`, { method: "POST" }).then((value) => { setJob(value); setProgress("Explanation cancelled."); }).catch(fail)}>Cancel explanation</button>}
       {error && <p role="alert">{error}</p>}

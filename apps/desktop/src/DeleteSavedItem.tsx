@@ -6,6 +6,7 @@ type ItemKind = SavedItemDeletion["kind"] | RetainedItemDeletion["kind"];
 const names: Record<ItemKind, string> = {
   saved: "bookmark", conversation: "conversation", comparison: "comparison", report: "report",
   import: "retained document", import_explanation: "document explanation",
+  term: "saved explanation",
 };
 
 export function DeleteSavedItem({ kind, id, title, onDeleted }: {
@@ -33,6 +34,7 @@ export function DeleteSavedItem({ kind, id, title, onDeleted }: {
       <p>Delete <strong>{title}</strong> from this library?</p>
       <p>{kind === "import" ? "This removes the retained copy, all of its saved explanations and their job history. An active document explanation must finish or be cancelled first. Your original file outside the app is unchanged. "
         : kind === "import_explanation" ? "This removes this language and reader-level explanation and its job history. The retained document and its other explanations remain available. "
+        : kind === "term" ? "This removes this term or question explanation and its job history for the selected evidence version, language and reader level. Other explanation scopes remain available. "
         : kind === "conversation" ? "This removes the transcript and its research-job history. An active answer must finish or be cancelled first. " : "This removes the saved item. "}
         Original evidence stays cached, subject to cleanup when no saved items need it. Independently saved items remain available. Previously downloaded backups and exports keep their own copies.</p>
       <p>This deletion cannot be undone in the app.</p>

@@ -1200,7 +1200,7 @@ export type GuideSourceIds =
   | [string, string, string, string, string, string, string]
   | [string, string, string, string, string, string, string, string];
 export type SchemaVersion58 = "1";
-export type Kind6 = "saved" | "conversation" | "comparison" | "report";
+export type Kind6 = "saved" | "conversation" | "comparison" | "report" | "term";
 export type Id19 = string;
 export type Deleted = boolean;
 export type EvidencePreserved = true;

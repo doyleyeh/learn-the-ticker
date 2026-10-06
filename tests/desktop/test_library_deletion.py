@@ -44,7 +44,7 @@ def test_authenticated_offline_delete_is_idempotent_and_preserves_all_other_arti
     assert target.list("asset") == db.list("asset")
 
 
-@pytest.mark.parametrize("kind", ["bundle", "asset", "settings", "import", "term", "job", "unknown"])
+@pytest.mark.parametrize("kind", ["bundle", "asset", "settings", "import", "import_explanation", "job", "unknown"])
 def test_delete_rejects_unimplemented_or_protected_record_types(tmp_path, kind):
     db = Database("sqlite://", testing=True)
     seed(db)

@@ -64,6 +64,8 @@ M9 explicit retained-document deletion removes its stored bytes, metadata, all i
 
 DEC-059 adds automatic disposable-cache maintenance within the existing schema/archive revision. All app-owned database sessions share an advisory admission gate; maintenance takes it exclusively and removes complete unprotected reference groups transactionally. Restores still lock the empty target and preserve newer installations; no automatic destructive migration is introduced. Saved/import/learning roots survive regardless of disposable budget. Payload accounting is distinct from PostgreSQL file size; archive limits are unchanged, so a 10-GB cache budget does not establish large-archive compatibility.
 
+Explicit cached term/page-question deletion removes only the selected canonical scope and its matching job/event history under the exclusive library gate. Original bundles and other interpretation scopes stay intact. Matching uses Python Unicode normalization/casefold consistently with admission. Existing format-1/2 backups keep their downloaded copies; new archives omit deleted scopes, with actual restore/restart acceptance. Record kinds and schema/archive revisions are unchanged.
+
 ## Native packaging and platforms
 
 The current source setup installs Python/frontend dependencies after the developer provides Python and Node. Native launch additionally requires Rust/MSVC, webview prerequisites and an explicit `LTT_PG_BIN` directory. The optional Docker Compose database is not the private desktop cluster. The public installer must remove the need for users to install or operate core Python, Node, Docker or PostgreSQL dependencies themselves.

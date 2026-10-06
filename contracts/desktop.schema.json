@@ -3601,7 +3601,8 @@
             "saved",
             "conversation",
             "comparison",
-            "report"
+            "report",
+            "term"
           ],
           "title": "Kind",
           "type": "string"

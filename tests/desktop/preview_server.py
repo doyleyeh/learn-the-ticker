@@ -111,6 +111,9 @@ if __name__ == "__main__":
     value = bundle.model_dump(mode="json")
     db.put("asset:" + asset.id, "asset", value)
     db.put("bundle:" + bundle.id, "bundle", value, asset.id)
+    if "--deletion-demo" in sys.argv:
+        from tests.desktop.term_deletion_fixture import seed_terms
+        seed_terms(db, bundle.id)
     if "--parity-demo" in sys.argv:
         from tests.desktop.parity_fixture import parity_bundles
         for example in parity_bundles():
