@@ -4,6 +4,8 @@
 
 ## Verification tiers
 
+Gemini login-only tooling: `python -m pytest tests/desktop/test_gemini_login.py -q` uses synthetic JavaScript keychain/OAuth doubles to reject missing native storage, foreign services, failed/missing persistence and implicit login; Python cases cover inherited auth/billing/Node hooks, package drift and file-credential preservation. CI needs no staged Gemini package, vault or provider network. Separately, `python -m scripts.connect_gemini --check` verifies the pinned staged core/import hashes and performs a real native synthetic write/read/delete only. After Q and explicit user sign-in authorization, `--login` opens the provider OAuth page; record only fixed outcome categories. Authentication does not qualify tools, models, usage, inference or production integration.
+
 | Group/tier | Exact command | What passing establishes |
 | --- | --- | --- |
 | F — fast | `python -m scripts.verify fast` | Ruff correctness lint, ESLint correctness lint, non-writing schema checks, local Markdown links/anchors, Git whitespace and TypeScript |
