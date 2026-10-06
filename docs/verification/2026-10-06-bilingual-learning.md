@@ -43,3 +43,5 @@ Required next action: restore reliable installed Codex account RPC behavior, the
 | Permitted exports | New bilingual export tests and existing financial/private export cases retain exact original references and uncertainty, omit excerpts/private dependencies and leave original records unchanged |
 
 Native artifacts predate M5 UI/context changes. All-provider and clean-machine release requirements remain M8/M11; M5 acceptance cannot promote those scopes.
+
+Subsequent 2026-10-06 recovery: the [account-routing repair and final M5 review](2026-10-06-account-routing-recovery.md) records further failed attempts, actual bounded timeout recovery, the complete eight-case live matrix and semantic review. That later evidence resolves this acceptance blocker; the original observations and counts above are preserved.

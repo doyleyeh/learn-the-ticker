@@ -98,6 +98,27 @@ def test_probe_refuses_version_change_between_preflight_and_turn(tmp_path, monke
         asyncio.run(ProbeRuntime(tmp_path, "recorded-version").require_generation(allow_browsing=False))
 
 
+@pytest.mark.parametrize("message,diagnostic", [
+    ("Codex selected-model tool metadata could not be verified. No inference was started.", "model_metadata"),
+    ("Codex request timed out. Reconnect before retrying.", "rpc_timeout"),
+    ("private-provider-account-diagnostic", "runtime_or_probe_check_failed"),
+])
+def test_preflight_retains_sanitized_failure_category_without_retry(tmp_path, monkeypatch, message, diagnostic):
+    async def run():
+        rpc = FakeRPC(); rpc.account = {"type": "chatgpt"}
+        async def discover(self):
+            return RuntimeCapabilities(provider="codex", installed=True, qualification="protocol_only", version="synthetic")
+        async def fail(model):
+            raise RuntimeFailure(message)
+        monkeypatch.setattr(AIRuntime, "check", discover)
+        rpc.restrict_model = fail
+        result = await preflight(tmp_path, None, rpc_factory=lambda *args, **kwargs: rpc)
+        assert result["blocker"] == "restricted_catalog" and result["diagnostic"] == diagnostic
+        assert not result["generation_requested"] and "private" not in json.dumps(result)
+        assert rpc.closed and not any(method == "turn/start" for method, _ in rpc.requests)
+    asyncio.run(run())
+
+
 def test_probe_output_limit_closes_stream_before_temporary_workspace_cleanup(tmp_path):
     async def run():
         closed = []

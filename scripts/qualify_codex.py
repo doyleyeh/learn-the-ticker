@@ -71,8 +71,9 @@ async def preflight(profile: Path, model: str | None, *, rpc_factory=CodexRPC) -
         await rpc.verify_generation(selected)
         report.update(status="preflight_passed", blocker=None)
         return report
-    except (RuntimeFailure, OSError, ValueError, TypeError):
-        return report  # Keep only the fixed stage; never print vendor diagnostics.
+    except (RuntimeFailure, OSError, ValueError, TypeError) as exc:
+        report["diagnostic"] = failure_reason(exc)
+        return report  # Fixed stage/category only; never print vendor diagnostics.
     finally:
         await rpc.close()
 
@@ -159,6 +160,8 @@ def failure_reason(error):
             "Codex reported a provider error; no automatic retry was attempted.": "provider_error",
             "Codex turn did not complete. Check quota, authentication or cancellation.": "turn_incomplete",
             "Codex rejected the request. Check runtime version, authentication and permissions.": "rpc_rejected",
+            "Codex request timed out. Reconnect before retrying.": "rpc_timeout",
+            "Codex selected-model tool metadata could not be verified. No inference was started.": "model_metadata",
             "Codex returned activity for an unexpected thread or turn.": "foreign_activity",
         }.get(str(error), "runtime_or_probe_check_failed")
     return "invalid_output"

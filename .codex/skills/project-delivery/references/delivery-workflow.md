@@ -8,7 +8,7 @@ Read the seven canonical documents and relevant design/migration mechanisms. Run
 
 State acceptance criteria, inspect existing implementation/tests, and reuse working behavior. Record significant deviations in DECISIONS and deliberately update SPEC/PLAN only for an authorized decision. Use affected behavioral tests while editing; run related suites after a component and the milestone gate after a coherent task/checkpoint. EVALS owns exact commands and prerequisites.
 
-On failure: diagnose, repair, rerun the failed check and affected checks. After three failed repair attempts, write the observed failure, attempted repairs, diagnosis and required next action into dated evidence and STATUS. Mark the task BLOCKED if external input/environment is needed. Never count an omitted or unimplemented required check as passing. Independent unblocked tasks may proceed; dependent milestones may not.
+On failure: diagnose, repair, rerun the failed check and affected checks. After three failed repair attempts, write the observed failure, attempted repairs, diagnosis and required next action into dated evidence and STATUS. This is a diagnostic checkpoint, not a fixed retry ceiling: continue bounded attempts supported by a new hypothesis, observation or repair, and record their outcomes. Do not repeatedly rerun an unchanged expensive live matrix without a diagnostic reason. Mark the task BLOCKED only when unresolved external input/environment prevents meaningful repair; preserve sign-in, quota, cost and approval stops. Never count an omitted or unimplemented required check as passing. Independent unblocked tasks may proceed; dependent milestones may not.
 
 ## Review and checkpoint
 

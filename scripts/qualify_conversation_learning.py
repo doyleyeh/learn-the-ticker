@@ -29,6 +29,24 @@ MATRIX = (("en", "beginner"), ("zh-TW", "beginner"), ("en", "intermediate"), ("z
 VALUE = "1.25000000000000001"
 
 
+def account_error_category(error):
+    """Exact pinned-runtime labels only; never return arbitrary vendor text."""
+    if not isinstance(error, dict) or type(error.get("code")) is not int or error["code"] != -32603:
+        return "other"
+    message = error.get("message")
+    if not isinstance(message, str):
+        return "other"
+    return {
+        "workspace routing discovery timed out": "routing_timeout",
+        "workspace routing discovery failed": "routing_failed",
+        "workspace routing discovery unauthorized (401)": "routing_unauthorized",
+        "configuration changed during workspace routing discovery; retry account/read": "routing_configuration_changed",
+        "failed to load workspace requirements": "requirements_load",
+        "failed to reload workspace requirements": "requirements_reload",
+        "account changed during workspace routing discovery": "account_changed",
+    }.get(message, "other")
+
+
 def rpc_diagnostic(method, response):
     methods = {"initialize", "account/read", "account/rateLimits/read", "model/list", "config/read", "config/requirements/read",
         "experimentalFeature/list", "windowsSandbox/readiness", "thread/start", "turn/start", "turn/interrupt"}
@@ -36,7 +54,8 @@ def rpc_diagnostic(method, response):
     code = error.get("code") if isinstance(error, dict) else None
     return {"method": method if method in methods else "other",
         "response": "rpc_error" if error is not None else "invalid_result",
-        "code": str(code) if type(code) is int and code in {-32700, -32600, -32601, -32602, -32603, -32000} else "other"}
+        "code": str(code) if type(code) is int and code in {-32700, -32600, -32601, -32602, -32603, -32000} else "other",
+        "category": account_error_category(error) if method == "account/read" else "other"}
 
 
 def observed_rpc(report):
@@ -44,13 +63,28 @@ def observed_rpc(report):
         async def receive(self):
             value = await super().receive()
             if "id" in value and "method" not in value and ("error" in value or not isinstance(value.get("result"), dict)):
-                if not report:
-                    report.update(rpc_diagnostic(getattr(self, "observed_method", "other"), value))
+                diagnostic = rpc_diagnostic(getattr(self, "observed_method", "other"), value)
+                report.setdefault("first_error", diagnostic)
+                report["last_error"] = diagnostic
             return value
 
-        async def request(self, method, params, timeout=30):
+        async def request(self, method, params, timeout=None):
             self.observed_method = method
-            return await super().request(method, params, timeout)
+            self.account_reads = 0
+            try:
+                return await super().request(method, params, timeout)
+            except (RuntimeFailure, OSError, TimeoutError) as exc:
+                report["failed_request"] = {"method": rpc_diagnostic(method, {})["method"],
+                    "diagnostic": failure_reason(exc), "account_read_attempts": self.account_reads}
+                raise
+            finally:
+                if self.account_reads > 1:
+                    report["account_read_retries"] = report.get("account_read_retries", 0) + self.account_reads - 1
+
+        async def send(self, message):
+            if message.get("method") == "account/read":
+                self.account_reads += 1
+            await super().send(message)
     return ObservedRPC
 
 
@@ -92,7 +126,7 @@ class ObservedRuntime:
 
 
 async def exercise(runtime, workspace, model, *, review=None):
-    """Eight turns maximum; stop at the first rejection, never retry or switch providers."""
+    """Eight turns maximum; stop at terminal failure, never replay inference or switch providers."""
     db = Database("sqlite://", testing=True)
     app, instrument, _, _ = synthetic_service(workspace, enabled=False, database=db)
     tracked = ObservedRuntime(runtime)
@@ -194,17 +228,18 @@ async def check(*, live=False, review=None):
     if not live:
         return {"status": "not_requested", "generation_requested": False}
     profile = resolve_profile(None)
-    report = await preflight(profile, None)
+    rpc_report = {}
+    report = await preflight(profile, None, rpc_factory=observed_rpc(rpc_report))
+    # Keep the same observation through preflight and generation, including
+    # recovered errors; a metadata-stage stop must not erase account diagnostics.
+    report["rpc_diagnostic"] = rpc_report
     if report["status"] != "preflight_passed":
         return report
     if not await enforcement_ready(profile):
         return {**report, "status": "blocked", "blocker": "sandbox_enforcement", "generation_requested": False}
     with tempfile.TemporaryDirectory(prefix="ltt-bilingual-learning-") as directory:
-        rpc_report = {}
         with patch("backend.app.codex_runtime.CodexRPC", observed_rpc(rpc_report)):
             result = await exercise(CodexRuntime(profile), Path(directory), report["model"], review=review)
-        if rpc_report:
-            result["rpc_diagnostic"] = rpc_report
     return {**report, **result, "generation_requested": True, "synthetic_evidence_only": True, "persistent_library_modified": False}
 
 

@@ -5,6 +5,7 @@ Authority and ownership follow [AGENTS.md](../../../AGENTS.md): safety first; [S
 Focus on P0/P1 issues only:
 
 - Missing evidence for completion claims, failed checks, or fixtures represented as live provider/installer qualification.
+- Three failed delivery repairs require recorded diagnosis, not automatic abandonment while evidence-driven repair remains possible. DEC-052 runtime recovery is narrower: only the exact account/read routing timeout, refreshToken=false, at most two additional reads within one 60-second account deadline or an explicit caller deadline. Reject generic -32603 retries, stale authentication reuse, replayed inference, ignored auth/quota/cancel failures or hidden recovered-error qualification evidence.
 - Buy/sell/hold, allocation/position sizing, tax advice, unsupported targets or trading behavior.
 - Wrong-asset or unsupported citations; fabricated dates, values or history; unit/period mismatches; stale or missing evidence presented as current fact.
 - Unverified notes or generated term interpretations becoming factual context, chart inputs or calculations. Generic term definitions without a citation must disclose that limitation.

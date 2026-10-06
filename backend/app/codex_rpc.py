@@ -15,6 +15,21 @@ from backend.app.runtime_base import RuntimeFailure, executable_command, provide
 from backend.app.owned_process import launch_owned, close_owned
 
 
+def read_only_account_request(method: str, params: dict) -> bool:
+    return method == "account/read" and params.keys() == {"refreshToken"} and params["refreshToken"] is False
+
+
+def retryable_account_timeout(method: str, params: dict, response: dict) -> bool:
+    """Pinned App Server routing timeout only; never authentication or inference."""
+    if not read_only_account_request(method, params):
+        return False
+    error = response.get("error")
+    return (isinstance(error, dict) and set(error) <= {"code", "message", "data"}
+        and type(error.get("code")) is int and error["code"] == -32603
+        and error.get("message") == "workspace routing discovery timed out"
+        and error.get("data") is None and "result" not in response)
+
+
 class CodexRPC:
     def __init__(self, profile: Path, workspace: Path, *, allow_browsing: bool = False):
         self.profile, self.workspace = profile, workspace
@@ -108,23 +123,33 @@ class CodexRPC:
         except (ValueError, TypeError, OSError) as exc:
             raise RuntimeFailure("Codex returned invalid or oversized protocol output.") from exc
 
-    async def request(self, method: str, params: dict, timeout: float = 30) -> dict:
-        self.sequence += 1
-        expected = self.sequence
+    async def request(self, method: str, params: dict, timeout: float | None = None) -> dict:
+        # Three provider-side 15-second routing windows plus bounded backoff.
+        # Explicit caller deadlines remain authoritative; other RPCs keep 30s.
+        if timeout is None:
+            timeout = 60 if read_only_account_request(method, params) else 30
         try:
+            # One deadline covers all attempts/backoff. Only a correlated, exact
+            # read-only routing timeout can retry; no inference is ever replayed.
             async with asyncio.timeout(timeout):
-                await self.send({"id": expected, "method": method, "params": params})
-                while True:
-                    message = await self.receive()
-                    if type(message.get("id")) is int and message["id"] == expected and "method" not in message:
-                        if "error" in message or not isinstance(message.get("result"), dict):
-                            raise RuntimeFailure("Codex rejected the request. Check runtime version, authentication and permissions.")
-                        return message["result"]
-                    if "id" in message or not isinstance(message.get("method"), str):
-                        raise RuntimeFailure("Codex requested unsupported access or returned an unexpected response.")
-                    if len(self.pending) >= 256:
-                        raise RuntimeFailure("Codex exceeded the pending event limit.")
-                    self.pending.append(message)
+                for attempt in range(3):
+                    self.sequence += 1
+                    expected = self.sequence
+                    await self.send({"id": expected, "method": method, "params": params})
+                    while True:
+                        message = await self.receive()
+                        if type(message.get("id")) is int and message["id"] == expected and "method" not in message:
+                            if "error" in message or not isinstance(message.get("result"), dict):
+                                if attempt < 2 and retryable_account_timeout(method, params, message):
+                                    await asyncio.sleep((.25, .75)[attempt])
+                                    break
+                                raise RuntimeFailure("Codex rejected the request. Check runtime version, authentication and permissions.")
+                            return message["result"]
+                        if "id" in message or not isinstance(message.get("method"), str):
+                            raise RuntimeFailure("Codex requested unsupported access or returned an unexpected response.")
+                        if len(self.pending) >= 256:
+                            raise RuntimeFailure("Codex exceeded the pending event limit.")
+                        self.pending.append(message)
         except TimeoutError as exc:
             raise RuntimeFailure("Codex request timed out. Reconnect before retrying.") from exc
 

@@ -58,7 +58,7 @@ def test_default_never_reads_account_or_generates(monkeypatch):
 
 
 def test_failed_preflight_stops_before_enforcement_or_inference(monkeypatch):
-    async def denied(*args):
+    async def denied(*args, **kwargs):
         return {"status": "blocked", "blocker": "included_usage_unconfirmed_or_exhausted", "generation_requested": False}
     def forbidden(*args):
         pytest.fail("Failed preflight must stop")
@@ -95,7 +95,23 @@ def test_first_failure_stops_without_retry_or_raw_output_and_closes_stream(tmp_p
 
 def test_rpc_diagnostic_does_not_expose_provider_messages_identifiers_or_unknown_codes():
     response = {"id": "secret-thread", "error": {"code": -32602, "message": "private account diagnostic", "data": "secret"}}
-    assert rpc_diagnostic("turn/start", response) == {"method": "turn/start", "response": "rpc_error", "code": "-32602"}
+    assert rpc_diagnostic("turn/start", response) == {"method": "turn/start", "response": "rpc_error", "code": "-32602", "category": "other"}
     response["error"]["code"] = "sensitive-provider-value"
-    assert rpc_diagnostic("private-method", response) == {"method": "other", "response": "rpc_error", "code": "other"}
+    assert rpc_diagnostic("private-method", response) == {"method": "other", "response": "rpc_error", "code": "other", "category": "other"}
     assert rpc_diagnostic("model/list", {"result": None})["response"] == "invalid_result"
+
+
+@pytest.mark.parametrize("message,code,category", [
+    ("workspace routing discovery timed out", -32603, "routing_timeout"),
+    ("workspace routing discovery unauthorized (401)", -32603, "routing_unauthorized"),
+    ("workspace routing discovery failed", -32603, "routing_failed"),
+    ("workspace routing discovery timed out: private account", -32603, "other"),
+    ("workspace routing discovery timed out", -32602, "other"),
+    ("workspace routing discovery timed out", "-32603", "other"),
+    ({"private": "diagnostic"}, -32603, "other"),
+])
+def test_account_diagnostic_requires_exact_known_code_and_label(message, code, category):
+    response = {"error": {"code": code, "message": message, "data": "private"}}
+    assert rpc_diagnostic("account/read", response)["category"] == category
+    assert rpc_diagnostic("turn/start", response)["category"] == "other"
+    assert "private" not in json.dumps(rpc_diagnostic("account/read", response))
