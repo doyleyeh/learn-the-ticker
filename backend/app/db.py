@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, case, create_engine, delete, select
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, case, create_engine, delete, event, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -46,8 +46,39 @@ class Database:
         kwargs = {"connect_args": {"check_same_thread": False}, "poolclass": StaticPool} if testing and url == "sqlite://" else {}
         self.engine = create_engine(url, pool_pre_ping=True, **kwargs)
         self.session = sessionmaker(self.engine, expire_on_commit=False)
+        event.listen(self.session, "after_begin", self._library_transaction)
         if testing:
             Base.metadata.create_all(self.engine)
+
+    @staticmethod
+    def _library_transaction(session, transaction, connection):
+        if connection.dialect.name == "postgresql":
+            # Always precedes row/table locks. Ordinary transactions may overlap;
+            # exclusive cache planning/deletion sees no concurrent library writes.
+            function = "pg_advisory_xact_lock" if session.info.get("cache_maintenance") else "pg_advisory_xact_lock_shared"
+            connection.execute(text(f"SELECT {function}(1279415363, 1)"))
+
+    def create_saved(self, bundle_id, title):
+        from backend.app.contracts import SavedResearch
+        with self.session.begin() as session:
+            original = session.get(Record, "bundle:" + bundle_id)
+            if not original or original.kind != "bundle":
+                raise ValueError("Evidence snapshot not found")
+            value = SavedResearch(bundle_id=bundle_id, title=title).model_dump(mode="json")
+            self._put(session, "saved:" + value["id"], "saved", value, original.payload["asset"]["id"])
+        return value
+
+    def queue_term(self, job_id, request):
+        from backend.app.terms import term_key
+        with self.session.begin() as session:
+            original = session.get(Record, "bundle:" + request.bundle_id)
+            if not original or original.kind != "bundle":
+                raise ValueError("Open a saved evidence version before explaining a term")
+            cached = session.get(Record, "term:" + term_key(request))
+            if cached:
+                return cached.payload
+            session.add(Job(id=job_id, request=request.model_dump(mode="json"), status="queued"))
+        return None
 
     def get(self, record_id: str) -> dict | None:
         with self.session() as session:

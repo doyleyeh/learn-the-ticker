@@ -919,3 +919,45 @@ test("retained document deletion removes selected interpretations offline and pr
   expect(deleted[0]).toMatch(/^\/api\/library\/documents\/import_explanation\/[a-f0-9]{64}$/);
   expect(inference).toEqual([]); expect(external).toEqual([]); expect(errors).toEqual([]);
 });
+
+test("offline cache status explains protected work and cleanup performs no research", async ({ page, context }, testInfo) => {
+  const errors: string[] = [], external: string[] = [], inference: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "POST" && ["/api/research", "/api/terms", "/api/imports/explanations"].includes(path)) inference.push(path);
+  });
+  await context.route("**/*", async (route) => {
+    if (new URL(route.request().url()).hostname !== "127.0.0.1") { external.push(route.request().url()); await route.abort(); }
+    else await route.continue();
+  });
+  await page.goto("/#connections"); await connect(page);
+  const cloud = page.getByRole("checkbox", { name: "Allow cloud research", exact: true });
+  if (await cloud.isChecked()) {
+    const response = page.waitForResponse((r) => r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/settings");
+    await cloud.click(); expect((await response).status()).toBe(200);
+  }
+  const panel = page.getByRole("region", { name: "Disposable cache", exact: true });
+  await expect(panel.getByRole("definition").first()).toHaveText("10,000 MB");
+  await expect(panel).toContainText("Saved work is outside this disposable budget");
+  await expect(panel).toContainText("database files and backups can use additional disk space");
+  await panel.screenshot({ path: testInfo.outputPath("cache-wide.png") });
+  await page.setViewportSize({ width: 640, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await panel.screenshot({ path: testInfo.outputPath("cache-narrow.png") });
+  const before = await panel.getByRole("definition").allTextContents();
+  const cleanup = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/library/cache/cleanup");
+  await panel.getByRole("button", { name: "Clean disposable cache now", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  const response = await cleanup; expect(response.status()).toBe(200);
+  const value = await response.json(); expect(value.removed_items).toBe(0); expect(value.protected_bytes).toBeGreaterThan(0);
+  await expect(panel.getByRole("button", { name: "Clean disposable cache now", exact: true })).toBeEnabled();
+  expect(await panel.getByRole("definition").allTextContents()).toEqual(before);
+  await page.getByRole("link", { name: "Saved research", exact: true }).click();
+  await page.getByRole("button", { name: "Comparison original SYN page", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "SYNTHETIC COMPANY SYN", exact: true })).toBeVisible();
+  await expect(page.getByText("Snapshot saved: 2026-10-04T00:00:00Z", { exact: true })).toBeVisible();
+  await page.getByRole("navigation", { name: "Ticker sections", exact: true }).getByRole("button", { name: "Statistics", exact: true }).click();
+  await expect(page.locator("#ticker-statistics")).toContainText("9,007,199,254,740,992");
+  expect(inference).toEqual([]); expect(external).toEqual([]); expect(errors).toEqual([]);
+});

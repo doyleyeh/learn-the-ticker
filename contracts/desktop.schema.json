@@ -507,6 +507,62 @@
       "title": "BundleFreshness",
       "type": "object"
     },
+    "CacheSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "budget_bytes": {
+          "minimum": 0,
+          "title": "Budget Bytes",
+          "type": "integer"
+        },
+        "disposable_bytes": {
+          "minimum": 0,
+          "title": "Disposable Bytes",
+          "type": "integer"
+        },
+        "protected_bytes": {
+          "minimum": 0,
+          "title": "Protected Bytes",
+          "type": "integer"
+        },
+        "removed_bytes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Removed Bytes",
+          "type": "integer"
+        },
+        "removed_items": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Removed Items",
+          "type": "integer"
+        },
+        "deferred_for_active_work": {
+          "default": false,
+          "title": "Deferred For Active Work",
+          "type": "boolean"
+        },
+        "accounting": {
+          "const": "stored_json_payload_bytes",
+          "default": "stored_json_payload_bytes",
+          "title": "Accounting",
+          "type": "string"
+        }
+      },
+      "required": [
+        "budget_bytes",
+        "disposable_bytes",
+        "protected_bytes"
+      ],
+      "title": "CacheSummary",
+      "type": "object"
+    },
     "Claim": {
       "additionalProperties": false,
       "properties": {
@@ -4570,6 +4626,9 @@
     },
     "RetainedItemDeletion": {
       "$ref": "#/$defs/RetainedItemDeletion"
+    },
+    "CacheSummary": {
+      "$ref": "#/$defs/CacheSummary"
     }
   },
   "additionalProperties": false

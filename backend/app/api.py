@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 from backend.app.backup import BackupError, MAX_ARCHIVE_BYTES, make_backup, preview_backup, restore_backup
 from backend.app.codex_login import CodexLogin
-from backend.app.contracts import ApprovalDecision, EvidenceBundle, ResearchRequest, RuntimeModelCatalog, SavedResearch, Settings, TermRequest
+from backend.app.contracts import ApprovalDecision, EvidenceBundle, ResearchRequest, RuntimeModelCatalog, Settings, TermRequest
 from backend.app.db import Database
 from backend.app.freshness import BundleFreshness, assess_freshness
 from backend.app.import_previews import ImportPreviews
@@ -26,6 +26,7 @@ from backend.app.source_review import SourceReviewDecision
 from backend.app.comparisons import ComparisonRequest, ComparisonResult, create_comparison
 from backend.app.reports import ReportRequest, ResearchReport, create_report, report_markdown
 from backend.app.library_deletion import SavedItemDeletion, SavedItemKind, RetainedItemDeletion, RetainedItemKind, delete_saved_item, delete_retained_item
+from backend.app.library_cache import CacheError, CacheSummary, manage_cache
 
 ORIGINS = ("tauri://localhost", "http://tauri.localhost", "https://tauri.localhost", "http://localhost:1420", "http://127.0.0.1:1420")
 
@@ -56,14 +57,34 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     imports = ImportPreviews(service)
     settings_lock = asyncio.Lock()
 
+    def maintain_cache():
+        try:
+            manage_cache(db, evict=True)
+            app.state.cache_failure = None
+        except CacheError:
+            # Leave questionable references untouched; the status endpoint also
+            # reports this fixed failure without exposing stored source content.
+            app.state.cache_failure = "Cache references require review; no cached work was removed"
+
+    async def periodic_cache():
+        while True:
+            await asyncio.sleep(300)
+            maintain_cache()
+
     @asynccontextmanager
     async def lifespan(app):
         db.recover()
         db.expire_conversations(service.settings().retention_days)
-        yield
-        await codex_login.close()
-        await imports.close()
-        await service.close()
+        maintain_cache()
+        cleanup = asyncio.create_task(periodic_cache())
+        try:
+            yield
+        finally:
+            cleanup.cancel()
+            await asyncio.gather(cleanup, return_exceptions=True)
+            await codex_login.close()
+            await imports.close()
+            await service.close()
 
     app = FastAPI(title="Learn the Ticker Desktop", version="0.2.0", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.service = service
@@ -395,6 +416,20 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 
+    @app.get("/api/library/cache", response_model=CacheSummary)
+    async def cache_status():
+        try:
+            return manage_cache(db)
+        except CacheError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/library/cache/cleanup", response_model=CacheSummary)
+    async def cleanup_cache():
+        try:
+            return manage_cache(db, evict=True)
+        except CacheError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
     @app.delete("/api/library/documents/{kind}/{item_id}", response_model=RetainedItemDeletion)
     async def delete_document(kind: RetainedItemKind, item_id: str):
         if not 1 <= len(item_id) <= 200:
@@ -406,12 +441,10 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
 
     @app.post("/api/saved", status_code=201)
     def save(value: SaveRequest):
-        bundle = db.get("bundle:" + value.bundle_id)
-        if not bundle:
-            raise HTTPException(404, "Evidence snapshot not found")
-        result = SavedResearch(bundle_id=value.bundle_id, title=value.title).model_dump(mode="json")
-        db.put("saved:" + result["id"], "saved", result, bundle["asset"]["id"])
-        return result
+        try:
+            return db.create_saved(value.bundle_id, value.title)
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
 
     @app.get("/api/bundles/{bundle_id}")
     def bundle(bundle_id: str):

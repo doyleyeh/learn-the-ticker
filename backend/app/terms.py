@@ -9,7 +9,6 @@ import re
 from decimal import Decimal
 
 from backend.app.contracts import EvidenceBundle, RuntimeEvent, TermExplanation, TermRequest, TermResult, uid
-from backend.app.db import Job
 from backend.app.evidence import factual_context
 from backend.app.runtime_base import RuntimeFailure
 from backend.safety import find_forbidden_output_phrases
@@ -159,8 +158,9 @@ class TermService:
         if request.provider not in self.research.adapters:
             raise ValueError("The selected connection is unavailable")
         job_id = uid()
-        with self.db.session.begin() as session:
-            session.add(Job(id=job_id, request=request.model_dump(mode="json"), status="queued"))
+        cached_value = self.db.queue_term(job_id, request)
+        if cached_value:
+            return {"status": "cached", "result": cached_value}
         self.pending[key] = job_id
         task = asyncio.create_task(self.run(job_id, request))
         self.research.tasks[job_id] = task

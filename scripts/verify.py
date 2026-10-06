@@ -84,6 +84,7 @@ def verify(tier: str):
             [python, "-m", "scripts.smoke_restore"],
             [python, "-m", "scripts.smoke_library_scale"],
             [python, "-m", "scripts.smoke_library_deletion"],
+            [python, "-m", "scripts.smoke_library_cache"],
         ):
             run(command)
     if tier in ("packaged", "full"):

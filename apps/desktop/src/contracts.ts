@@ -1209,6 +1209,14 @@ export type Kind7 = "import" | "import_explanation";
 export type Id20 = string;
 export type Deleted1 = boolean;
 export type OriginalDocumentPreserved = boolean;
+export type SchemaVersion60 = "1";
+export type BudgetBytes = number;
+export type DisposableBytes = number;
+export type ProtectedBytes = number;
+export type RemovedBytes = number;
+export type RemovedItems = number;
+export type DeferredForActiveWork = boolean;
+export type Accounting = "stored_json_payload_bytes";
 
 export interface DesktopContracts {
   ApprovalDecision?: ApprovalDecision;
@@ -1247,6 +1255,7 @@ export interface DesktopContracts {
   ResearchReport?: ResearchReport;
   SavedItemDeletion?: SavedItemDeletion;
   RetainedItemDeletion?: RetainedItemDeletion;
+  CacheSummary?: CacheSummary;
 }
 export interface ApprovalDecision {
   schema_version?: SchemaVersion;
@@ -1899,4 +1908,14 @@ export interface RetainedItemDeletion {
   id: Id20;
   deleted: Deleted1;
   original_document_preserved: OriginalDocumentPreserved;
+}
+export interface CacheSummary {
+  schema_version?: SchemaVersion60;
+  budget_bytes: BudgetBytes;
+  disposable_bytes: DisposableBytes;
+  protected_bytes: ProtectedBytes;
+  removed_bytes?: RemovedBytes;
+  removed_items?: RemovedItems;
+  deferred_for_active_work?: DeferredForActiveWork;
+  accounting?: Accounting;
 }

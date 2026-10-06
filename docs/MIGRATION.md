@@ -62,6 +62,8 @@ Source-review requests and decisions are memory-only and excluded from SQL, port
 
 M9 explicit retained-document deletion removes its stored bytes, metadata, all interpretation scopes and their jobs/events in one transaction. Individual explanation deletion removes only that scope and its job history. Both serialize against new admission and refuse active work; original external files and older archives remain untouched. New backups omit deleted items and actual restore/restart checks verify their absence without changing surviving originals. This uses the existing record kinds and format-1/2 readers; it does not claim secure disk erasure or modify archive capacities.
 
+DEC-059 adds automatic disposable-cache maintenance within the existing schema/archive revision. All app-owned database sessions share an advisory admission gate; maintenance takes it exclusively and removes complete unprotected reference groups transactionally. Restores still lock the empty target and preserve newer installations; no automatic destructive migration is introduced. Saved/import/learning roots survive regardless of disposable budget. Payload accounting is distinct from PostgreSQL file size; archive limits are unchanged, so a 10-GB cache budget does not establish large-archive compatibility.
+
 ## Native packaging and platforms
 
 The current source setup installs Python/frontend dependencies after the developer provides Python and Node. Native launch additionally requires Rust/MSVC, webview prerequisites and an explicit `LTT_PG_BIN` directory. The optional Docker Compose database is not the private desktop cluster. The public installer must remove the need for users to install or operate core Python, Node, Docker or PostgreSQL dependencies themselves.

@@ -101,6 +101,12 @@ def main():
         assert results["table_counts"] == [3325, 2000, 2000]
         original = fingerprints(source)
         expected = fingerprints(source, restored_settings=True)
+        with measured(timings, "cache_reference_inventory"):
+            from backend.app.library_cache import manage_cache
+            results["cache_inventory"] = manage_cache(source).model_dump(mode="json")
+            assert results["cache_inventory"]["removed_items"] == 0
+            assert results["cache_inventory"]["protected_bytes"] > results["attachment_bytes"]
+        assert fingerprints(source) == original
         with measured(timings, "list_1000_assets"):
             assets = source.list("asset")
             assert len(assets) == 1000

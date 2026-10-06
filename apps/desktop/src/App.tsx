@@ -17,6 +17,7 @@ import { SourceReview } from "./SourceReview";
 import { TermLearning } from "./TermLearning";
 import { ResearchJobs } from "./ResearchJobs";
 import { DeleteSavedItem } from "./DeleteSavedItem";
+import { LibraryCache } from "./LibraryCache";
 import { activeResearch, observeResearch } from "./researchObservation";
 
 type Job = { id: string; status: string; request?: ResearchRequest; error?: string; result?: EvidenceBundle & { candidates?: EvidenceBundle["asset"][]; educational_redirect?: string; message?: string } };
@@ -177,7 +178,7 @@ export function App() {
             setConversationId(null); location.hash = "conversations"; await reload();
           }}/>}
         </section>}
-        {page === "connections" && <><CodexConnection/><LibraryBackup onRestored={async () => { setConversationId(null); setAsset(undefined); setJob(undefined); await reload(); }}/></>}
+        {page === "connections" && <><CodexConnection/><LibraryCache onCleaned={reload}/><LibraryBackup onRestored={async () => { setConversationId(null); setAsset(undefined); setJob(undefined); await reload(); }}/></>}
         {page === "asset" && asset && <>
           {activeConversation && <a href={`#${conversationRoute(activeConversation.id)}`}>Return to conversation</a>}
           <CheckpointNotice completion={asset.completion}/>
