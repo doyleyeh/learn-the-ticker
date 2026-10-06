@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./client";
 import type { RetainedImportSummary, RetainedImportView } from "./contracts";
+import { DeleteSavedItem } from "./DeleteSavedItem";
 
 export function RetainedDocuments({ revision, renderDocument }: { revision: number; renderDocument: (view: RetainedImportView) => ReactNode }) {
   const [items, setItems] = useState<RetainedImportSummary[]>([]);
@@ -50,5 +51,9 @@ export function RetainedDocuments({ revision, renderDocument }: { revision: numb
     {opening && <p role="status">Checking the original document…</p>}
     {error && <p role="alert" className="error">{error}</p>}
     {view && renderDocument(view)}
+    {view && <DeleteSavedItem key={`delete:${view.item.id}`} kind="import" id={view.item.id} title={view.item.title} onDeleted={() => {
+      setItems((rows) => rows.filter((item) => item.id !== view.item.id)); setView(undefined); setError("");
+      setRefresh((value) => value + 1);
+    }}/>}
   </section>;
 }

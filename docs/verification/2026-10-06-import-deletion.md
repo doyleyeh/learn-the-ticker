@@ -1,0 +1,24 @@
+# Retained-document and explanation deletion
+
+Date: 2026-10-06 (Asia/Taipei). Scope: M9-T01d/P-043, with P-015/P-041 original-source and local transport safeguards. M9 and public Windows v1 remain incomplete.
+
+## Behavior
+
+Sources offers separate confirmation/cancel controls for deleting a retained document and for deleting its selected language/reader-level explanation. Document deletion removes stored bytes/metadata, every explanation scope and their jobs/events. Explanation deletion keeps the original and other scopes. Both work offline, are idempotent and preserve unrelated originals and cited research. Active document work must finish or be cancelled first. Existing source files outside the app and previously downloaded archives keep their copies; this is logical deletion, not secure erasure.
+
+The typed authenticated route uses a separate two-kind allowlist. Post-parser admission rechecks the original under the same row lock as deletion before creating a job. The original cannot disappear between that check and admission: admitted active work blocks deletion, or deletion wins and admission creates no orphan job. An existing interpretation is reused under the lock without a new job. Deletion commits all related rows together and stays on the service event loop relative to synchronous terminal event publication. No dependency, SQL/archive revision, provider or source-policy change.
+
+## Verification
+
+- **57 targeted tests passed** across import deletion (13 new), import learning and saved-item deletion. They cover authentication/offline use, exact scope, active refusal, idempotence, unchanged unrelated originals, late-failure rollback, archive round trips, and delayed parser completion after deletion without provider invocation or an orphan job. The first run found fixture errors: an invented CSV locator and dictionary access on typed `LibraryData`. Fixtures now use parser-produced locators and typed archive fields; production validation stayed unchanged.
+- **Actual PostgreSQL targeted deletion smoke passed**: both document admission/deletion orderings, active refusal, late-failure rollback for document and explanation deletion, idempotence, preservation of another language's interpretation/original bytes, and deleted-item absence after actual separate-cluster restore/restart. It also retains every saved-item/conversation race and original-evidence check from M9-T01c. Owned clusters close cleanly.
+- **B: all seven workflows passed**, no retries (49.8 s). New flow confirms/cancels both deletion actions with keyboard focus, deletes an English explanation offline, reopens the preserved Traditional Chinese scope, deletes the original, reloads and reopens another unchanged document. No inference, external requests, page errors or API failures. Existing citation/date/freshness/missing-state and saved-item regression workflows passed.
+- Initial B build caught a test locator named `document` shadowing the browser DOM global inside a width assertion. Renamed the locator; the next full B passed.
+- Visually inspected normal and 640-pixel screenshots: readable effects, wrapping without horizontal overflow and separate Cancel/Delete controls. Ignored paths: `output/playwright/automated/research-retained-document-5eec3-d-preserves-other-originals/delete-explanation-wide.png` and `delete-document-narrow.png`.
+- **Q passed: 2,057 Python/94 frontend tests**, lint, generated contracts, static evaluations, TypeScript/build. **Full D passed**, including service lifecycle, retention races, rich financial/import/report restore, the 1,000-asset baseline and expanded deletion smoke. New scale output: `.local/library-scale-ba9c24e3c8fd/baseline.json`; original timing evidence remains unchanged. F passed during implementation and after the final documentation update.
+
+React review: mutations stay in click handlers, disclosure alone is read-only, cancellation restores focus, busy/ref guards prevent duplicate requests, deletion keys differ from result-view keys, callbacks clear stale selected views and refresh the retained list. Generated response types remain schema-derived; no dependency or persistent frontend storage added.
+
+Ignored logs: `.local/m9-import-deletion-targeted.log` (failed fixtures), `m9-import-deletion-targeted-repair.log`, `m9-import-deletion-f.log`, `m9-import-deletion-d-targeted.log`, `m9-import-deletion-b.log` (test build failure), `m9-import-deletion-b-repair.log`, `m9-import-deletion-q.log`, `m9-import-deletion-d.log`. Existing Starlette/httpx and browser color-environment warnings remain.
+
+Fresh requirement review: retained saved items now have explicit removal with protected surviving originals and verified admission ordering. Protected automatic cache eviction, larger streamed archives, native lifecycle, live Gemini/Claude qualification and clean-machine release acceptance remain separate incomplete gates.

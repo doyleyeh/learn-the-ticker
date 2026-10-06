@@ -98,6 +98,9 @@ if __name__ == "__main__":
         raise SystemExit("Conversation preview requires the explicit synthetic source-review fixture")
     preview_directory = tempfile.TemporaryDirectory(prefix="ltt-ui-preview-")
     db = preview_database(preview_directory.name)
+    if "--deletion-demo" in sys.argv:
+        from tests.desktop.import_deletion_fixture import seed_imports
+        seed_imports(db)
     asset = AssetIdentity(id="XTEST:SYNTH", name="Synthetic Research Example", symbol="SYNTH", asset_type="stock", exchange="XTEST")
     source = Source(id="synthetic-source", asset_id=asset.id, url="https://example.com/synthetic", title="Synthetic evidence for UI testing", publisher="Test fixture", policy=SourcePolicy.summary, provenance="user_import", excerpt="Synthetic Research Example is a fictional company used for interface tests.", verified=True)
     bundle = EvidenceBundle(asset=asset, level="intermediate" if "--identity-demo" in sys.argv else None, sources=[source], claims=[Claim(asset_id=asset.id, kind="fact", text=source.excerpt, source_ids=[source.id])], notes=[Claim(asset_id=asset.id, text="This unverified example must never appear in a chart or canonical evidence.", source_ids=[source.id])])

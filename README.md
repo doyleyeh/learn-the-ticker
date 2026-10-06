@@ -184,7 +184,9 @@ Requirements describe the destination; STATUS records verified progress. Histori
 
 The database verification lane now includes a measured 1,000-asset library and approximately 60 MiB of retained attachments, with actual PostgreSQL rollback, restore and restart checks. See the [dataset, timings and limits](docs/verification/2026-10-06-library-scale.md). This qualifies the tested bounded archive; protected cache eviction and larger streamed archives remain unfinished.
 
-Saved bookmarks, conversations, comparisons and historical reports now have explicit deletion controls that work offline. Confirm the selected item before deletion; active conversations must finish or be cancelled first. Original cited evidence remains available for other saved work, and existing backup/export files keep their copies. See [deletion acceptance](docs/verification/2026-10-06-saved-item-deletion.md). Retained-document/explanation deletion, cache eviction and larger streamed archives remain unfinished.
+Saved bookmarks, conversations, comparisons and historical reports have explicit deletion controls that work offline. Confirm the selected item before deletion; active conversations must finish or be cancelled first. Original cited evidence remains available for other saved work, and existing backup/export files keep their copies. See [deletion acceptance](docs/verification/2026-10-06-saved-item-deletion.md).
+
+Sources also offers deletion of a retained document with all its explanations and job history, or just the selected language/reader-level explanation. Active document explanations must finish or be cancelled before removing their original. Other retained documents, cited research, files outside the app and previously downloaded backups remain unchanged. See [retained-document deletion](docs/verification/2026-10-06-import-deletion.md). Protected cache eviction and larger streamed archives remain unfinished.
 
 This is educational software, not investment advice or a trading application. Distribution is Apache-2.0; data and runtime dependencies retain their own terms.
 

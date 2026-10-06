@@ -10,7 +10,8 @@ from sqlalchemy import event
 from backend.app.backup import make_backup, preview_backup, restore_backup
 from backend.app.contracts import ResearchRequest, RuntimeEvent
 from backend.app.db import Database, Event
-from backend.app.library_deletion import delete_saved_item
+from backend.app.library_deletion import delete_saved_item, delete_retained_item
+from tests.desktop.import_deletion_fixture import seed_imports, admission_orderings as document_admission_orderings
 from backend.app.lifecycle import InstanceLock, PrivatePostgres
 from backend.app.migrate import migrate
 from scripts.smoke_library_scale import fingerprints
@@ -122,6 +123,26 @@ def main():
             assert not delete_saved_item(source, kind, item_id).deleted
         assert not source.job("deleted-question") and not source.events("deleted-question")
         admission_orderings(source)
+        documents, explanations, document_jobs = seed_imports(source)
+        document_admission_orderings(source, documents[0])
+        for kind, item_id in (("import_explanation", explanations[0].id), ("import", documents[1].id)):
+            before = fingerprints(source)
+            event.listen(source.engine, "before_cursor_execute", fail)
+            try:
+                try:
+                    delete_retained_item(source, kind, item_id)
+                except InjectedFailure:
+                    pass
+                else:
+                    raise AssertionError("Retained-item rollback was not exercised")
+            finally:
+                event.remove(source.engine, "before_cursor_execute", fail)
+            assert fingerprints(source) == before
+            assert delete_retained_item(source, kind, item_id).deleted
+            assert not delete_retained_item(source, kind, item_id).deleted
+        assert source.get("import:" + documents[0].id) == documents[0].model_dump(mode="json")
+        assert source.get("import_explanation:" + explanations[1].id) == explanations[1].model_dump(mode="json")
+        assert all(not source.job(job) and not source.events(job) for job in (document_jobs[0], *document_jobs[2:]))
         assert {key: value for key, value in fingerprints(source).items() if key.startswith(("asset:", "bundle:"))} == original_evidence
         expected = fingerprints(source, restored_settings=True)
         archive = make_backup(source)
@@ -137,7 +158,9 @@ def main():
         databases.append(restarted)
         assert fingerprints(restarted) == expected
         assert all(restarted.get(kind + ":" + item_id) is None for kind, item_id in ids.items())
-        print("Explicit saved-item deletion passed: active refusal, both PostgreSQL admission orderings, late-failure rollback, unchanged original evidence, idempotence and deleted-item absence after real restore/restart.")
+        assert restarted.get("import:" + documents[1].id) is None and restarted.get("import_explanation:" + explanations[0].id) is None
+        assert restarted.get("import:" + documents[0].id) == documents[0].model_dump(mode="json")
+        print("Explicit saved-item and retained-document/explanation deletion passed: active refusal, both PostgreSQL admission orderings, late-failure rollback, unchanged unrelated originals, idempotence and deleted-item absence after real restore/restart.")
     finally:
         for db in databases:
             db.engine.dispose()

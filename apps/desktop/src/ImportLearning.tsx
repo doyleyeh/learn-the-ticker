@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, watchJob } from "./client";
 import type { ImportExplanation, ImportLearningScope, RetainedImportView, Settings } from "./contracts";
+import { DeleteSavedItem } from "./DeleteSavedItem";
 
 type LearningJob = { id?: string; status: string; result?: ImportExplanation; error?: string };
 
@@ -74,6 +75,9 @@ export function ImportLearning({ view, settings, level }: { view: RetainedImport
     }}>Cancel document explanation</button></>}
     {job?.status === "unavailable" && <p>No saved explanation for this document, language and reader level.</p>}
     {job?.status === "cancelled" && <p role="status">Explanation cancelled.</p>}
+    {job?.result && <DeleteSavedItem key={`delete:${job.result.id}`} kind="import_explanation" id={job.result.id} title={`${view.item.title} · ${job.result.language} · ${job.result.level}`} onDeleted={() => {
+      setJob({ status: "unavailable" }); setPermission(false); setError("");
+    }}/>}
     {error && <p role="alert" className="error">{error}</p>}
   </section>;
 }

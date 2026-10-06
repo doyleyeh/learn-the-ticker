@@ -60,6 +60,8 @@ Evidence versions now carry `completion`, defaulting to `complete` for older rec
 
 Source-review requests and decisions are memory-only and excluded from SQL, portable backups and exports. A restored research job that was awaiting source selection is interrupted; nothing is automatically selected, fetched or replayed. Independently admitted results from reviewed sources use the same immutable evidence format and original references. No schema/archive revision changes.
 
+M9 explicit retained-document deletion removes its stored bytes, metadata, all interpretation scopes and their jobs/events in one transaction. Individual explanation deletion removes only that scope and its job history. Both serialize against new admission and refuse active work; original external files and older archives remain untouched. New backups omit deleted items and actual restore/restart checks verify their absence without changing surviving originals. This uses the existing record kinds and format-1/2 readers; it does not claim secure disk erasure or modify archive capacities.
+
 ## Native packaging and platforms
 
 The current source setup installs Python/frontend dependencies after the developer provides Python and Node. Native launch additionally requires Rust/MSVC, webview prerequisites and an explicit `LTT_PG_BIN` directory. The optional Docker Compose database is not the private desktop cluster. The public installer must remove the need for users to install or operate core Python, Node, Docker or PostgreSQL dependencies themselves.

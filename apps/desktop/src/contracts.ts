@@ -1204,6 +1204,11 @@ export type Kind6 = "saved" | "conversation" | "comparison" | "report";
 export type Id19 = string;
 export type Deleted = boolean;
 export type EvidencePreserved = true;
+export type SchemaVersion59 = "1";
+export type Kind7 = "import" | "import_explanation";
+export type Id20 = string;
+export type Deleted1 = boolean;
+export type OriginalDocumentPreserved = boolean;
 
 export interface DesktopContracts {
   ApprovalDecision?: ApprovalDecision;
@@ -1241,6 +1246,7 @@ export interface DesktopContracts {
   ReportRequest?: ReportRequest;
   ResearchReport?: ResearchReport;
   SavedItemDeletion?: SavedItemDeletion;
+  RetainedItemDeletion?: RetainedItemDeletion;
 }
 export interface ApprovalDecision {
   schema_version?: SchemaVersion;
@@ -1886,4 +1892,11 @@ export interface SavedItemDeletion {
   id: Id19;
   deleted: Deleted;
   evidence_preserved?: EvidencePreserved;
+}
+export interface RetainedItemDeletion {
+  schema_version?: SchemaVersion59;
+  kind: Kind7;
+  id: Id20;
+  deleted: Deleted1;
+  original_document_preserved: OriginalDocumentPreserved;
 }

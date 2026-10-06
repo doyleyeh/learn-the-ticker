@@ -231,6 +231,26 @@ class Database:
             self._put(session, "term:" + payload["id"], "term", payload, payload["bundle_id"])
             job.status, job.result, job.error = "completed", payload, None
 
+    def queue_import_explanation(self, job_id, request):
+        """Recheck the source after parsing, under the same lock as deletion."""
+        from backend.app.import_learning import ImportExplanation, learning_key, validate_learning
+        from backend.app.import_storage import RetainedImportView, summary
+        from backend.app.retained_imports import RetainedImport
+        with self.session.begin() as session:
+            source = session.get(Record, "import:" + request.document_id, with_for_update=True)
+            if not source or source.kind != "import":
+                raise ValueError("Retained document no longer exists")
+            retained = RetainedImport.model_validate(source.payload)
+            if retained.document.content_hash != request.content_hash:
+                raise ValueError("Retained document scope changed")
+            cached = session.get(Record, "import_explanation:" + learning_key(request))
+            if cached:
+                validate_learning(ImportExplanation.model_validate(cached.payload),
+                    RetainedImportView(item=summary(retained), document=retained.document))
+                return cached.payload
+            session.add(Job(id=job_id, request=request.model_dump(mode="json"), status="queued"))
+        return None
+
     def complete_import_explanation(self, job_id: str, payload: dict):
         from backend.app.import_learning import ImportExplanation, ImportLearningRequest, learning_key, validate_learning
         from backend.app.import_storage import RetainedImportView, summary

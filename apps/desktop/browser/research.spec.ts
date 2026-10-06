@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import type { ComparisonResult, ResearchReport } from "../src/contracts";
+import type { ComparisonResult, ResearchReport, RetainedImportView } from "../src/contracts";
 
 async function connect(page: Page) {
   await page.getByText("Developer browser connection", { exact: true }).click();
@@ -841,5 +841,81 @@ test("explicit offline deletion preserves original cited evidence and requires c
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
   expect(deleted).toEqual([`/api/library/items/saved/${bookmark.id}`, `/api/library/items/report/${report.id}`,
     `/api/library/items/comparison/${comparison.id}`, `/api/library/items/conversation/${conversation.id}`]);
+  expect(inference).toEqual([]); expect(external).toEqual([]); expect(errors).toEqual([]);
+});
+
+test("retained document deletion removes selected interpretations offline and preserves other originals", async ({ page, context }, testInfo) => {
+  const errors: string[] = [], external: string[] = [], inference: string[] = [], deleted: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => { if (response.url().includes("/api/") && response.status() >= 400) errors.push(`${response.status()} ${new URL(response.url()).pathname}`); });
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "DELETE") deleted.push(path);
+    if (request.method() === "POST" && ["/api/research", "/api/terms", "/api/imports/explanations"].includes(path)) inference.push(path);
+  });
+  await context.route("**/*", async (route) => {
+    if (new URL(route.request().url()).hostname !== "127.0.0.1") { external.push(route.request().url()); await route.abort(); }
+    else await route.continue();
+  });
+  await page.goto("/#connections"); await connect(page);
+  const cloud = page.getByRole("checkbox", { name: "Allow cloud research", exact: true });
+  if (await cloud.isChecked()) {
+    const response = page.waitForResponse((r) => r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/settings");
+    await cloud.click(); expect((await response).status()).toBe(200);
+  }
+  const language = page.getByRole("combobox", { name: "Explanation language", exact: true });
+  if (await language.inputValue() !== "en") {
+    const response = page.waitForResponse((r) => r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/settings");
+    await language.selectOption("en"); expect((await response).status()).toBe(200);
+  }
+  await page.getByRole("link", { name: "Sources", exact: true }).click();
+  const documentButton = page.getByRole("button", { name: "Synthetic deletion document 0", exact: true });
+  const opened = page.waitForResponse((r) => r.request().method() === "GET" && new URL(r.url()).pathname.startsWith("/api/imports/retained/"));
+  await documentButton.click();
+  const original = await (await opened).json() as RetainedImportView;
+  const learning = page.getByRole("region", { name: "Understand this document", exact: true });
+  await expect(learning.getByRole("heading", { name: "Saved interpretation · Unverified", exact: true })).toBeVisible();
+  const toggle = learning.locator("summary");
+  await toggle.focus(); await page.keyboard.press("Enter");
+  const explanation = page.getByRole("region", { name: "Delete document explanation confirmation", exact: true });
+  await expect(explanation).toContainText("other explanations remain available");
+  await explanation.screenshot({ path: testInfo.outputPath("delete-explanation-wide.png") });
+  await explanation.getByRole("button", { name: "Cancel deletion", exact: true }).click();
+  await expect(toggle).toBeFocused(); expect(deleted).toEqual([]);
+  await page.keyboard.press("Enter");
+  const removed = page.waitForResponse((r) => r.request().method() === "DELETE");
+  await explanation.getByRole("button", { name: "Delete permanently", exact: true }).click();
+  const response = await removed;
+  expect(response.status()).toBe(200); expect((await response.json()).original_document_preserved).toBe(true);
+  await expect(learning.getByText("No saved explanation for this document, language and reader level.", { exact: true })).toBeVisible();
+  await expect(documentButton).toBeVisible();
+  await expect(page.getByRole("region", { name: "Unverified retained document", exact: true }).getByText("123", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Connections", exact: true }).first().click();
+  const changed = page.waitForResponse((r) => r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/settings");
+  await language.selectOption("zh-TW"); expect((await changed).status()).toBe(200);
+  await page.getByRole("link", { name: "Sources", exact: true }).click(); await documentButton.click();
+  await expect(learning.getByRole("heading", { name: "Saved interpretation · Unverified", exact: true })).toBeVisible();
+  await expect(learning).toContainText("zh-TW · beginner");
+  await page.setViewportSize({ width: 640, height: 900 });
+  const documentToggle = page.getByText("Delete retained document", { exact: true });
+  await documentToggle.focus(); await page.keyboard.press("Enter");
+  const confirmation = page.getByRole("region", { name: "Delete retained document confirmation", exact: true });
+  await expect(confirmation).toContainText("all of its saved explanations");
+  await expect(confirmation).toContainText("original file outside the app is unchanged");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await confirmation.screenshot({ path: testInfo.outputPath("delete-document-narrow.png") });
+  await confirmation.getByRole("button", { name: "Cancel deletion", exact: true }).click();
+  await expect(documentToggle).toBeFocused(); expect(deleted).toHaveLength(1);
+  await page.keyboard.press("Enter");
+  const deletedDocument = page.waitForResponse((r) => r.request().method() === "DELETE");
+  await confirmation.getByRole("button", { name: "Delete permanently", exact: true }).click();
+  expect((await deletedDocument).status()).toBe(200);
+  await expect(documentButton).toHaveCount(0); await expect(learning).toHaveCount(0);
+  await page.reload(); await connect(page); await expect(documentButton).toHaveCount(0);
+  await page.getByRole("button", { name: "Synthetic deletion document 1", exact: true }).click();
+  await expect(learning.getByRole("heading", { name: "Saved interpretation · Unverified", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Unverified retained document", exact: true }).getByText("123", { exact: true })).toBeVisible();
+  expect(deleted).toEqual([new URL(response.url()).pathname, `/api/library/documents/import/${original.item.id}`]);
+  expect(deleted[0]).toMatch(/^\/api\/library\/documents\/import_explanation\/[a-f0-9]{64}$/);
   expect(inference).toEqual([]); expect(external).toEqual([]); expect(errors).toEqual([]);
 });

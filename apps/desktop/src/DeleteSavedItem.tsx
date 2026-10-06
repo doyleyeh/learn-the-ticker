@@ -1,13 +1,15 @@
 import { useRef, useState } from "react";
 import { api } from "./client";
-import type { SavedItemDeletion } from "./contracts";
+import type { SavedItemDeletion, RetainedItemDeletion } from "./contracts";
 
-const names: Record<SavedItemDeletion["kind"], string> = {
+type ItemKind = SavedItemDeletion["kind"] | RetainedItemDeletion["kind"];
+const names: Record<ItemKind, string> = {
   saved: "bookmark", conversation: "conversation", comparison: "comparison", report: "report",
+  import: "retained document", import_explanation: "document explanation",
 };
 
 export function DeleteSavedItem({ kind, id, title, onDeleted }: {
-  kind: SavedItemDeletion["kind"]; id: string; title: string; onDeleted: () => void | Promise<void>;
+  kind: ItemKind; id: string; title: string; onDeleted: () => void | Promise<void>;
 }) {
   const details = useRef<HTMLDetailsElement>(null), submitting = useRef(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -16,7 +18,8 @@ export function DeleteSavedItem({ kind, id, title, onDeleted }: {
     submitting.current = true; setBusy(true); setError("");
     let deleted = false;
     try {
-      await api<SavedItemDeletion>(`/api/library/items/${kind}/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const group = kind === "import" || kind === "import_explanation" ? "documents" : "items";
+      await api<SavedItemDeletion | RetainedItemDeletion>(`/api/library/${group}/${kind}/${encodeURIComponent(id)}`, { method: "DELETE" });
       deleted = true;
       await onDeleted();
     } catch (failure) {
@@ -28,8 +31,10 @@ export function DeleteSavedItem({ kind, id, title, onDeleted }: {
     <summary>Delete {names[kind]}</summary>
     <section aria-label={`Delete ${names[kind]} confirmation`}>
       <p>Delete <strong>{title}</strong> from this library?</p>
-      <p>{kind === "conversation" ? "This removes the transcript and its research-job history. An active answer must finish or be cancelled first. " : "This removes the saved item. "}
-        Original evidence and items saved elsewhere in the library remain available. Previously downloaded backups and exports keep their own copies.</p>
+      <p>{kind === "import" ? "This removes the retained copy, all of its saved explanations and their job history. An active document explanation must finish or be cancelled first. Your original file outside the app is unchanged. "
+        : kind === "import_explanation" ? "This removes this language and reader-level explanation and its job history. The retained document and its other explanations remain available. "
+        : kind === "conversation" ? "This removes the transcript and its research-job history. An active answer must finish or be cancelled first. " : "This removes the saved item. "}
+        Original evidence and independently saved items remain available. Previously downloaded backups and exports keep their own copies.</p>
       <p>This deletion cannot be undone in the app.</p>
       <div className="actions">
         <button disabled={busy} onClick={() => { if (details.current) { details.current.open = false; details.current.querySelector("summary")?.focus(); } setError(""); }}>Cancel deletion</button>

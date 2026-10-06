@@ -3,7 +3,6 @@ import asyncio
 from contextlib import aclosing
 
 from backend.app.contracts import RuntimeEvent, uid
-from backend.app.db import Job
 from backend.app.import_learning import ImportExplanation, ImportLearningResult, learning_key, learning_prompt, validate_learning
 from backend.app.import_storage import RetainedImportView, summary
 from backend.app.retained_imports import RetainedImport
@@ -43,8 +42,9 @@ class ImportLearning:
         if len(self.research.tasks) >= 20:
             raise ValueError("The research queue is full. Try again when another operation finishes.")
         job_id = uid()
-        with self.db.session.begin() as session:
-            session.add(Job(id=job_id, request=request.model_dump(mode="json"), status="queued"))
+        cached_value = self.db.queue_import_explanation(job_id, request)
+        if cached_value:
+            return {"status": "cached", "result": cached_value}
         self.pending[key] = job_id
         task = asyncio.create_task(self.run(job_id, request))
         self.research.tasks[job_id] = task

@@ -3197,6 +3197,47 @@
       "title": "RetainedImportView",
       "type": "object"
     },
+    "RetainedItemDeletion": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "import",
+            "import_explanation"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "deleted": {
+          "title": "Deleted",
+          "type": "boolean"
+        },
+        "original_document_preserved": {
+          "title": "Original Document Preserved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "deleted",
+        "original_document_preserved"
+      ],
+      "title": "RetainedItemDeletion",
+      "type": "object"
+    },
     "ReviewSource": {
       "additionalProperties": false,
       "properties": {
@@ -4526,6 +4567,9 @@
     },
     "SavedItemDeletion": {
       "$ref": "#/$defs/SavedItemDeletion"
+    },
+    "RetainedItemDeletion": {
+      "$ref": "#/$defs/RetainedItemDeletion"
     }
   },
   "additionalProperties": false
