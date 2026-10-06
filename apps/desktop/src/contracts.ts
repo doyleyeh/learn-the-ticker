@@ -1199,6 +1199,11 @@ export type GuideSourceIds =
   | [string, string, string, string, string, string]
   | [string, string, string, string, string, string, string]
   | [string, string, string, string, string, string, string, string];
+export type SchemaVersion58 = "1";
+export type Kind6 = "saved" | "conversation" | "comparison" | "report";
+export type Id19 = string;
+export type Deleted = boolean;
+export type EvidencePreserved = true;
 
 export interface DesktopContracts {
   ApprovalDecision?: ApprovalDecision;
@@ -1235,6 +1240,7 @@ export interface DesktopContracts {
   ComparisonResult?: ComparisonResult;
   ReportRequest?: ReportRequest;
   ResearchReport?: ResearchReport;
+  SavedItemDeletion?: SavedItemDeletion;
 }
 export interface ApprovalDecision {
   schema_version?: SchemaVersion;
@@ -1873,4 +1879,11 @@ export interface DatedItem {
   effective: Effective;
   bucket: Bucket;
   date_basis?: DateBasis;
+}
+export interface SavedItemDeletion {
+  schema_version?: SchemaVersion58;
+  kind: Kind6;
+  id: Id19;
+  deleted: Deleted;
+  evidence_preserved?: EvidencePreserved;
 }

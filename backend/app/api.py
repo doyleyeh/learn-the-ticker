@@ -25,6 +25,7 @@ from backend.app.terms import TermService
 from backend.app.source_review import SourceReviewDecision
 from backend.app.comparisons import ComparisonRequest, ComparisonResult, create_comparison
 from backend.app.reports import ReportRequest, ResearchReport, create_report, report_markdown
+from backend.app.library_deletion import SavedItemDeletion, SavedItemKind, delete_saved_item
 
 ORIGINS = ("tauri://localhost", "http://tauri.localhost", "https://tauri.localhost", "http://localhost:1420", "http://127.0.0.1:1420")
 
@@ -384,6 +385,15 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     @app.get("/api/saved")
     def saved():
         return db.list("saved")
+
+    @app.delete("/api/library/items/{kind}/{item_id}", response_model=SavedItemDeletion)
+    async def delete_item(kind: SavedItemKind, item_id: str):
+        if not 1 <= len(item_id) <= 200:
+            raise HTTPException(422, "Invalid saved item identifier")
+        try:
+            return delete_saved_item(db, kind, item_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/saved", status_code=201)
     def save(value: SaveRequest):

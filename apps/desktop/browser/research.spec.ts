@@ -747,3 +747,99 @@ test("historical reports retain original evidence, separate dated context and of
   expect(generations).toEqual(["/api/reports", "/api/reports"]);
   expect(external).toEqual([]); expect(errors).toEqual([]);
 });
+
+test("explicit offline deletion preserves original cited evidence and requires confirmation", async ({ page, context }, testInfo) => {
+  const errors: string[] = [], external: string[] = [], inference: string[] = [], deleted: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "DELETE") deleted.push(path);
+    if (request.method() === "POST" && ["/api/research", "/api/terms", "/api/imports/explanations"].includes(path)) inference.push(path);
+  });
+  await context.route("**/*", async (route) => {
+    if (new URL(route.request().url()).hostname !== "127.0.0.1") { external.push(route.request().url()); await route.abort(); }
+    else await route.continue();
+  });
+  await page.goto("/#connections"); await connect(page);
+  const cloud = page.getByRole("checkbox", { name: "Allow cloud research", exact: true });
+  if (!(await cloud.isChecked())) {
+    const response = page.waitForResponse((r) => r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/settings");
+    await cloud.click(); expect((await response).status()).toBe(200);
+  }
+  await page.getByRole("link", { name: "Saved research", exact: true }).click();
+  await page.getByRole("button", { name: "Comparison original SYN page", exact: true }).click();
+  await expect(page).toHaveURL(/#asset\?bundle=/);
+  const original = new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("bundle")!;
+  expect(original).toBeTruthy();
+  const bookmarked = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/saved");
+  await page.getByRole("button", { name: "Bookmark this version", exact: true }).click();
+  const bookmark = await (await bookmarked).json() as { id: string };
+  const created = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/conversations");
+  await page.getByRole("button", { name: "Start a conversation", exact: true }).click();
+  const conversation = await (await created).json() as { id: string };
+  await page.getByRole("button", { name: "Bookmark conversation", exact: true }).click();
+  await page.getByRole("link", { name: "Open selected page evidence", exact: true }).click();
+  await page.getByRole("link", { name: "Create report from this page", exact: true }).click();
+  const reported = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/reports");
+  await page.getByRole("button", { name: "Save dated report", exact: true }).click();
+  const report = await (await reported).json() as ResearchReport;
+  await expect(page).toHaveURL(new RegExp(`report=${report.id}`));
+  await expect(page.getByRole("region", { name: "Saved historical report", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Comparisons", exact: true }).click();
+  await page.getByRole("combobox", { name: "Left saved page", exact: true }).selectOption(original);
+  const right = page.getByRole("combobox", { name: "Right saved page", exact: true });
+  const other = await right.getByRole("option", { name: /^SECOND SYNTHETIC COMPANY/ }).getAttribute("value");
+  await right.selectOption(other!);
+  await expect(page.getByRole("combobox", { name: "Left saved page", exact: true })).toHaveValue(original);
+  await expect(page.getByRole("button", { name: "Create and save comparison", exact: true })).toBeEnabled();
+  const compared = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/comparisons");
+  await page.getByRole("button", { name: "Create and save comparison", exact: true }).click();
+  const comparison = await (await compared).json() as ComparisonResult;
+  await expect(page).toHaveURL(new RegExp(`comparison=${comparison.id}`));
+  await expect(page.getByRole("region", { name: "Saved comparison", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Connections", exact: true }).first().click();
+  const offline = page.waitForResponse((r) => r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/settings");
+  await cloud.click(); expect((await offline).status()).toBe(200); await expect(cloud).not.toBeChecked();
+  await page.getByRole("link", { name: "Saved research", exact: true }).click();
+  const card = page.locator(`[data-saved-id="${bookmark.id}"]`), toggle = card.locator("summary");
+  await toggle.focus(); await page.keyboard.press("Enter");
+  const confirmation = page.getByRole("region", { name: "Delete bookmark confirmation", exact: true });
+  await expect(confirmation).toContainText("Original evidence");
+  await confirmation.screenshot({ path: testInfo.outputPath("delete-wide.png") });
+  await confirmation.getByRole("button", { name: "Cancel deletion", exact: true }).focus(); await page.keyboard.press("Enter");
+  await expect(confirmation).toBeHidden(); await expect(toggle).toBeFocused(); expect(deleted).toEqual([]);
+  await page.setViewportSize({ width: 640, height: 900 });
+  await page.keyboard.press("Enter"); await expect(confirmation).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await confirmation.screenshot({ path: testInfo.outputPath("delete-narrow.png") });
+  async function confirm(kind: string, id: string, name: string) {
+    const response = page.waitForResponse((r) => r.request().method() === "DELETE" && new URL(r.url()).pathname === `/api/library/items/${kind}/${id}`);
+    await page.getByRole("region", { name: `Delete ${name} confirmation`, exact: true }).getByRole("button", { name: "Delete permanently", exact: true }).click();
+    const result = await response;
+    expect(result.status()).toBe(200); expect((await result.json()).evidence_preserved).toBe(true);
+  }
+  await confirm("saved", bookmark.id, "bookmark"); await expect(card).toHaveCount(0);
+  await page.evaluate((id) => { location.hash = `reports?report=${id}`; }, report.id!);
+  await expect(page.getByRole("region", { name: "Saved historical report", exact: true })).toBeVisible();
+  await page.getByText("Delete report", { exact: true }).click(); await confirm("report", report.id!, "report");
+  await expect(page).toHaveURL(/#reports$/);
+  await page.evaluate((id) => { location.hash = `comparisons?comparison=${id}`; }, comparison.id!);
+  await expect(page.getByRole("region", { name: "Saved comparison", exact: true })).toBeVisible();
+  await page.getByText("Delete comparison", { exact: true }).click(); await confirm("comparison", comparison.id!, "comparison");
+  await expect(page).toHaveURL(/#comparisons$/);
+  await page.evaluate((id) => { location.hash = `conversations?conversation=${id}`; }, conversation.id);
+  await expect(page.getByRole("button", { name: "Remove conversation bookmark", exact: true })).toBeVisible();
+  await page.getByText("Delete conversation", { exact: true }).click(); await confirm("conversation", conversation.id, "conversation");
+  await expect(page).toHaveURL(/#conversations$/);
+  await expect(page.getByText("Conversation deleted. Original evidence remains in the library.", { exact: true })).toBeVisible();
+  await page.reload(); await connect(page);
+  await expect(page.getByRole("navigation", { name: "Saved conversations", exact: true }).locator(`a[href*="${conversation.id}"]`)).toHaveCount(0);
+  await page.evaluate((id) => { location.hash = `asset?bundle=${id}`; }, original);
+  await expect(page.locator("#ticker-statistics")).toContainText("9,007,199,254,740,992");
+  await page.getByRole("navigation", { name: "Ticker sections", exact: true }).getByRole("button", { name: "Sources", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Sources and evidence", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  expect(deleted).toEqual([`/api/library/items/saved/${bookmark.id}`, `/api/library/items/report/${report.id}`,
+    `/api/library/items/comparison/${comparison.id}`, `/api/library/items/conversation/${conversation.id}`]);
+  expect(inference).toEqual([]); expect(external).toEqual([]); expect(errors).toEqual([]);
+});

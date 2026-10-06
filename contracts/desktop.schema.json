@@ -3490,6 +3490,50 @@
       "title": "RuntimeModelCatalog",
       "type": "object"
     },
+    "SavedItemDeletion": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "saved",
+            "conversation",
+            "comparison",
+            "report"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "deleted": {
+          "title": "Deleted",
+          "type": "boolean"
+        },
+        "evidence_preserved": {
+          "const": true,
+          "default": true,
+          "title": "Evidence Preserved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "deleted"
+      ],
+      "title": "SavedItemDeletion",
+      "type": "object"
+    },
     "SavedResearch": {
       "additionalProperties": false,
       "properties": {
@@ -4479,6 +4523,9 @@
     },
     "ResearchReport": {
       "$ref": "#/$defs/ResearchReport"
+    },
+    "SavedItemDeletion": {
+      "$ref": "#/$defs/SavedItemDeletion"
     }
   },
   "additionalProperties": false

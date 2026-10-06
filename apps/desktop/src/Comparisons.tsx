@@ -4,6 +4,7 @@ import type { ComparisonCell, ComparisonResult, ComparisonRow, ComparisonSide, E
 import { bundleRoute, comparisonRoute, sourceRoute } from "./routes";
 import { EvidenceFreshness, SourceAgeLabel } from "./EvidenceFreshness";
 import { displayNumber } from "./financialSeries";
+import { DeleteSavedItem } from "./DeleteSavedItem";
 
 type Summary = Omit<ComparisonResult, "rows">;
 const alignments: Record<ComparisonRow["alignment"], string> = {
@@ -142,5 +143,8 @@ export function Comparisons({ library, saved, settings, resultId, initialLeft }:
     <nav aria-label="Saved comparisons">{results.map((item) => <a key={item.id} href={`#${comparisonRoute(item.id)}`}>{item.left.asset.symbol} and {item.right.asset.symbol} · {item.created_at}</a>)}</nav>
     {!results.length && <p>No comparisons have been saved.</p>}
     {result ? <ComparisonView key={result.id} result={result}/> : resultId && !error && <p>Reading saved comparison…</p>}
+    {result && <DeleteSavedItem key={`delete:${result.id}`} kind="comparison" id={result.id!} title={`${result.left.asset.symbol} and ${result.right.asset.symbol} · ${result.created_at}`} onDeleted={() => {
+      setResults((items) => items.filter((item) => item.id !== result.id)); setResult(undefined); location.hash = "comparisons";
+    }}/>}
   </section>;
 }

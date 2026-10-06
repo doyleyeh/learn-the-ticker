@@ -16,6 +16,7 @@ import { AccessReview } from "./AccessReview";
 import { SourceReview } from "./SourceReview";
 import { TermLearning } from "./TermLearning";
 import { ResearchJobs } from "./ResearchJobs";
+import { DeleteSavedItem } from "./DeleteSavedItem";
 import { activeResearch, observeResearch } from "./researchObservation";
 
 type Job = { id: string; status: string; request?: ResearchRequest; error?: string; result?: EvidenceBundle & { candidates?: EvidenceBundle["asset"][]; educational_redirect?: string; message?: string } };
@@ -39,6 +40,7 @@ export function App() {
   const [progress, setProgress] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(routeFromHash(location.hash).conversation);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [libraryRevision, setLibraryRevision] = useState(0);
   const activeConversation = conversations.find((item) => item.id === conversationId);
   const busy = activeResearch(job?.status ?? "");
   const fail = (error: unknown) => setError(error instanceof Error ? error.message : "The operation could not be completed.");
@@ -148,7 +150,7 @@ export function App() {
         <SourceReview onReviewed={(runId) => { void reopenResearch(runId).catch(fail); }}/>
         <form className="research-bar" onSubmit={research}><label htmlFor="research-query">Understand an asset<input id="research-query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ticker, asset name, exchange or contract" required maxLength={1000}/></label><label>Explanation level<select value={level} onChange={(e) => setLevel(e.target.value as typeof level)}><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option></select></label><button disabled={busy}>{settings?.cloud_enabled ? "Research" : "Open cached research"}</button></form>
         {!settings?.cloud_enabled && <p>Online research is off. Enable your chosen provider in <a href="#connections">Connections</a>. Cached pages remain available.</p>}
-        <ResearchJobs currentId={job?.id} revision={`${job?.id}:${job?.status}`} onOpen={reopenResearch}/>
+        <ResearchJobs currentId={job?.id} revision={`${job?.id}:${job?.status}:${libraryRevision}`} onOpen={reopenResearch}/>
         {job?.id && <section aria-live="polite" className="plain-panel research-job-status"><h2>Viewed research job</h2><p>{job.request?.query}</p><p>Status: {job.status.replaceAll("_", " ")}</p>
           {job.request?.conversation_id && job.result?.completion === "section_checkpoint" && <a href={`#${bundleRoute(job.result.id!, job.request.conversation_id)}`}>Open checked sections (incomplete)</a>}
           {busy ? <><p>{progress || "Reading existing research progress"}</p><button onClick={() => api<Job>(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, { method: "POST" }).then(setJob).catch(fail)}>Cancel research</button></>
@@ -161,10 +163,19 @@ export function App() {
         {page === "comparisons" && <Comparisons key={`${comparisonSelection.comparison}:${comparisonSelection.bundle}`} library={library} saved={saved} settings={settings} resultId={comparisonSelection.comparison} initialLeft={comparisonSelection.bundle}/>}
         {page === "reports" && <Reports key={`${comparisonSelection.report}:${comparisonSelection.bundle}`} library={library} saved={saved} settings={settings} reportId={comparisonSelection.report} initialBundle={comparisonSelection.bundle}/>}
         {page === "library" && <section><h1>Your research library</h1><p>Search any asset. Available sections depend on verifiable evidence.</p>{library.length === 0 && <section className="plain-panel"><h2>Start with one asset</h2><p>Connect your subscription runtime, then research a ticker or name. Evidence and dated explanations will be saved here.</p></section>}<div className="library-grid">{library.map((item) => <button className="plain-panel" key={item.asset.id} onClick={() => openAsset(item)}><strong>{item.asset.name}</strong><span>{item.asset.symbol} · {item.asset.asset_type}</span><span>Snapshot {new Date(item.created_at!).toLocaleString()}</span></button>)}</div></section>}
-        {page === "saved" && <section><h1>Saved research</h1><p>Bookmarks reference a fixed evidence version; refresh does not overwrite it.</p>{saved.length === 0 && <p>No saved research yet.</p>}{saved.map((report) => <button key={report.id} onClick={() => api<EvidenceBundle>(`/api/bundles/${report.bundle_id}`).then(openAsset).catch(fail)}>{report.title}</button>)}</section>}
+        {page === "saved" && <section><h1>Saved research</h1><p>Bookmarks reference a fixed evidence version; refresh does not overwrite it.</p>{saved.length === 0 && <p>No saved research yet.</p>}{saved.map((report) => <article className="plain-panel" key={report.id} data-saved-id={report.id}>
+          <button onClick={() => api<EvidenceBundle>(`/api/bundles/${encodeURIComponent(report.bundle_id)}`).then(openAsset).catch(fail)}>{report.title}</button>
+          <DeleteSavedItem kind="saved" id={report.id} title={report.title} onDeleted={reload}/>
+        </article>)}</section>}
         {page === "conversations" && <section><h1>Persistent conversations</h1><p>Unbookmarked conversations expire after {settings?.retention_days ?? 180} days without activity. Bookmark a conversation to keep it.</p>
           <nav aria-label="Saved conversations">{conversations.map((chat) => <a key={chat.id} href={`#${conversationRoute(chat.id)}`}>{chat.asset_id} · {chat.messages.length} messages{chat.bookmarked ? " · Bookmarked" : ""}</a>)}</nav>
           {activeConversation ? <ConversationPanel key={activeConversation.id} conversation={activeConversation} library={library} settings={settings} busy={!!busy} onUpdate={updateConversation} onAsk={(question) => research(undefined, false, question, activeConversation)}/> : <p>{conversationId ? "This conversation is unavailable or has expired. Saved evidence remains in the library." : "Select a conversation, or start one from a ticker page."}</p>}
+          {activeConversation && <DeleteSavedItem key={`delete:${activeConversation.id}`} kind="conversation" id={activeConversation.id} title={`Conversation about ${activeConversation.asset_id}`} onDeleted={async () => {
+            if (job?.request?.conversation_id === activeConversation.id) { setJob(undefined); setProgress(""); }
+            setLibraryRevision((revision) => revision + 1);
+            setNotice("Conversation deleted. Original evidence remains in the library.");
+            setConversationId(null); location.hash = "conversations"; await reload();
+          }}/>}
         </section>}
         {page === "connections" && <><CodexConnection/><LibraryBackup onRestored={async () => { setConversationId(null); setAsset(undefined); setJob(undefined); await reload(); }}/></>}
         {page === "asset" && asset && <>

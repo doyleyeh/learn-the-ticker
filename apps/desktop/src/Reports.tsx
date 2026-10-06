@@ -4,6 +4,7 @@ import type { DatedItem, EvidenceBundle, ResearchReport, SavedResearch, Settings
 import { bundleRoute, reportRoute, sourceRoute } from "./routes";
 import { EvidenceView } from "./TickerDashboard";
 import { SnapshotStatus } from "./EvidenceFreshness";
+import { DeleteSavedItem } from "./DeleteSavedItem";
 
 type Summary = Pick<ResearchReport, "id" | "created_at" | "bundle_id" | "asset" | "evidence_saved_at">;
 
@@ -97,5 +98,8 @@ export function Reports({ library, saved, settings, reportId, initialBundle }: {
     <nav aria-label="Saved reports">{reports.map((item) => <a key={item.id} href={`#${reportRoute(item.id)}`}>{item.asset.symbol} · {item.created_at}</a>)}</nav>
     {!reports.length && <p>No dated reports have been saved.</p>}
     {report ? <ReportView key={report.id} report={report}/> : reportId && !error && <p>Reading saved report…</p>}
+    {report && <DeleteSavedItem key={`delete:${report.id}`} kind="report" id={report.id!} title={`${report.asset.name} · ${report.created_at}`} onDeleted={() => {
+      setReports((items) => items.filter((item) => item.id !== report.id)); setReport(undefined); location.hash = "reports";
+    }}/>}
   </section>;
 }
