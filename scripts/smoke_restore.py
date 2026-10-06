@@ -101,6 +101,14 @@ def main():
         assert original_chat["context_bundle_id"] == old.id
         assert original_chat["messages"][-2]["context_bundle_id"] == latest.id
         source.put("settings", "settings", Settings(cloud_enabled=True, experimental_yahoo_enabled=True, language="zh-TW", model="synthetic-selected-model").model_dump(mode="json"))
+        from backend.app.comparisons import ComparisonRequest, create_comparison
+        from tests.desktop.comparison_fixture import comparison_pair
+        pair = comparison_pair()
+        for bundle in pair:
+            source.put("bundle:" + bundle.id, "bundle", bundle.model_dump(mode="json"), bundle.asset.id)
+        comparisons = [create_comparison(source, ComparisonRequest(left_bundle_id=a.id, right_bundle_id=b.id)).model_dump(mode="json")
+            for a, b in (pair, (market, latest))]
+        assert any(row["alignment"] == "aligned" and row["left"]["value"] == "9007199254740992" for row in comparisons[0]["rows"])
         term_request = TermRequest(term="liquidity", bundle_id=old.id)
         term = TermExplanation(id=term_key(term_request), term=term_request.term, bundle_id=old.id, asset_id=identity.id, language="en", level="beginner", provider="codex", basis="general", explanation="Synthetic general explanation for the restore scenario.")
         with source.session.begin() as session:
@@ -159,7 +167,7 @@ def main():
         archive_path = roots[0] / "library.lttbackup"
         archive_path.write_bytes(archive)
         summary = preview_backup(target, archive)
-        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 16 and summary.saved_reports == 1 and summary.term_explanations == 3
+        assert summary.can_restore and summary.assets == 2 and summary.evidence_versions == 18 and summary.saved_reports == 1 and summary.term_explanations == 3
         assert summary.format_version == "2" and summary.retained_imports == 5 and summary.attachment_bytes == sum(item.byte_count for item in imports)
         assert summary.import_explanations == 1
 
@@ -179,7 +187,10 @@ def main():
         assert not target.list("asset") and not target.list("settings") and not target.job("pending")
         assert not target.list("import")
         assert not target.list("import_explanation")
+        assert not target.list("comparison")
         restore_backup(target, archive, summary.fingerprint)
+        for comparison in comparisons:
+            assert target.get("comparison:" + comparison["id"]) == comparison
         restored_jobs = {row["id"]: row for row in target.research_jobs()}
         assert restored_jobs["pending"]["status"] == "interrupted"
         assert restored_jobs["pending"]["request"] == original_jobs["pending"]["request"]
@@ -222,6 +233,8 @@ def main():
         clusters[1].start()
         restarted = Database(clusters[1].url())
         databases.append(restarted)
+        for comparison in comparisons:
+            assert restarted.get("comparison:" + comparison["id"]) == comparison
         assert restarted.get("bundle:" + cloud_original.id) == cloud_original.model_dump(mode="json")
         assert restarted.get("bundle:" + cloud_answer.id) == cloud_answer.model_dump(mode="json")
         validate_context_references(cloud_answer, lambda bid: restarted.get("bundle:" + bid))
@@ -298,6 +311,7 @@ def main():
             restored = RetainedImport.model_validate(restarted.get("import:" + document.id))
             assert restored == document and restored.content() == document.content() and not restored.verified
         print("PostgreSQL full-library restore, rollback on failure, preserved saved versions, event sequence and restart passed.")
+        print("Immutable aligned and mixed-type comparisons retained exact values, original evidence versions, citations and gap states through rollback/restore/restart.")
         print("Typed issuer observations, exact decimals, separate identity proofs and conflict/revision references survived actual restore and restart.")
         print("Yahoo history, exact decimals/actions, cloud interpretations and original-version references survived restore/restart; shared numerical context, shareable export filtering and reset network opt-in passed.")
         print("Stored price/provider-adjusted return results, endpoint dates, original source references and missing-window reasons survived restore/restart.")

@@ -4,6 +4,8 @@ Authority and ownership follow [AGENTS.md](../../../AGENTS.md): safety first; [S
 
 Focus on P0/P1 issues only:
 
+Comparisons must bind both independently identified original pages, preserve exact numeric strings/source IDs and retain period/unit/method/type gaps. Keep valuation sampling domains distinct and never backfill a missing/conflicted newest value with an older one. No notes, generated interpretations or cross-instrument share assumptions become metric inputs. Saved results are immutable; offline list/detail reads cannot generate, calculate, retrieve or infer. Same-user backups validate both page fingerprints and stored alignment; private values gain no shareable-export permission. Require actual PostgreSQL restore and the separate browser workflow before completing M6.
+
 - Missing evidence for completion claims, failed checks, or fixtures represented as live provider/installer qualification.
 - Three failed delivery repairs require recorded diagnosis, not automatic abandonment while evidence-driven repair remains possible. DEC-052 runtime recovery is narrower: only the exact account/read routing timeout, refreshToken=false, at most two additional reads within one 60-second account deadline or an explicit caller deadline. Reject generic -32603 retries, stale authentication reuse, replayed inference, ignored auth/quota/cancel failures or hidden recovered-error qualification evidence.
 - Buy/sell/hold, allocation/position sizing, tax advice, unsupported targets or trading behavior.

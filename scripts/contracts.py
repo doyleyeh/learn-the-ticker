@@ -11,8 +11,9 @@ from backend.app.freshness import BundleFreshness
 from backend.app.contracts import ApprovalDecision, ApprovalRequest, AssetIdentity, BackupSummary, Claim, Conversation, EvidenceBundle, ProviderLogin, ResearchJobSummary, ResearchRequest, ResearchResult, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, SavedResearch, Settings, Source, TermExplanation, TermRequest, TermResult
 
 def generated_schema() -> str:
+    from backend.app.comparisons import ComparisonRequest, ComparisonResult
     models = [ApprovalDecision, ApprovalRequest, AssetIdentity, BackupSummary, Claim, Conversation, EvidenceBundle, ImportPreview, RetainedImportSummary, RetainedImportView, ImportExplanation, ImportLearningRequest, ImportLearningScope, ProviderLogin, ResearchJobSummary, ResearchRequest, ResearchResult, RuntimeCapabilities, RuntimeEvent, RuntimeModel, RuntimeModelCatalog, SavedResearch, Settings, Source, TermExplanation, TermRequest, TermResult]
-    models.extend([SourceReviewDecision, SourceReviewRequest, BundleFreshness])
+    models.extend([SourceReviewDecision, SourceReviewRequest, BundleFreshness, ComparisonRequest, ComparisonResult])
     _, schema = models_json_schema([(model, "validation") for model in models], title="DesktopContracts")
     schema.update({"type": "object", "properties": {model.__name__: {"$ref": "#/$defs/" + model.__name__} for model in models}, "additionalProperties": False})
     return json.dumps(schema, indent=2) + "\n"

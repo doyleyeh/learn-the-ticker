@@ -67,11 +67,20 @@ class Database:
         if kind == "import":
             from backend.app.retained_imports import validate_import_write
             validate_import_write(session, record_id, payload, parent_id)
+        if kind == "comparison":
+            from backend.app.comparisons import ComparisonResult, validate_comparison
+            result = ComparisonResult.model_validate(payload)
+            if record_id != "comparison:" + result.id or parent_id is not None:
+                raise ValueError("Comparison identity is inconsistent")
+            def original(version):
+                source = session.get(Record, "bundle:" + version)
+                return source.payload if source and source.kind == "bundle" else None
+            validate_comparison(result, original)
         record = session.get(Record, record_id)
         if record:
             if record.kind != kind:
                 raise ValueError("Record type cannot change")
-            if kind in ("bundle", "term", "import", "import_explanation") and record.payload != payload:
+            if kind in ("bundle", "term", "import", "import_explanation", "comparison") and record.payload != payload:
                 raise ValueError("Evidence snapshots are immutable")
             record.payload = payload
             record.updated_at = datetime.now(timezone.utc)

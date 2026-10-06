@@ -24,6 +24,7 @@ from backend.app.import_documents import MAX_INPUT
 from backend.app.terms import term_key, validate_explanation
 from backend.app.import_learning import ImportExplanation, ImportLearningRequest, learning_key, validate_learning
 from backend.app.import_storage import RetainedImportView, summary as import_summary
+from backend.app.comparisons import ComparisonResult, validate_comparison
 
 MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
 MAX_CONTENT_BYTES = 256 * 1024 * 1024
@@ -41,7 +42,7 @@ class StrictModel(BaseModel):
 
 class StoredRecord(StrictModel):
     id: str = Field(max_length=200)
-    kind: Literal["asset", "bundle", "conversation", "saved", "settings", "term", "import", "import_explanation"]
+    kind: Literal["asset", "bundle", "conversation", "saved", "settings", "term", "import", "import_explanation", "comparison"]
     parent_id: str | None = Field(default=None, max_length=200)
     updated_at: AwareDatetime
     payload: dict
@@ -124,7 +125,7 @@ def validate_library(data: LibraryData):
         raise BackupError("Library exceeds the current 100 retained-document archive limit")
     attachment_bytes = 0
     for row in data.records:
-        model = {"asset": EvidenceBundle, "bundle": EvidenceBundle, "settings": Settings, "conversation": Conversation, "saved": SavedResearch, "term": TermExplanation, "import": RetainedImport, "import_explanation": ImportExplanation}[row.kind]
+        model = {"asset": EvidenceBundle, "bundle": EvidenceBundle, "settings": Settings, "conversation": Conversation, "saved": SavedResearch, "term": TermExplanation, "import": RetainedImport, "import_explanation": ImportExplanation, "comparison": ComparisonResult}[row.kind]
         value = model.model_validate(row.payload)
         suffix = value.asset.id if row.kind == "asset" else getattr(value, "id", "")
         expected = "settings" if row.kind == "settings" else row.kind + ":" + suffix
@@ -160,6 +161,10 @@ def validate_library(data: LibraryData):
                 raise BackupError("Current asset snapshot is missing or inconsistent")
         elif row.kind == "saved" and value["bundle_id"] not in bundles:
             raise BackupError("Saved report references missing evidence")
+        elif row.kind == "comparison":
+            if row.parent_id is not None:
+                raise BackupError("Comparison cannot belong to one asset only")
+            validate_comparison(ComparisonResult.model_validate(value), bundles.get)
         elif row.kind == "term":
             if value["bundle_id"] not in bundles or row.parent_id != value["bundle_id"]:
                 raise BackupError("Term explanation references missing evidence")

@@ -22,6 +22,7 @@ from backend.app.research import ResearchService
 from backend.app.runtimes import runtimes
 from backend.app.terms import TermService
 from backend.app.source_review import SourceReviewDecision
+from backend.app.comparisons import ComparisonRequest, ComparisonResult, create_comparison
 
 ORIGINS = ("tauri://localhost", "http://tauri.localhost", "https://tauri.localhost", "http://localhost:1420", "http://127.0.0.1:1420")
 
@@ -180,6 +181,26 @@ def create_app(db: Database, token: str, workspace: Path, *, adapters=None, veri
     @app.get("/api/library")
     def library():
         return db.list("asset")
+
+    @app.post("/api/comparisons", response_model=ComparisonResult)
+    async def compare(request: ComparisonRequest):
+        # Same lock as consent edits; no request can race an offline transition.
+        async with settings_lock:
+            try:
+                return create_comparison(db, request)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/comparisons")
+    def comparisons():
+        return [{key: value[key] for key in ("id", "created_at", "left", "right", "method")} for value in db.list("comparison")]
+
+    @app.get("/api/comparisons/{comparison_id}", response_model=ComparisonResult)
+    def comparison(comparison_id: str):
+        value = db.get("comparison:" + comparison_id)
+        if not value:
+            raise HTTPException(404, "Saved comparison is unavailable")
+        return ComparisonResult.model_validate(value)
 
     @app.get("/api/library/backup")
     def backup():

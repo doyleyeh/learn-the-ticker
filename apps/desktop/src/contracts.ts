@@ -1056,6 +1056,74 @@ export type Reason6 =
   | "rights_changed";
 export type MaxAgeSeconds = number | null;
 export type Sources3 = SourceAge[];
+export type SchemaVersion48 = "1";
+export type LeftBundleId = string;
+export type RightBundleId = string;
+export type SchemaVersion49 = "1";
+export type Id16 = string;
+export type Method2 = "saved-evidence-alignment-v1";
+export type CreatedAt7 = string;
+export type SchemaVersion50 = "1";
+export type BundleId6 = string;
+export type SavedAt = string;
+export type State3 = "partial" | "available" | "stale" | "unavailable";
+export type Completion1 = "complete" | "section_checkpoint";
+export type Fingerprint2 = string;
+/**
+ * @minItems 1
+ * @maxItems 100
+ */
+export type Rows = [ComparisonRow, ...ComparisonRow[]];
+export type SchemaVersion51 = "1";
+export type Id17 = string;
+export type Label = string;
+export type SchemaVersion52 = "1";
+export type State4 = "available" | "missing" | "not_applicable" | "unknown_type" | "conflict";
+export type Value4 = string | null;
+export type Text5 = string | null;
+export type Unit3 = string | null;
+export type Start3 = string | null;
+export type End3 = string | null;
+export type Basis2 = string | null;
+/**
+ * @maxItems 10
+ */
+export type SourceIds5 =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string];
+/**
+ * @maxItems 10
+ */
+export type EvidenceIds =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string, string, string];
+export type Alignment =
+  | "aligned"
+  | "descriptive"
+  | "missing_evidence"
+  | "different_types"
+  | "different_units"
+  | "different_periods"
+  | "different_methods"
+  | "share_basis_unverified";
 
 export interface DesktopContracts {
   ApprovalDecision?: ApprovalDecision;
@@ -1088,6 +1156,8 @@ export interface DesktopContracts {
   SourceReviewDecision?: SourceReviewDecision;
   SourceReviewRequest?: SourceReviewRequest;
   BundleFreshness?: BundleFreshness;
+  ComparisonRequest?: ComparisonRequest;
+  ComparisonResult?: ComparisonResult;
 }
 export interface ApprovalDecision {
   schema_version?: SchemaVersion;
@@ -1631,4 +1701,47 @@ export interface SourceAge {
   state: State2;
   reason: Reason6;
   max_age_seconds?: MaxAgeSeconds;
+}
+export interface ComparisonRequest {
+  schema_version?: SchemaVersion48;
+  left_bundle_id: LeftBundleId;
+  right_bundle_id: RightBundleId;
+}
+export interface ComparisonResult {
+  schema_version?: SchemaVersion49;
+  id?: Id16;
+  method?: Method2;
+  created_at?: CreatedAt7;
+  left: ComparisonSide;
+  right: ComparisonSide;
+  rows: Rows;
+}
+export interface ComparisonSide {
+  schema_version?: SchemaVersion50;
+  bundle_id: BundleId6;
+  asset: AssetIdentity;
+  saved_at: SavedAt;
+  state: State3;
+  completion: Completion1;
+  fingerprint: Fingerprint2;
+}
+export interface ComparisonRow {
+  schema_version?: SchemaVersion51;
+  id: Id17;
+  label: Label;
+  left: ComparisonCell;
+  right: ComparisonCell;
+  alignment: Alignment;
+}
+export interface ComparisonCell {
+  schema_version?: SchemaVersion52;
+  state?: State4;
+  value?: Value4;
+  text?: Text5;
+  unit?: Unit3;
+  start?: Start3;
+  end?: End3;
+  basis?: Basis2;
+  source_ids?: SourceIds5;
+  evidence_ids?: EvidenceIds;
 }

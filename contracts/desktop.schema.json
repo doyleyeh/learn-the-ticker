@@ -596,6 +596,312 @@
       "title": "Claim",
       "type": "object"
     },
+    "ComparisonCell": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "state": {
+          "default": "missing",
+          "enum": [
+            "available",
+            "missing",
+            "not_applicable",
+            "unknown_type",
+            "conflict"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 30,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "basis": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Basis"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "title": "ComparisonCell",
+      "type": "object"
+    },
+    "ComparisonRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "left_bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Left Bundle Id",
+          "type": "string"
+        },
+        "right_bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Right Bundle Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "left_bundle_id",
+        "right_bundle_id"
+      ],
+      "title": "ComparisonRequest",
+      "type": "object"
+    },
+    "ComparisonResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "method": {
+          "const": "saved-evidence-alignment-v1",
+          "default": "saved-evidence-alignment-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/$defs/ComparisonSide"
+        },
+        "right": {
+          "$ref": "#/$defs/ComparisonSide"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/ComparisonRow"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Rows",
+          "type": "array"
+        }
+      },
+      "required": [
+        "left",
+        "right",
+        "rows"
+      ],
+      "title": "ComparisonResult",
+      "type": "object"
+    },
+    "ComparisonRow": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 160,
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 200,
+          "title": "Label",
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/$defs/ComparisonCell"
+        },
+        "right": {
+          "$ref": "#/$defs/ComparisonCell"
+        },
+        "alignment": {
+          "enum": [
+            "aligned",
+            "descriptive",
+            "missing_evidence",
+            "different_types",
+            "different_units",
+            "different_periods",
+            "different_methods",
+            "share_basis_unverified"
+          ],
+          "title": "Alignment",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "left",
+        "right",
+        "alignment"
+      ],
+      "title": "ComparisonRow",
+      "type": "object"
+    },
+    "ComparisonSide": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "#/$defs/AssetIdentity"
+        },
+        "saved_at": {
+          "format": "date-time",
+          "title": "Saved At",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "partial",
+            "available",
+            "stale",
+            "unavailable"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "completion": {
+          "enum": [
+            "complete",
+            "section_checkpoint"
+          ],
+          "title": "Completion",
+          "type": "string"
+        },
+        "fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "asset",
+        "saved_at",
+        "state",
+        "completion",
+        "fingerprint"
+      ],
+      "title": "ComparisonSide",
+      "type": "object"
+    },
     "ContextReference": {
       "additionalProperties": false,
       "description": "Application-owned link to numerical evidence in an immutable earlier version.",
@@ -3825,6 +4131,12 @@
     },
     "BundleFreshness": {
       "$ref": "#/$defs/BundleFreshness"
+    },
+    "ComparisonRequest": {
+      "$ref": "#/$defs/ComparisonRequest"
+    },
+    "ComparisonResult": {
+      "$ref": "#/$defs/ComparisonResult"
     }
   },
   "additionalProperties": false
