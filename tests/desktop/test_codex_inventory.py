@@ -121,9 +121,20 @@ def test_listener_shutdown_cancels_incomplete_requests():
         await asyncio.sleep(0)
         await peer.close()
         assert not peer.tasks and not peer.server.is_serving()
-        assert await asyncio.wait_for(reader.read(), 1) == b""
-        writer.close()
-        await writer.wait_closed()
+        try:
+            # Closing with an unread partial request produces EOF on Windows
+            # and may produce TCP RST on Linux. Both prove peer termination;
+            # data, a timeout or any other error still fails this assertion.
+            try:
+                assert await asyncio.wait_for(reader.read(), 1) == b""
+            except ConnectionResetError:
+                pass
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except ConnectionResetError:
+                pass
     asyncio.run(run())
 
 
