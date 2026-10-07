@@ -1,6 +1,6 @@
 # Learn the Ticker specification
 
-The product contract for Windows public v1. Requirements describe the destination, not completed functionality. [DECISIONS.md](DECISIONS.md) owns accepted architecture; [PLAN.md](PLAN.md) sequences delivery; [STATUS.md](STATUS.md) records evidence. Existing P-series identifiers are preserved from the approved desktop reboot.
+The product contract for Windows public v1 and the active WSL2 commercial-agent development track. Requirements describe the destination, not completed functionality. [DECISIONS.md](DECISIONS.md) owns accepted architecture; [PLAN.md](PLAN.md) sequences delivery; [STATUS.md](STATUS.md) records evidence. Existing P-series identifiers are preserved from the approved desktop reboot.
 
 ## Purpose and scope
 
@@ -64,6 +64,8 @@ P-031: Default history is five annual years, twelve quarters and five daily-pric
 
 P-040: ChatGPT/Codex, Gemini and Claude all pass capability and evidence tests before public v1. One selected runtime/model at once. Explicit cloud permission; provider-managed sign-in where supported. No consumer-website scraping, browser-cookie harvesting, API billing fallback or silent provider switching. Pause on quota, authentication and incompatibility.
 
+DEC-066 sets the active qualification order: preserve the scoped native Windows Codex result; qualify Codex on WSL2, then Antigravity on WSL2, then Claude Code on native Windows and WSL2 after the owner has a subscribed account. Native Windows Antigravity is deferred while its credential-isolation interface is unresolved. Record each provider/platform separately; a WSL result never qualifies the native Windows binary. All three commercial agents across Windows/WSL remain the long-term target. This sequencing change does not declare a deferred combination supported or authorize an incomplete public release.
+
 Before first research, in Connections and in setup documentation, disclose that the application is free/open source but its supported AI workflows require the user's own paid commercial-agent subscription. Explain the agent's role in finding/reviewing sources, reasoning, summarization and content generation, plus consented provider transmission. Distinguish new AI work from saved research/conversations/explanations and curated definitions that remain available without a connection. Show current provider readiness; never imply that a paid plan, successful login or a provider's free chat tier establishes app compatibility. Free-account integrations require separate qualification before being advertised. This disclosure does not add a payment check or change existing per-request model/usage gates (DEC-065).
 
 P-041: Same-computer access only. Temporary authenticated local transport, OS credential storage, isolated workspaces, scoped tool permissions, explicit approval for destructive/expanded access, no telemetry.
@@ -74,7 +76,7 @@ P-043: Full backups exclude credentials. Restore preserves newer research and va
 
 P-044: Engineering target 1,000 cached assets, two retrieval jobs and one inference. This is not a coverage cap. Collect baseline timings; numerical performance acceptance remains deferred.
 
-P-045: Freely distributed open-source desktop application. Retain one-command repository setup for developer previews, then deliver a Windows installer that includes core application dependencies. Handle provider prerequisites explicitly. Platform order is native Windows, macOS, Windows with WSL, then Linux. LAN/remote access, local inference and external app MCP hosting are deferred.
+P-045: Freely distributed open-source desktop application. Retain one-command repository setup for developer previews, then deliver a Windows installer that includes core application dependencies. Handle provider prerequisites explicitly. Native Windows and Windows with WSL2 are the active environments under DEC-066; macOS and standalone Linux distribution are future work. OpenCode, Ollama and other open-source runtimes/models follow the commercial-agent integrations and need their own model, tool, resource, license and evidence qualification. No local-model execution is enabled by this roadmap. LAN/remote access and external app MCP hosting remain deferred.
 
 ## Release acceptance
 
@@ -88,4 +90,4 @@ Use React/TypeScript/Vite in Tauri 2, a packaged FastAPI service, and private Po
 
 Preserve the defaults in [DEC-006](DECISIONS.md#dec-006-data-history-retention-and-scheduling). All P-series requirements and mandatory [PLAN.md](PLAN.md) milestones must have passing [EVALS.md](EVALS.md) evidence. Required missing checks and blocked live/installer acceptance prevent completion. A passing build, stored setting, or synthetic provider cannot establish shipped functionality.
 
-The current delivery ends at Windows public v1. Later platforms, point-in-time analysis, LAN access, local inference, and external app MCP hosting remain deferred. No new latency SLA is implied; collect measured baselines.
+Windows public v1 remains the release finish line; WSL2 commercial-agent development is now active. macOS, standalone Linux distribution, point-in-time analysis, LAN access and external app MCP hosting remain deferred. OpenCode/Ollama and other open-source runtimes follow commercial-agent qualification. No new latency SLA is implied; collect measured baselines.

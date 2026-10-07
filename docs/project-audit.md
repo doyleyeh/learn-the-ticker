@@ -2,6 +2,8 @@
 
 This is the one-time foundation audit, not the live backlog. Use [STATUS](../STATUS.md), [TASKS](../TASKS.md) and [PLAN](../PLAN.md) to continue.
 
+Later scope amendment: [DEC-066](../DECISIONS.md#dec-066--prioritize-commercial-agents-on-windows-and-wsl2), dated 2026-10-07, activates WSL2 commercial-agent development before macOS. Platform deferrals below retain their original audit date and are superseded by that decision for WSL2.
+
 ## Current repository state
 
 Baseline: clean codex/project-delivery-foundation at 2fd187f. Production is React/Vite/Tauri under apps/desktop and FastAPI under backend/app; generated contracts, SQLAlchemy/Alembic and private PostgreSQL are present. The full pre-change PowerShell gate passed 278 Python tests, static evaluations, seven frontend tests, type checking and Vite build. Rust tooling is absent. No live inference or installer is qualified.
