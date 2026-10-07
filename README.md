@@ -52,6 +52,8 @@ The Sources screen can retain bounded original documents with checksums, provena
 
 ## Development on Windows
 
+Use the desktop commands below. Financial components and tests retained from the earlier web app are reference material; the archived web deployment and agent-loop instructions are historical. The [migration guide](docs/MIGRATION.md) explains their boundaries and the PR #7 reconciliation.
+
 Start a conversation from a ticker page, then use its saved conversation link to return after reload. It retains that exact page version, including when you start from an older saved report. Refreshing the ticker leaves the selected conversation evidence unchanged; Use current ticker evidence explicitly selects the newer page and records the change. The view shows its current asset and the provider/model selected for the next answer. Earlier responses and recorded page selections open their original versions; opening them does not change scope. Bookmarks and messages remain readable with cloud research off. Older conversations without a recorded starting page say so and let you select one.
 
 Markdown and JSON exports retain permitted original references and source dates. Generated research notes remain labeled unverified; Markdown lists their reference IDs or says none was supplied. Private Yahoo observations and dependent interpretations remain omitted from shareable exports.

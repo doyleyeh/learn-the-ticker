@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Iterable
+from dataclasses import dataclass, field
+from typing import Any, Iterable, Protocol
 
 from backend.citations import (
     CitationEvidence,
@@ -11,14 +11,29 @@ from backend.citations import (
     EvidenceKind,
     validate_claims,
 )
+from backend.cache import build_knowledge_pack_freshness_input, compute_knowledge_pack_freshness_hash
+from backend.generated_output_cache_repository import (
+    GeneratedOutputArtifactCategory,
+    GeneratedOutputCacheContractError,
+    GeneratedOutputCacheRepositoryRecords,
+    build_deterministic_generated_output_cache_records,
+    persist_generated_output_cache_records,
+    validate_generated_output_cache_records,
+)
+from backend.market_news import build_market_news_response
 from backend.models import (
+    AssetIdentity,
     AssetStatus,
     AssetType,
+    CacheEntryKind,
+    CacheScope,
     BeginnerSummary,
     Citation,
     Claim,
+    EconomicIndicatorsPackResponse,
     EvidenceState,
     FreshnessState,
+    GenerationDiagnostics,
     MetricValue,
     OverviewMetric,
     OverviewResponse,
@@ -34,29 +49,71 @@ from backend.models import (
     RiskItem,
     SectionFreshnessInput,
     SourceDocument,
+    Freshness,
     StateMessage,
     SuitabilitySummary,
 )
+from backend.generation_evidence import evidence_pack_from_knowledge_pack
 from backend.retrieval import (
     AssetKnowledgePack,
+    EvidenceGap,
+    NormalizedFactFixture,
     RetrievedFact,
     RetrievedRecentDevelopment,
     RetrievedSourceChunk,
+    RecentDevelopmentFixture,
+    SourceChunkFixture,
     SourceDocumentFixture,
     _section_freshness_labels,
     build_asset_knowledge_pack,
 )
+from backend.repositories.knowledge_packs import (
+    KnowledgePackRepositoryRecords,
+    KnowledgePackRepositoryContractError,
+)
+from backend.source_snapshot_repository import (
+    SourceSnapshotContractError,
+    SourceSnapshotRepositoryRecords,
+    validate_source_snapshot_records,
+)
+from backend.retrieval_repository import (
+    KnowledgePackRecordReader,
+    read_persisted_knowledge_pack_response,
+)
 from backend.safety import find_forbidden_output_phrases
-from backend.source_policy import resolve_source_policy
+from backend.source_policy import resolve_source_policy, source_handoff_fields_from_policy
+from backend.summary_generation import SummaryGenerationContractError, build_default_summary_generation_service
 from backend.weekly_news import (
     DEFAULT_WEEKLY_NEWS_AS_OF,
+    WeeklyNewsEventEvidenceRecordReader,
     build_ai_comprehensive_analysis,
     build_weekly_news_focus_from_pack,
+    read_persisted_weekly_news_focus,
 )
 
 
 class OverviewGenerationError(ValueError):
     """Raised when deterministic overview generation violates project contracts."""
+
+
+OVERVIEW_PERSISTED_READ_BOUNDARY = "overview-persisted-read-boundary-v1"
+
+
+class GeneratedOutputCacheRecordReader(Protocol):
+    def read_generated_output_cache_records(self, ticker: str) -> GeneratedOutputCacheRepositoryRecords | None:
+        ...
+
+
+@dataclass(frozen=True)
+class PersistedOverviewReadResult:
+    status: str
+    ticker: str
+    overview: OverviewResponse | None = None
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def found(self) -> bool:
+        return self.status == "found" and self.overview is not None
 
 
 @dataclass(frozen=True)
@@ -90,13 +147,489 @@ class FreshnessValidationSubject:
     limitations: str | None = None
 
 
-def generate_asset_overview(ticker: str) -> OverviewResponse:
+def generate_asset_overview(
+    ticker: str,
+    *,
+    persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
+    generated_output_cache_reader: GeneratedOutputCacheRecordReader | Any | None = None,
+    source_snapshot_reader: Any | None = None,
+    generated_output_cache_writer: Any | None = None,
+    persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
+) -> OverviewResponse:
     """Build an OverviewResponse-compatible payload from the local retrieval pack."""
 
-    return generate_overview_from_pack(build_asset_knowledge_pack(ticker))
+    persisted = read_persisted_overview_response(
+        ticker,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+        source_snapshot_reader=source_snapshot_reader,
+        persisted_weekly_news_reader=persisted_weekly_news_reader,
+        economic_indicators=economic_indicators,
+    )
+    if persisted.found and persisted.overview is not None:
+        return persisted.overview
+
+    pack = build_asset_knowledge_pack(ticker)
+    overview = generate_overview_from_pack(
+        pack,
+        persisted_weekly_news_reader=persisted_weekly_news_reader,
+        economic_indicators=economic_indicators,
+    )
+    _maybe_write_overview_generated_output_cache(overview, pack, generated_output_cache_writer)
+    return overview
 
 
-def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
+def read_persisted_overview_response(
+    ticker: str,
+    *,
+    persisted_pack_reader: KnowledgePackRecordReader | Any | None = None,
+    generated_output_cache_reader: GeneratedOutputCacheRecordReader | Any | None = None,
+    source_snapshot_reader: Any | None = None,
+    persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
+) -> PersistedOverviewReadResult:
+    normalized = ticker.strip().upper()
+    if persisted_pack_reader is None or generated_output_cache_reader is None:
+        return PersistedOverviewReadResult(
+            status="not_configured",
+            ticker=normalized,
+            diagnostics=("reader:not_configured",),
+        )
+
+    pack_read = read_persisted_knowledge_pack_response(normalized, reader=persisted_pack_reader)
+    if not pack_read.found or pack_read.response is None or pack_read.records is None:
+        return PersistedOverviewReadResult(
+            status=pack_read.status,
+            ticker=normalized,
+            diagnostics=(f"knowledge_pack:{pack_read.status}",),
+        )
+    if not pack_read.response.asset.supported or not pack_read.response.generated_output_available:
+        return PersistedOverviewReadResult(
+            status="blocked_state",
+            ticker=normalized,
+            diagnostics=(f"knowledge_pack:blocked:{pack_read.response.build_state.value}",),
+        )
+
+    cache_records_result = _read_generated_output_cache_records(generated_output_cache_reader, normalized)
+    if cache_records_result.status != "found" or cache_records_result.records is None:
+        return PersistedOverviewReadResult(
+            status=cache_records_result.status,
+            ticker=normalized,
+            diagnostics=cache_records_result.diagnostics,
+        )
+
+    try:
+        pack = _asset_knowledge_pack_from_repository_records(pack_read.records)
+        _validate_generated_output_cache_for_overview(
+            normalized,
+            cache_records_result.records,
+            pack=pack,
+            pack_records=pack_read.records,
+            knowledge_pack_hash=pack_read.response.knowledge_pack_freshness_hash,
+            allow_cache_validated_knowledge_hash=source_snapshot_reader is not None,
+        )
+        _validate_source_snapshots_for_overview(
+            normalized,
+            source_snapshot_reader,
+            pack_records=pack_read.records,
+            cache_records=cache_records_result.records,
+        )
+        overview = generate_overview_from_pack(
+            pack,
+            persisted_weekly_news_reader=persisted_weekly_news_reader,
+            economic_indicators=economic_indicators,
+        )
+        report = validate_overview_response(overview, pack)
+        if not report.valid:
+            return PersistedOverviewReadResult(
+                status="validation_error",
+                ticker=normalized,
+                diagnostics=("overview:citation_validation_failed",),
+            )
+    except (
+        GeneratedOutputCacheContractError,
+        KnowledgePackRepositoryContractError,
+        SourceSnapshotContractError,
+        OverviewGenerationError,
+        LookupError,
+        StopIteration,
+        ValueError,
+        TypeError,
+    ) as exc:
+        return PersistedOverviewReadResult(
+            status="contract_error",
+            ticker=normalized,
+            diagnostics=(f"overview:{exc.__class__.__name__}",),
+        )
+
+    return PersistedOverviewReadResult(
+        status="found",
+        ticker=normalized,
+        overview=overview,
+        diagnostics=("overview:persisted_hit",),
+    )
+
+
+@dataclass(frozen=True)
+class _GeneratedOutputCacheReadResult:
+    status: str
+    ticker: str
+    records: GeneratedOutputCacheRepositoryRecords | None = None
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _read_generated_output_cache_records(
+    reader: GeneratedOutputCacheRecordReader | Any,
+    ticker: str,
+) -> _GeneratedOutputCacheReadResult:
+    try:
+        raw_records = _read_generated_output_cache_reader(reader, ticker)
+        if raw_records is None:
+            return _GeneratedOutputCacheReadResult(
+                status="miss",
+                ticker=ticker,
+                diagnostics=("generated_output_cache:miss",),
+            )
+        records = (
+            raw_records
+            if isinstance(raw_records, GeneratedOutputCacheRepositoryRecords)
+            else GeneratedOutputCacheRepositoryRecords.model_validate(raw_records)
+        )
+        validated = validate_generated_output_cache_records(records)
+    except GeneratedOutputCacheContractError as exc:
+        return _GeneratedOutputCacheReadResult(
+            status="contract_error",
+            ticker=ticker,
+            diagnostics=(f"generated_output_cache:{exc.__class__.__name__}",),
+        )
+    except Exception as exc:  # pragma: no cover - caller observes sanitized status only.
+        return _GeneratedOutputCacheReadResult(
+            status="reader_error",
+            ticker=ticker,
+            diagnostics=(f"generated_output_cache:{exc.__class__.__name__}",),
+        )
+    return _GeneratedOutputCacheReadResult(
+        status="found",
+        ticker=ticker,
+        records=validated,
+        diagnostics=("generated_output_cache:found",),
+    )
+
+
+def _read_generated_output_cache_reader(
+    reader: GeneratedOutputCacheRecordReader | Any,
+    ticker: str,
+) -> GeneratedOutputCacheRepositoryRecords | None:
+    if isinstance(reader, dict):
+        return reader.get(ticker)
+    if hasattr(reader, "read_generated_output_cache_records"):
+        return reader.read_generated_output_cache_records(ticker)
+    if hasattr(reader, "read_asset_overview_records"):
+        return reader.read_asset_overview_records(ticker)
+    if hasattr(reader, "read"):
+        return reader.read(ticker)
+    if hasattr(reader, "get"):
+        return reader.get(ticker)
+    raise GeneratedOutputCacheContractError(
+        "Injected generated-output cache reader must expose read_generated_output_cache_records(ticker), "
+        "read_asset_overview_records(ticker), read(ticker), or get(ticker)."
+    )
+
+
+def _validate_source_snapshots_for_overview(
+    ticker: str,
+    reader: Any | None,
+    *,
+    pack_records: KnowledgePackRepositoryRecords,
+    cache_records: GeneratedOutputCacheRepositoryRecords,
+) -> None:
+    if reader is None:
+        return
+    records = _read_source_snapshot_records(reader, ticker)
+    if records is None:
+        raise SourceSnapshotContractError("Configured source snapshot reader has no governed records for the asset.")
+    records = validate_source_snapshot_records(records)
+
+    required_source_ids = set(cache_records.envelopes[0].source_document_ids)
+    pack_source_ids = {source.source_document_id for source in pack_records.source_documents}
+    if not required_source_ids or not required_source_ids <= pack_source_ids:
+        raise SourceSnapshotContractError("Overview cache source IDs must belong to the persisted knowledge pack.")
+
+    artifacts_by_source: dict[str, list[Any]] = {}
+    for artifact in records.artifacts:
+        if artifact.asset_ticker != ticker:
+            raise SourceSnapshotContractError("Configured source snapshot records must bind to the requested asset.")
+        if artifact.source_document_id:
+            artifacts_by_source.setdefault(artifact.source_document_id, []).append(artifact)
+
+    missing = sorted(source_id for source_id in required_source_ids if not artifacts_by_source.get(source_id))
+    if missing:
+        raise SourceSnapshotContractError("Generated-output cache sources require governed source snapshot artifacts.")
+
+    knowledge_sources = {source.source_document_id: source for source in pack_records.source_documents}
+    for source_id in required_source_ids:
+        source = knowledge_sources[source_id]
+        for artifact in artifacts_by_source[source_id]:
+            if artifact.source_use_policy != source.source_use_policy:
+                raise SourceSnapshotContractError("Source snapshot source-use policy must match the persisted knowledge pack.")
+            if artifact.allowlist_status != source.allowlist_status:
+                raise SourceSnapshotContractError("Source snapshot allowlist status must match the persisted knowledge pack.")
+            if artifact.review_status != source.review_status:
+                raise SourceSnapshotContractError("Source snapshot review status must match the persisted knowledge pack.")
+            if artifact.parser_status != source.parser_status:
+                raise SourceSnapshotContractError("Source snapshot parser status must match the persisted knowledge pack.")
+        if not any(
+            artifact.can_feed_generated_output
+            and artifact.can_support_citations
+            and artifact.cache_allowed
+            and artifact.export_allowed
+            for artifact in artifacts_by_source[source_id]
+        ):
+            raise SourceSnapshotContractError(
+                "Generated-output cache sources require approved snapshot artifacts that can feed generation, citations, cache, and export metadata."
+            )
+
+
+def _read_source_snapshot_records(reader: Any, ticker: str) -> SourceSnapshotRepositoryRecords | None:
+    normalized = ticker.strip().upper()
+    if isinstance(reader, dict):
+        raw_records = reader.get(normalized)
+    elif hasattr(reader, "read_source_snapshot_records"):
+        raw_records = reader.read_source_snapshot_records(normalized)
+    elif hasattr(reader, "records"):
+        raw_records = reader.records()
+        if raw_records is not None:
+            raw_records = SourceSnapshotRepositoryRecords(
+                artifacts=[artifact for artifact in raw_records.artifacts if artifact.asset_ticker == normalized],
+                diagnostics=[
+                    diagnostic
+                    for diagnostic in raw_records.diagnostics
+                    if diagnostic.compact_metadata.get("asset_ticker") == normalized
+                    or diagnostic.compact_metadata.get("ticker") == normalized
+                ],
+            )
+    elif hasattr(reader, "get"):
+        raw_records = reader.get(normalized)
+    else:
+        raise SourceSnapshotContractError(
+            "Injected source snapshot reader must expose read_source_snapshot_records(ticker), records(), or get(ticker)."
+        )
+    if raw_records is None:
+        return None
+    return (
+        raw_records
+        if isinstance(raw_records, SourceSnapshotRepositoryRecords)
+        else SourceSnapshotRepositoryRecords.model_validate(raw_records)
+    )
+
+
+def _asset_knowledge_pack_from_repository_records(records: KnowledgePackRepositoryRecords) -> AssetKnowledgePack:
+    source_rows = sorted(
+        records.source_documents,
+        key=lambda row: (row.asset_ticker, row.source_rank, row.source_document_id),
+    )
+    source_by_id = {row.source_document_id: row for row in source_rows}
+    chunk_rows = sorted(
+        records.source_chunks,
+        key=lambda row: (row.source_document_id, row.chunk_order, row.chunk_id),
+    )
+
+    sources = [
+        SourceDocumentFixture(
+            source_document_id=row.source_document_id,
+            asset_ticker=row.asset_ticker,
+            source_type=row.source_type,
+            source_rank=row.source_rank,
+            title=row.title,
+            publisher=row.publisher,
+            url=row.url,
+            published_at=row.published_at,
+            retrieved_at=row.retrieved_at,
+            content_type="text",
+            is_official=row.is_official,
+            freshness_state=FreshnessState(row.freshness_state),
+            as_of_date=row.as_of_date,
+            source_quality=row.source_quality,
+            allowlist_status=row.allowlist_status,
+            source_use_policy=row.source_use_policy,
+        )
+        for row in source_rows
+    ]
+    source_fixtures_by_id = {source.source_document_id: source for source in sources}
+
+    chunks = []
+    for row in chunk_rows:
+        if not row.stored_text:
+            raise KnowledgePackRepositoryContractError(
+                f"Chunk {row.chunk_id} has no persisted text for overview generation."
+            )
+        chunks.append(
+            RetrievedSourceChunk(
+                chunk=SourceChunkFixture(
+                    chunk_id=row.chunk_id,
+                    asset_ticker=row.asset_ticker,
+                    source_document_id=row.source_document_id,
+                    section_name=row.section_name,
+                    chunk_order=row.chunk_order,
+                    text=row.stored_text,
+                    token_count=row.token_count,
+                    char_start=0,
+                    char_end=len(row.stored_text),
+                    supported_claim_types=row.supported_claim_types,
+                ),
+                source_document=source_fixtures_by_id[row.source_document_id],
+            )
+        )
+
+    facts = []
+    for row in sorted(records.normalized_facts, key=lambda item: item.fact_id):
+        if row.value is None:
+            raise KnowledgePackRepositoryContractError(f"Fact {row.fact_id} has no persisted value for overview generation.")
+        source = source_by_id[row.source_document_id]
+        facts.append(
+            RetrievedFact(
+                fact=NormalizedFactFixture(
+                    fact_id=row.fact_id,
+                    asset_ticker=row.asset_ticker,
+                    fact_type=row.fact_type,
+                    field_name=row.field_name,
+                    value=row.value,
+                    unit=row.unit,
+                    period=row.period,
+                    as_of_date=row.as_of_date,
+                    source_document_id=row.source_document_id,
+                    source_chunk_id=row.source_chunk_id,
+                    extraction_method=row.extraction_method,
+                    confidence=float(row.confidence or 0.0),
+                    freshness_state=FreshnessState(row.freshness_state),
+                    evidence_state=row.evidence_state,
+                ),
+                source_document=source_fixtures_by_id[source.source_document_id],
+                source_chunk=next(item.chunk for item in chunks if item.chunk.chunk_id == row.source_chunk_id),
+            )
+        )
+
+    recent_developments = []
+    for row in sorted(records.recent_developments, key=lambda item: item.event_id):
+        if row.title is None or row.summary is None:
+            raise KnowledgePackRepositoryContractError(
+                f"Recent development {row.event_id} has no persisted title or summary for overview generation."
+            )
+        source = source_by_id[row.source_document_id]
+        recent_developments.append(
+            RetrievedRecentDevelopment(
+                recent_development=RecentDevelopmentFixture(
+                    event_id=row.event_id,
+                    asset_ticker=row.asset_ticker,
+                    event_type=row.event_type,
+                    title=row.title,
+                    summary=row.summary,
+                    event_date=row.event_date,
+                    source_document_id=row.source_document_id,
+                    source_chunk_id=row.source_chunk_id,
+                    importance_score=row.importance_score,
+                    freshness_state=FreshnessState(row.freshness_state),
+                    evidence_state=row.evidence_state,
+                ),
+                source_document=source_fixtures_by_id[source.source_document_id],
+                source_chunk=next(item.chunk for item in chunks if item.chunk.chunk_id == row.source_chunk_id),
+            )
+        )
+
+    return AssetKnowledgePack(
+        asset=AssetIdentity.model_validate(records.envelope.asset),
+        freshness=Freshness.model_validate(records.envelope.freshness),
+        source_documents=sources,
+        normalized_facts=facts,
+        source_chunks=chunks,
+        recent_developments=recent_developments,
+        evidence_gaps=[
+            EvidenceGap(
+                gap_id=row.gap_id,
+                asset_ticker=row.asset_ticker,
+                field_name=row.field_name,
+                evidence_state=row.evidence_state,
+                message=row.message or "",
+                freshness_state=FreshnessState(row.freshness_state),
+                source_document_id=row.source_document_id,
+                source_chunk_id=row.source_chunk_id,
+            )
+            for row in sorted(records.evidence_gaps, key=lambda item: item.gap_id)
+        ],
+    )
+
+
+def _validate_generated_output_cache_for_overview(
+    ticker: str,
+    records: GeneratedOutputCacheRepositoryRecords,
+    *,
+    pack: AssetKnowledgePack,
+    pack_records: KnowledgePackRepositoryRecords,
+    knowledge_pack_hash: str | None,
+    allow_cache_validated_knowledge_hash: bool = False,
+) -> None:
+    if len(records.envelopes) != 1:
+        raise GeneratedOutputCacheContractError("Overview reuse requires exactly one generated-output cache envelope.")
+    envelope = records.envelopes[0]
+    if envelope.asset_ticker != ticker or pack.asset.ticker != ticker:
+        raise GeneratedOutputCacheContractError("Overview cache and knowledge pack must bind to the requested asset.")
+    if envelope.entry_kind != CacheEntryKind.asset_page.value or envelope.cache_scope != CacheScope.asset.value:
+        raise GeneratedOutputCacheContractError("Overview cache records must be asset-page scoped.")
+    if envelope.artifact_category != GeneratedOutputArtifactCategory.asset_overview_section.value:
+        raise GeneratedOutputCacheContractError("Overview cache records must use the asset overview artifact category.")
+    if envelope.output_identity != f"asset:{ticker}":
+        raise GeneratedOutputCacheContractError("Overview cache output identity must match the requested asset.")
+    if not envelope.cacheable or not envelope.generated_output_available:
+        raise GeneratedOutputCacheContractError("Overview cache records must be cacheable and generated-output available.")
+
+    if not pack_records.section_freshness_inputs:
+        raise GeneratedOutputCacheContractError("Overview persisted pack records require section freshness labels.")
+    section_freshness = [
+        SectionFreshnessInput(
+            section_id=row.section_id,
+            freshness_state=FreshnessState(row.freshness_state),
+            evidence_state=row.evidence_state,
+            as_of_date=row.as_of_date,
+            retrieved_at=row.retrieved_at,
+        )
+        for row in pack_records.section_freshness_inputs
+    ]
+    knowledge_input = build_knowledge_pack_freshness_input(pack, section_freshness_labels=section_freshness)
+    expected_knowledge_hash = compute_knowledge_pack_freshness_hash(knowledge_input)
+    if knowledge_pack_hash != expected_knowledge_hash or envelope.knowledge_pack_freshness_hash != expected_knowledge_hash:
+        if not allow_cache_validated_knowledge_hash:
+            raise GeneratedOutputCacheContractError(
+                "Overview cache knowledge-pack freshness hash does not match current evidence."
+            )
+        cache_knowledge_hashes = {
+            row.knowledge_pack_freshness_hash
+            for row in records.knowledge_pack_hash_inputs
+            if row.cache_entry_id == envelope.cache_entry_id
+        }
+        if envelope.knowledge_pack_freshness_hash not in cache_knowledge_hashes:
+            raise GeneratedOutputCacheContractError(
+                "Overview cache knowledge-pack freshness hash does not match current evidence."
+            )
+
+    pack_source_ids = {source.source_document_id for source in pack.source_documents}
+    pack_citation_ids = {
+        *{f"c_{item.fact.fact_id}" for item in pack.normalized_facts},
+        *{f"c_{item.chunk.chunk_id}" for item in pack.source_chunks},
+        *{f"c_{item.recent_development.event_id}" for item in pack.recent_developments},
+    }
+    if not set(envelope.source_document_ids) <= pack_source_ids:
+        raise GeneratedOutputCacheContractError("Overview cache source IDs must belong to the same persisted knowledge pack.")
+    if not set(envelope.citation_ids) <= pack_citation_ids:
+        raise GeneratedOutputCacheContractError("Overview cache citation IDs must belong to the same persisted knowledge pack.")
+
+
+def generate_overview_from_pack(
+    pack: AssetKnowledgePack,
+    *,
+    persisted_weekly_news_reader: WeeklyNewsEventEvidenceRecordReader | Any | None = None,
+    economic_indicators: EconomicIndicatorsPackResponse | None = None,
+) -> OverviewResponse:
     if not pack.asset.supported:
         return _unsupported_overview(pack)
 
@@ -107,12 +640,26 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
     identity_citation_id = bindings.for_fact(identity_fact).citation.citation_id
 
     snapshot = _build_snapshot(pack, facts_by_field, bindings, identity_citation_id)
-    beginner_summary = _build_beginner_summary(pack, facts_by_field)
+    page_evidence_pack = evidence_pack_from_knowledge_pack(pack, economic_indicators=economic_indicators)
+    beginner_summary = _build_beginner_summary(
+        pack,
+        facts_by_field,
+        generation_evidence_pack=page_evidence_pack,
+    )
     risk_chunk = _select_risk_chunk(pack)
     risk_citation_id = bindings.for_chunk(risk_chunk).citation.citation_id
     top_risks = _build_top_risks(pack, risk_citation_id)
     recent_developments = _build_recent_developments(pack, bindings)
-    weekly_news_focus = build_weekly_news_focus_from_pack(pack, as_of=DEFAULT_WEEKLY_NEWS_AS_OF)
+    weekly_news_read = read_persisted_weekly_news_focus(
+        pack.asset,
+        as_of=DEFAULT_WEEKLY_NEWS_AS_OF,
+        persisted_event_reader=persisted_weekly_news_reader,
+    )
+    weekly_news_focus = (
+        weekly_news_read.weekly_news_focus
+        if weekly_news_read.found and weekly_news_read.weekly_news_focus is not None
+        else build_weekly_news_focus_from_pack(pack, as_of=DEFAULT_WEEKLY_NEWS_AS_OF)
+    )
     suitability_summary = _build_suitability_summary(pack, facts_by_field)
     sections = _build_overview_sections(
         pack=pack,
@@ -144,11 +691,25 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
         )
 
     canonical_citation_ids = [identity_citation_id]
+    market_news = build_market_news_response(economic_indicators=economic_indicators)
+    ai_evidence_pack = evidence_pack_from_knowledge_pack(
+        pack,
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news.market_news_focus,
+        weekly_news_focus=weekly_news_focus,
+    )
     ai_comprehensive_analysis = build_ai_comprehensive_analysis(
         pack.asset,
         weekly_news_focus,
         canonical_fact_citation_ids=canonical_citation_ids,
         canonical_source_document_ids=[identity_fact.source_document.source_document_id],
+        minimum_weekly_news_item_count=weekly_news_read.minimum_ai_analysis_item_count,
+        approved_weekly_news_item_count=(
+            weekly_news_read.high_signal_selected_item_count if weekly_news_read.found else None
+        ),
+        economic_indicators=economic_indicators,
+        market_news_focus=market_news.market_news_focus,
+        generation_evidence_pack=ai_evidence_pack,
     )
     citations = bindings.citations()
     source_documents = bindings.source_documents()
@@ -161,6 +722,8 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
         beginner_summary=beginner_summary,
         top_risks=top_risks,
         recent_developments=recent_developments,
+        market_news_focus=market_news.market_news_focus,
+        market_ai_comprehensive_analysis=market_news.market_ai_comprehensive_analysis,
         weekly_news_focus=weekly_news_focus,
         ai_comprehensive_analysis=ai_comprehensive_analysis,
         suitability_summary=suitability_summary,
@@ -169,6 +732,10 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
         source_documents=source_documents,
         sections=sections,
         section_freshness_validation=[],
+        generation_diagnostics=_overview_generation_diagnostics(
+            market_ai=market_news.market_ai_comprehensive_analysis,
+            ticker_ai=ai_comprehensive_analysis,
+        ),
     )
     response = response.model_copy(
         update={
@@ -180,6 +747,34 @@ def generate_overview_from_pack(pack: AssetKnowledgePack) -> OverviewResponse:
     )
     _assert_safe_copy(response)
     return response
+
+
+def _overview_generation_diagnostics(
+    *,
+    market_ai: Any | None,
+    ticker_ai: Any | None,
+) -> dict[str, GenerationDiagnostics]:
+    service = build_default_summary_generation_service()
+    runtime = service.runtime
+    model_name = runtime.configured_model_chain[0].model_name if runtime.configured_model_chain else None
+    live_ready = runtime.readiness_status.value == "ready_for_explicit_live_call"
+    fallback_reason_codes = [] if live_ready else [f"live_generation_not_ready:{runtime.readiness_status.value}"]
+    default_diagnostic = GenerationDiagnostics(
+        attempted_live=live_ready,
+        used_fallback=not live_ready,
+        fallback_reason_codes=fallback_reason_codes,
+        model_name=model_name if live_ready else None,
+    )
+    diagnostics: dict[str, GenerationDiagnostics] = {
+        "beginner_summary": default_diagnostic,
+        "deep_dive_summary": default_diagnostic.model_copy(),
+        "top_3_risks": default_diagnostic.model_copy(),
+    }
+    if market_ai is not None and getattr(market_ai, "generation_diagnostics", None) is not None:
+        diagnostics["market_ai_comprehensive_analysis"] = market_ai.generation_diagnostics
+    if ticker_ai is not None and getattr(ticker_ai, "generation_diagnostics", None) is not None:
+        diagnostics["ticker_ai_comprehensive_analysis"] = ticker_ai.generation_diagnostics
+    return diagnostics
 
 
 def validate_overview_response(overview: OverviewResponse, pack: AssetKnowledgePack) -> CitationValidationReport:
@@ -195,6 +790,63 @@ def validate_overview_response(overview: OverviewResponse, pack: AssetKnowledgeP
     ]
     claims.extend(_section_validation_claims(overview))
     return validate_claims(claims, evidence, CitationValidationContext(allowed_asset_tickers=[pack.asset.ticker]))
+
+
+def _maybe_write_overview_generated_output_cache(
+    overview: OverviewResponse,
+    pack: AssetKnowledgePack,
+    writer: Any | None,
+) -> None:
+    if writer is None or not overview.asset.supported:
+        return
+    try:
+        report = validate_overview_response(overview, pack)
+        if not report.valid or find_forbidden_output_phrases(str(overview.model_dump(mode="json"))):
+            return
+        source_ids = {source.source_document_id for source in overview.source_documents}
+        citations_by_source: dict[str, list[str]] = {}
+        for citation in overview.citations:
+            citations_by_source.setdefault(citation.source_document_id, []).append(citation.citation_id)
+        section_labels = [
+            SectionFreshnessInput(
+                section_id=item.section_id,
+                freshness_state=item.displayed_freshness_state,
+                evidence_state=item.displayed_evidence_state.value,
+                as_of_date=item.displayed_as_of_date,
+                retrieved_at=item.displayed_retrieved_at,
+            )
+            for item in overview.section_freshness_validation
+        ]
+        knowledge_input = build_knowledge_pack_freshness_input(pack, section_freshness_labels=section_labels)
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=f"generated-output-{overview.asset.ticker.lower()}-overview",
+            output_identity=f"asset:{overview.asset.ticker}",
+            mode_or_output_type="beginner-overview",
+            artifact_category=GeneratedOutputArtifactCategory.asset_overview_section,
+            entry_kind=CacheEntryKind.asset_page,
+            scope=CacheScope.asset,
+            schema_version="asset-page-v1",
+            prompt_version="asset-page-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in overview.citations],
+            created_at=overview.freshness.page_last_updated_at,
+            ttl_seconds=604800,
+            asset_ticker=overview.asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
 
 
 def validate_generated_overview_claims(
@@ -352,16 +1004,28 @@ class _CitationRegistry:
         evidence = CitationEvidence(
             citation_id=citation_id,
             asset_ticker=self._pack.asset.ticker,
-            source_document_id=retrieved_fact.source_document.source_document_id,
-            source_type=retrieved_fact.source_document.source_type,
+            source_document_id=source_document.source_document_id,
+            source_type=source_document.source_type,
             evidence_kind=EvidenceKind.normalized_fact,
             freshness_state=retrieved_fact.fact.freshness_state,
+            retrieved_at=source_document.retrieved_at,
+            as_of_date=source_document.as_of_date,
+            published_at=source_document.published_at,
             supported_claim_types=retrieved_fact.source_chunk.supported_claim_types,
             supporting_text=retrieved_fact.source_chunk.text,
             supports_claim=retrieved_fact.fact.evidence_state == "supported",
             is_recent=False,
-            allowlist_status=retrieved_fact.source_document.allowlist_status,
-            source_use_policy=retrieved_fact.source_document.source_use_policy,
+            allowlist_status=source_document.allowlist_status,
+            source_use_policy=source_document.source_use_policy,
+            source_identity=source_document.source_identity,
+            is_official=source_document.is_official,
+            source_quality=source_document.source_quality,
+            storage_rights=source_document.storage_rights,
+            export_rights=source_document.export_rights,
+            review_status=source_document.review_status,
+            approval_rationale=source_document.approval_rationale,
+            parser_status=source_document.parser_status,
+            parser_failure_diagnostics=source_document.parser_failure_diagnostics,
         )
         return self._add_binding(citation_id, retrieved_fact.source_document, source_document, evidence)
 
@@ -371,16 +1035,28 @@ class _CitationRegistry:
         evidence = CitationEvidence(
             citation_id=citation_id,
             asset_ticker=self._pack.asset.ticker,
-            source_document_id=retrieved_chunk.source_document.source_document_id,
-            source_type=retrieved_chunk.source_document.source_type,
+            source_document_id=source_document.source_document_id,
+            source_type=source_document.source_type,
             evidence_kind=EvidenceKind.document_chunk,
             freshness_state=retrieved_chunk.source_document.freshness_state,
+            retrieved_at=source_document.retrieved_at,
+            as_of_date=source_document.as_of_date,
+            published_at=source_document.published_at,
             supported_claim_types=retrieved_chunk.chunk.supported_claim_types,
             supporting_text=retrieved_chunk.chunk.text,
             supports_claim=True,
-            is_recent=retrieved_chunk.source_document.source_type == "recent_development",
-            allowlist_status=retrieved_chunk.source_document.allowlist_status,
-            source_use_policy=retrieved_chunk.source_document.source_use_policy,
+            is_recent=source_document.source_type == "recent_development",
+            allowlist_status=source_document.allowlist_status,
+            source_use_policy=source_document.source_use_policy,
+            source_identity=source_document.source_identity,
+            is_official=source_document.is_official,
+            source_quality=source_document.source_quality,
+            storage_rights=source_document.storage_rights,
+            export_rights=source_document.export_rights,
+            review_status=source_document.review_status,
+            approval_rationale=source_document.approval_rationale,
+            parser_status=source_document.parser_status,
+            parser_failure_diagnostics=source_document.parser_failure_diagnostics,
         )
         return self._add_binding(citation_id, retrieved_chunk.source_document, source_document, evidence)
 
@@ -390,16 +1066,28 @@ class _CitationRegistry:
         evidence = CitationEvidence(
             citation_id=citation_id,
             asset_ticker=self._pack.asset.ticker,
-            source_document_id=retrieved_recent.source_document.source_document_id,
-            source_type=retrieved_recent.source_document.source_type,
+            source_document_id=source_document.source_document_id,
+            source_type=source_document.source_type,
             evidence_kind=EvidenceKind.document_chunk,
             freshness_state=retrieved_recent.recent_development.freshness_state,
+            retrieved_at=source_document.retrieved_at,
+            as_of_date=source_document.as_of_date,
+            published_at=source_document.published_at,
             supported_claim_types=retrieved_recent.source_chunk.supported_claim_types,
             supporting_text=retrieved_recent.source_chunk.text,
             supports_claim=retrieved_recent.recent_development.evidence_state == "no_major_recent_development",
             is_recent=True,
-            allowlist_status=retrieved_recent.source_document.allowlist_status,
-            source_use_policy=retrieved_recent.source_document.source_use_policy,
+            allowlist_status=source_document.allowlist_status,
+            source_use_policy=source_document.source_use_policy,
+            source_identity=source_document.source_identity,
+            is_official=source_document.is_official,
+            source_quality=source_document.source_quality,
+            storage_rights=source_document.storage_rights,
+            export_rights=source_document.export_rights,
+            review_status=source_document.review_status,
+            approval_rationale=source_document.approval_rationale,
+            parser_status=source_document.parser_status,
+            parser_failure_diagnostics=source_document.parser_failure_diagnostics,
         )
         return self._add_binding(citation_id, retrieved_recent.source_document, source_document, evidence)
 
@@ -512,16 +1200,12 @@ def _subject_from_weekly_news(
         raise OverviewGenerationError("Weekly News Focus metadata is required for freshness validation.")
 
     weekly = overview.weekly_news_focus
-    evidence_state = (
-        weekly.empty_state.evidence_state
-        if weekly.empty_state is not None
-        else EvidenceState.supported if weekly.items else EvidenceState.unavailable
-    )
+    evidence_state = weekly.evidence_state
     supporting_freshness_states = tuple(item.freshness_state for item in weekly.items)
     supporting_as_of_dates = tuple(
         [
-            *[item.source.as_of_date for item in weekly.items if item.source.as_of_date],
             weekly.window.as_of_date,
+            *[item.source.as_of_date for item in weekly.items if item.source.as_of_date],
         ]
     )
     supporting_retrieved_ats = tuple(item.source.retrieved_at for item in weekly.items if item.source.retrieved_at)
@@ -621,6 +1305,23 @@ def _source_bindings_for_subject(
     for source_id in sorted(set(subject.source_document_ids)):
         source = overview_sources.get(source_id)
         pack_source = pack_sources_by_id.get(source_id)
+        if (
+            source is not None
+            and pack_source is None
+            and subject.section_type
+            in {OverviewSectionType.weekly_news_focus, OverviewSectionType.ai_comprehensive_analysis}
+        ):
+            bindings.append(
+                OverviewSectionFreshnessSourceBinding(
+                    source_document_id=source.source_document_id,
+                    asset_ticker=pack_asset_ticker,
+                    source_type=source.source_type,
+                    freshness_state=source.freshness_state,
+                    as_of_date=source.as_of_date or source.published_at,
+                    retrieved_at=source.retrieved_at,
+                )
+            )
+            continue
         if source is None or pack_source is None:
             missing_source_ids.append(source_id)
             continue
@@ -651,6 +1352,22 @@ def _citation_bindings_for_subject(
     for citation_id in sorted(set(subject.citation_ids)):
         citation = overview_citations.get(citation_id)
         pack_source = pack_sources_by_id.get(citation.source_document_id) if citation is not None else None
+        if (
+            citation is not None
+            and pack_source is None
+            and subject.section_type
+            in {OverviewSectionType.weekly_news_focus, OverviewSectionType.ai_comprehensive_analysis}
+        ):
+            bindings.append(
+                OverviewSectionFreshnessCitationBinding(
+                    citation_id=citation.citation_id,
+                    source_document_id=citation.source_document_id,
+                    asset_ticker=pack_asset_ticker,
+                    freshness_state=citation.freshness_state,
+                    evidence_state=subject.displayed_evidence_state,
+                )
+            )
+            continue
         if citation is None or pack_source is None:
             missing_citation_ids.append(citation_id)
             continue
@@ -758,7 +1475,12 @@ def _build_snapshot(
     return snapshot
 
 
-def _build_beginner_summary(pack: AssetKnowledgePack, facts_by_field: dict[str, RetrievedFact]) -> BeginnerSummary:
+def _build_beginner_summary(
+    pack: AssetKnowledgePack,
+    facts_by_field: dict[str, RetrievedFact],
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
+) -> BeginnerSummary:
     if pack.asset.asset_type is AssetType.etf:
         benchmark = _fact_value(facts_by_field, "benchmark")
         role = str(_fact_value(facts_by_field, "beginner_role")).lower()
@@ -769,24 +1491,56 @@ def _build_beginner_summary(pack: AssetKnowledgePack, facts_by_field: dict[str, 
         else:
             main_catch = "The main catch is that this is still stock-market exposure; index tracking does not remove the risk of losses when large U.S. stocks fall."
 
-        return BeginnerSummary(
-            what_it_is=f"{pack.asset.ticker} is a U.S.-listed ETF from {pack.asset.issuer} that seeks to track the {benchmark}.",
-            why_people_consider_it=(
-                f"Beginners often study it to understand {role}; the local fixture records about {holdings} holdings "
-                f"and a {expense_ratio} expense ratio."
+        return _generated_beginner_summary(
+            pack,
+            BeginnerSummary(
+                what_it_is=(
+                    f"{pack.asset.ticker} is a U.S.-listed ETF from {pack.asset.issuer} "
+                    f"that seeks to track the {benchmark}."
+                ),
+                why_people_consider_it=(
+                    f"Beginners often study it to understand {role}; the local fixture records about {holdings} "
+                    f"holdings and a {expense_ratio} expense ratio."
+                ),
+                main_catch=main_catch,
             ),
-            main_catch=main_catch,
+            generation_evidence_pack=generation_evidence_pack,
         )
 
     primary_business = _fact_value(facts_by_field, "primary_business")
-    return BeginnerSummary(
-        what_it_is=f"{pack.asset.name} is a U.S.-listed company; the local fixture describes its primary business as: {primary_business}",
-        why_people_consider_it=(
-            "Beginners often study it because the business is familiar and the fixture separates stable business facts "
-            "from recent developments."
+    return _generated_beginner_summary(
+        pack,
+        BeginnerSummary(
+            what_it_is=f"{pack.asset.name} is a U.S.-listed company; the local fixture describes its primary business as: {primary_business}",
+            why_people_consider_it=(
+                "Beginners often study it because the business is familiar and the fixture separates stable business facts "
+                "from recent developments."
+            ),
+            main_catch="A single-company stock is less diversified than an ETF, so company-specific issues can matter more.",
         ),
-        main_catch="A single-company stock is less diversified than an ETF, so company-specific issues can matter more.",
+        generation_evidence_pack=generation_evidence_pack,
     )
+
+
+def _generated_beginner_summary(
+    pack: AssetKnowledgePack,
+    base_summary: BeginnerSummary,
+    *,
+    generation_evidence_pack: dict[str, Any] | None = None,
+) -> BeginnerSummary:
+    try:
+        citation_evidence = [
+            item for item in (generation_evidence_pack or {}).get("citation_evidence", []) if isinstance(item, dict)
+        ]
+        return build_default_summary_generation_service().generate_beginner_summary(
+            asset=pack.asset,
+            base_summary=base_summary,
+            citation_ids=[str(item["citation_id"]) for item in citation_evidence if item.get("citation_id")],
+            evidence_notes=_pack_evidence_notes(pack),
+            generation_evidence_pack=generation_evidence_pack,
+        )
+    except SummaryGenerationContractError:
+        return base_summary
 
 
 def _build_top_risks(pack: AssetKnowledgePack, risk_citation_id: str) -> list[RiskItem]:
@@ -809,10 +1563,42 @@ def _build_top_risks(pack: AssetKnowledgePack, risk_citation_id: str) -> list[Ri
             ("Large-company focus", "The fund focuses on large U.S. companies rather than every public company or every asset class."),
         ]
 
-    return [
+    fallback = [
         RiskItem(title=title, plain_english_explanation=explanation, citation_ids=[risk_citation_id])
         for title, explanation in risks
     ]
+    try:
+        return build_default_summary_generation_service().generate_top_risks(
+            asset=pack.asset,
+            candidate_risks=fallback,
+            fallback_risks=fallback,
+            allowed_citation_ids=[risk_citation_id],
+            evidence_notes=_pack_evidence_notes(pack),
+        )
+    except SummaryGenerationContractError:
+        return fallback
+
+
+def _pack_evidence_notes(pack: AssetKnowledgePack) -> list[str]:
+    notes = [f"source_count={len(pack.source_documents)}", f"fact_count={len(pack.normalized_facts)}"]
+    for fact in pack.normalized_facts:
+        if fact.fact.field_name in {
+            "benchmark",
+            "holdings_count",
+            "expense_ratio",
+            "beginner_role",
+            "primary_business",
+            "company_specific_risk",
+        }:
+            notes.append(f"{fact.fact.field_name}={_short_note_value(fact.fact.value)}")
+    if pack.evidence_gaps:
+        notes.append("evidence_gaps=" + ",".join(gap.field_name for gap in pack.evidence_gaps[:3]))
+    return notes
+
+
+def _short_note_value(value: Any) -> str:
+    text = " ".join(str(value).split())
+    return text[:240]
 
 
 def _build_recent_developments(pack: AssetKnowledgePack, bindings: _CitationRegistry) -> list[RecentDevelopment]:
@@ -1798,6 +2584,11 @@ def _source_document_from_fixture(source: SourceDocumentFixture, supporting_pass
         allowlist_status=source.allowlist_status,
         source_use_policy=source.source_use_policy,
         permitted_operations=decision.permitted_operations,
+        **source_handoff_fields_from_policy(
+            decision,
+            source_identity=source.url or source.source_document_id,
+            approval_rationale="Deterministic fixture source passed local source-use policy review.",
+        ),
     )
 
 
@@ -1810,51 +2601,90 @@ def _evidence_from_overview(pack: AssetKnowledgePack, overview: OverviewResponse
     for citation in overview.citations:
         if citation.citation_id in facts_by_citation_id:
             item = facts_by_citation_id[citation.citation_id]
+            source_document = _source_document_from_fixture(item.source_document, item.source_chunk.text)
             evidence_by_id[citation.citation_id] = CitationEvidence(
                 citation_id=citation.citation_id,
                 asset_ticker=pack.asset.ticker,
-                source_document_id=item.source_document.source_document_id,
-                source_type=item.source_document.source_type,
+                source_document_id=source_document.source_document_id,
+                source_type=source_document.source_type,
                 evidence_kind=EvidenceKind.normalized_fact,
                 freshness_state=item.fact.freshness_state,
+                retrieved_at=source_document.retrieved_at,
+                as_of_date=source_document.as_of_date,
+                published_at=source_document.published_at,
                 supported_claim_types=item.source_chunk.supported_claim_types,
                 supporting_text=item.source_chunk.text,
                 supports_claim=item.fact.evidence_state == "supported",
                 is_recent=False,
-                allowlist_status=item.source_document.allowlist_status,
-                source_use_policy=item.source_document.source_use_policy,
+                allowlist_status=source_document.allowlist_status,
+                source_use_policy=source_document.source_use_policy,
+                source_identity=source_document.source_identity,
+                is_official=source_document.is_official,
+                source_quality=source_document.source_quality,
+                storage_rights=source_document.storage_rights,
+                export_rights=source_document.export_rights,
+                review_status=source_document.review_status,
+                approval_rationale=source_document.approval_rationale,
+                parser_status=source_document.parser_status,
+                parser_failure_diagnostics=source_document.parser_failure_diagnostics,
             )
         elif citation.citation_id in chunks_by_citation_id:
             item = chunks_by_citation_id[citation.citation_id]
+            source_document = _source_document_from_fixture(item.source_document, item.chunk.text)
             evidence_by_id[citation.citation_id] = CitationEvidence(
                 citation_id=citation.citation_id,
                 asset_ticker=pack.asset.ticker,
-                source_document_id=item.source_document.source_document_id,
-                source_type=item.source_document.source_type,
+                source_document_id=source_document.source_document_id,
+                source_type=source_document.source_type,
                 evidence_kind=EvidenceKind.document_chunk,
                 freshness_state=item.source_document.freshness_state,
+                retrieved_at=source_document.retrieved_at,
+                as_of_date=source_document.as_of_date,
+                published_at=source_document.published_at,
                 supported_claim_types=item.chunk.supported_claim_types,
                 supporting_text=item.chunk.text,
                 supports_claim=True,
-                is_recent=item.source_document.source_type == "recent_development",
-                allowlist_status=item.source_document.allowlist_status,
-                source_use_policy=item.source_document.source_use_policy,
+                is_recent=source_document.source_type == "recent_development",
+                allowlist_status=source_document.allowlist_status,
+                source_use_policy=source_document.source_use_policy,
+                source_identity=source_document.source_identity,
+                is_official=source_document.is_official,
+                source_quality=source_document.source_quality,
+                storage_rights=source_document.storage_rights,
+                export_rights=source_document.export_rights,
+                review_status=source_document.review_status,
+                approval_rationale=source_document.approval_rationale,
+                parser_status=source_document.parser_status,
+                parser_failure_diagnostics=source_document.parser_failure_diagnostics,
             )
         elif citation.citation_id in recent_by_citation_id:
             item = recent_by_citation_id[citation.citation_id]
+            source_document = _source_document_from_fixture(item.source_document, item.source_chunk.text)
             evidence_by_id[citation.citation_id] = CitationEvidence(
                 citation_id=citation.citation_id,
                 asset_ticker=pack.asset.ticker,
-                source_document_id=item.source_document.source_document_id,
-                source_type=item.source_document.source_type,
+                source_document_id=source_document.source_document_id,
+                source_type=source_document.source_type,
                 evidence_kind=EvidenceKind.document_chunk,
                 freshness_state=item.recent_development.freshness_state,
+                retrieved_at=source_document.retrieved_at,
+                as_of_date=source_document.as_of_date,
+                published_at=source_document.published_at,
                 supported_claim_types=item.source_chunk.supported_claim_types,
                 supporting_text=item.source_chunk.text,
                 supports_claim=item.recent_development.evidence_state == "no_major_recent_development",
                 is_recent=True,
-                allowlist_status=item.source_document.allowlist_status,
-                source_use_policy=item.source_document.source_use_policy,
+                allowlist_status=source_document.allowlist_status,
+                source_use_policy=source_document.source_use_policy,
+                source_identity=source_document.source_identity,
+                is_official=source_document.is_official,
+                source_quality=source_document.source_quality,
+                storage_rights=source_document.storage_rights,
+                export_rights=source_document.export_rights,
+                review_status=source_document.review_status,
+                approval_rationale=source_document.approval_rationale,
+                parser_status=source_document.parser_status,
+                parser_failure_diagnostics=source_document.parser_failure_diagnostics,
             )
 
     return list(evidence_by_id.values())

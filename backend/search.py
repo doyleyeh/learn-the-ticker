@@ -4,16 +4,22 @@ from dataclasses import dataclass
 
 from backend.data import (
     ASSETS,
-    ELIGIBLE_NOT_CACHED_ASSETS,
     OUT_OF_SCOPE_COMMON_STOCKS,
     UNSUPPORTED_ASSET_SEARCH_METADATA,
     UNSUPPORTED_ASSETS,
+    load_top500_stock_universe_manifest,
     normalize_ticker,
     top500_stock_universe_entry,
 )
+from backend.etf_universe import blocked_etf_entries, eligible_not_cached_etf_entries, etf_universe_entry
+from backend.lightweight_data_fetch import build_lightweight_api_fallback_diagnostics, fetch_lightweight_asset_data
 from backend.models import (
     AssetIdentity,
+    AssetStatus,
     AssetType,
+    ETFUniverseEntry,
+    ETFUniverseSupportState,
+    LightweightFetchResponse,
     SearchBlockedCapabilityFlags,
     SearchBlockedExplanation,
     SearchBlockedExplanationDiagnostics,
@@ -24,6 +30,7 @@ from backend.models import (
     SearchState,
     SearchSupportClassification,
 )
+from backend.settings import build_lightweight_data_settings
 
 
 @dataclass(frozen=True)
@@ -40,13 +47,19 @@ class SearchCandidate:
 
 SUPPORTED_V1_SCOPE_REMINDER = (
     "Supported MVP coverage is limited to U.S.-listed common stocks in the current Top-500 manifest "
-    "and non-leveraged U.S.-listed equity ETFs."
+    "and ETFs in the approved supported ETF manifest."
 )
 
 UNSUPPORTED_EXPLANATION_CATEGORY_LABELS = {
     "crypto": "crypto_assets",
     "leveraged_etf": "leveraged_etf",
     "inverse_etf": "inverse_etf",
+    "active_etf": "active_etf",
+    "fixed_income_etf": "fixed_income_etf",
+    "commodity_etf": "commodity_etf",
+    "multi_asset_etf": "multi_asset_etf",
+    "etn": "etn",
+    "other_unsupported": "unsupported_etf_like_product",
 }
 
 
@@ -73,6 +86,10 @@ def search_assets(q: str) -> SearchResponse:
             )
 
         result = results[0]
+        lightweight_result = _maybe_lightweight_live_result(result, normalized_ticker)
+        if lightweight_result is not None:
+            result = lightweight_result
+            results = [result]
         blocked_explanation = _blocked_explanation_for_result(result)
         if blocked_explanation is not None:
             result = result.model_copy(update={"blocked_explanation": blocked_explanation})
@@ -98,6 +115,13 @@ def search_assets(q: str) -> SearchResponse:
         generated_route=None,
         message="No deterministic local fixture or recognized eligible asset matched this query.",
     )
+    lightweight_unknown = _maybe_lightweight_unknown_result(unknown, normalized_ticker)
+    if lightweight_unknown is not None:
+        return SearchResponse(
+            query=q,
+            results=[lightweight_unknown],
+            state=_state_for_single_result(lightweight_unknown),
+        )
     return SearchResponse(
         query=q,
         results=[unknown],
@@ -149,7 +173,10 @@ def _all_candidates() -> list[SearchCandidate]:
             )
         )
 
+    etf_manifest_tickers = {entry.ticker for entry in blocked_etf_entries().values()}
     for ticker, reason in UNSUPPORTED_ASSETS.items():
+        if ticker in etf_manifest_tickers:
+            continue
         metadata = UNSUPPORTED_ASSET_SEARCH_METADATA.get(ticker, {})
         candidates.append(
             SearchCandidate(
@@ -164,30 +191,39 @@ def _all_candidates() -> list[SearchCandidate]:
             )
         )
 
-    for ticker, metadata in ELIGIBLE_NOT_CACHED_ASSETS.items():
-        asset_type = AssetType(str(metadata["asset_type"]))
+    for entry in load_top500_stock_universe_manifest().entries:
+        if entry.ticker in ASSETS:
+            continue
         candidates.append(
             SearchCandidate(
-                ticker=ticker,
-                name=str(metadata["name"]),
-                asset_type=asset_type,
-                exchange=str(metadata["exchange"]) if metadata.get("exchange") else None,
-                issuer=str(metadata["issuer"]) if metadata.get("issuer") else None,
+                ticker=entry.ticker,
+                name=entry.name,
+                asset_type=AssetType.stock,
+                exchange=entry.exchange,
+                issuer=None,
                 support_classification=SearchSupportClassification.eligible_not_cached,
                 message=(
-                    "Eligible U.S.-listed common stock or plain-vanilla ETF, but no local cached "
-                    "knowledge pack is available yet. On-demand ingestion would be required later."
+                    "Top-500 manifest-backed U.S.-listed common stock, but no local cached knowledge pack "
+                    "is available yet. On-demand ingestion would be required later."
                 ),
-                aliases=tuple(str(alias) for alias in metadata.get("aliases") or ()),
+                aliases=tuple(entry.aliases),
             )
         )
 
+    for entry in eligible_not_cached_etf_entries().values():
+        candidates.append(_etf_entry_to_candidate(entry))
+
+    for entry in blocked_etf_entries().values():
+        candidates.append(_etf_entry_to_candidate(entry))
+
     for ticker, metadata in OUT_OF_SCOPE_COMMON_STOCKS.items():
+        if etf_universe_entry(ticker) is not None:
+            continue
         candidates.append(
             SearchCandidate(
                 ticker=ticker,
                 name=str(metadata["name"]),
-                asset_type=AssetType.stock,
+                asset_type=AssetType(str(metadata.get("asset_type") or AssetType.stock.value)),
                 exchange=str(metadata["exchange"]) if metadata.get("exchange") else None,
                 issuer=None,
                 support_classification=SearchSupportClassification.out_of_scope,
@@ -199,17 +235,65 @@ def _all_candidates() -> list[SearchCandidate]:
     return candidates
 
 
+def _etf_entry_to_candidate(entry: ETFUniverseEntry) -> SearchCandidate:
+    asset_type = (
+        AssetType.unsupported
+        if entry.support_state is ETFUniverseSupportState.recognized_unsupported
+        else AssetType.etf
+    )
+    return SearchCandidate(
+        ticker=entry.ticker,
+        name=entry.fund_name,
+        asset_type=asset_type,
+        exchange=entry.exchange,
+        issuer=entry.issuer,
+        support_classification=_support_classification_for_etf_entry(entry),
+        message=_message_for_etf_entry(entry),
+        aliases=tuple(entry.aliases),
+    )
+
+
+def _support_classification_for_etf_entry(entry: ETFUniverseEntry) -> SearchSupportClassification:
+    if entry.support_state is ETFUniverseSupportState.eligible_not_cached:
+        return SearchSupportClassification.eligible_not_cached
+    if entry.support_state is ETFUniverseSupportState.recognized_unsupported:
+        return SearchSupportClassification.recognized_unsupported
+    if entry.support_state is ETFUniverseSupportState.out_of_scope:
+        return SearchSupportClassification.out_of_scope
+    return SearchSupportClassification.unknown
+
+
+def _message_for_etf_entry(entry: ETFUniverseEntry) -> str:
+    if entry.support_state is ETFUniverseSupportState.eligible_not_cached:
+        return (
+            "Eligible non-leveraged U.S.-listed equity ETF from the ETF universe metadata contract, "
+            "but no local cached knowledge pack is available yet. On-demand ingestion would be required later."
+        )
+    if entry.support_state is ETFUniverseSupportState.recognized_unsupported:
+        metadata = UNSUPPORTED_ASSET_SEARCH_METADATA.get(entry.ticker, {})
+        return str(metadata.get("reason") or UNSUPPORTED_ASSETS.get(entry.ticker) or entry.entry_provenance)
+    if entry.support_state is ETFUniverseSupportState.out_of_scope:
+        metadata = OUT_OF_SCOPE_COMMON_STOCKS.get(entry.ticker, {})
+        return str(metadata.get("reason") or entry.entry_provenance)
+    if entry.support_state is ETFUniverseSupportState.unavailable:
+        return entry.evidence.unavailable_reason or (
+            "Required ETF classification metadata is unavailable in the deterministic fixture."
+        )
+    return "ETF classification metadata is unknown in the deterministic fixture; no facts are invented."
+
+
 def _supported_aliases(identity: AssetIdentity) -> tuple[str, ...]:
     aliases: list[str] = []
     if identity.issuer:
         aliases.append(identity.issuer)
-    if identity.ticker == "VOO":
-        aliases.extend(["s&p 500 etf", "vanguard s&p 500", "plain vanilla etf"])
-    elif identity.ticker == "QQQ":
-        aliases.extend(["nasdaq-100", "nasdaq 100", "invesco qqq"])
-    elif identity.ticker == "AAPL":
-        aliases.extend(["apple", "apple stock", "common stock"])
-        if top500_stock_universe_entry(identity.ticker):
+    if identity.asset_type is AssetType.etf:
+        entry = etf_universe_entry(identity.ticker)
+        if entry:
+            aliases.extend(entry.aliases)
+    elif identity.asset_type is AssetType.stock:
+        entry = top500_stock_universe_entry(identity.ticker)
+        if entry:
+            aliases.extend(entry.aliases)
             aliases.append("top-500 manifest common stock")
     return tuple(aliases)
 
@@ -347,6 +431,21 @@ def _blocked_explanation_for_result(result: SearchResult) -> SearchBlockedExplan
         )
 
     if result.support_classification is SearchSupportClassification.out_of_scope:
+        if result.asset_type is AssetType.etf:
+            return SearchBlockedExplanation(
+                status=SearchResponseStatus.out_of_scope,
+                support_classification=result.support_classification,
+                explanation_category="etf_like_product_scope",
+                summary=(
+                    f"{result.ticker} is recognized, but this ETF-like product is outside the current supported MVP coverage."
+                ),
+                scope_rationale=result.message or "This ETF-like product is outside the current supported MVP scope.",
+                supported_v1_scope=SUPPORTED_V1_SCOPE_REMINDER,
+                blocked_capabilities=SearchBlockedCapabilityFlags(),
+                ingestion_eligible=False,
+                ingestion_request_route=None,
+                diagnostics=SearchBlockedExplanationDiagnostics(),
+            )
         return SearchBlockedExplanation(
             status=SearchResponseStatus.out_of_scope,
             support_classification=result.support_classification,
@@ -365,3 +464,66 @@ def _blocked_explanation_for_result(result: SearchResult) -> SearchBlockedExplan
         )
 
     return None
+
+
+def _maybe_lightweight_live_result(result: SearchResult, normalized_ticker: str) -> SearchResult | None:
+    if result.ticker != normalized_ticker:
+        return None
+    if result.status is SearchResultStatus.supported:
+        return None
+    if result.support_classification not in {
+        SearchSupportClassification.eligible_not_cached,
+        SearchSupportClassification.unknown,
+    }:
+        return None
+    return _search_result_from_lightweight_fetch(normalized_ticker)
+
+
+def _maybe_lightweight_unknown_result(result: SearchResult, normalized_ticker: str) -> SearchResult | None:
+    if not normalized_ticker or result.ticker != normalized_ticker:
+        return None
+    return _search_result_from_lightweight_fetch(normalized_ticker)
+
+
+def _search_result_from_lightweight_fetch(ticker: str) -> SearchResult | None:
+    settings = build_lightweight_data_settings()
+    if not settings.can_fetch_fresh_data:
+        return None
+    response = fetch_lightweight_asset_data(ticker, settings=settings)
+    if not _lightweight_fetch_opens_page(response):
+        return None
+    fallback_diagnostics = response.fallback_diagnostics or build_lightweight_api_fallback_diagnostics(response)
+    return SearchResult(
+        ticker=response.asset.ticker,
+        name=response.asset.name,
+        asset_type=response.asset.asset_type,
+        exchange=response.asset.exchange,
+        issuer=response.asset.issuer,
+        supported=True,
+        status=SearchResultStatus.supported,
+        support_classification=SearchSupportClassification.cached_supported,
+        eligible_for_ingestion=False,
+        requires_ingestion=False,
+        can_open_generated_page=True,
+        can_answer_chat=True,
+        can_compare=True,
+        generated_route=f"/assets/{response.asset.ticker}",
+        can_request_ingestion=False,
+        ingestion_request_route=None,
+        message=(
+            "Live lightweight fresh-data fetch resolved this asset for local MVP rendering with source labels "
+            "and partial/unavailable states."
+        ),
+        fallback_diagnostics=fallback_diagnostics,
+    )
+
+
+def _lightweight_fetch_opens_page(response: LightweightFetchResponse) -> bool:
+    return (
+        response.asset.status is AssetStatus.supported
+        and response.asset.asset_type in {AssetType.stock, AssetType.etf}
+        and response.generated_output_eligible
+        and bool(response.sources)
+        and bool(response.facts)
+        and not response.raw_payload_exposed
+    )

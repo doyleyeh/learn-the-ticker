@@ -1,14 +1,28 @@
 import { assetFixtures } from "./fixtures";
 
 type SearchAssetType = "stock" | "etf" | "unsupported" | "unknown";
-type SearchResponseStatus = "supported" | "ambiguous" | "ingestion_needed" | "unsupported" | "out_of_scope" | "unknown";
-type SearchResultStatus = "supported" | "ingestion_needed" | "unsupported" | "out_of_scope" | "unknown";
+type SearchResponseStatus =
+  | "supported"
+  | "ambiguous"
+  | "ingestion_needed"
+  | "unsupported"
+  | "out_of_scope"
+  | "unknown"
+  | "comparison";
+type SearchResultStatus =
+  | "supported"
+  | "ingestion_needed"
+  | "unsupported"
+  | "out_of_scope"
+  | "unknown"
+  | "comparison";
 type SearchSupportClassification =
   | "cached_supported"
   | "eligible_not_cached"
   | "recognized_unsupported"
   | "out_of_scope"
-  | "unknown";
+  | "unknown"
+  | "comparison_route";
 
 type SearchCandidate = {
   ticker: string;
@@ -20,6 +34,8 @@ type SearchCandidate = {
   message: string;
   aliases: string[];
 };
+
+type Fetcher = typeof fetch;
 
 type SearchBlockedCapabilityFlags = {
   can_open_generated_page: boolean;
@@ -67,6 +83,9 @@ export type LocalSearchResult = {
   can_answer_chat: boolean;
   can_compare: boolean;
   generated_route: string | null;
+  comparison_route: string | null;
+  comparison_left_ticker: string | null;
+  comparison_right_ticker: string | null;
   can_request_ingestion: boolean;
   ingestion_request_route: string | null;
   message: string | null;
@@ -82,6 +101,9 @@ export type LocalSearchState = {
   requires_ingestion: boolean;
   can_open_generated_page: boolean;
   generated_route: string | null;
+  comparison_route: string | null;
+  comparison_left_ticker: string | null;
+  comparison_right_ticker: string | null;
   can_request_ingestion: boolean;
   ingestion_request_route: string | null;
   blocked_explanation: LocalSearchBlockedExplanation | null;
@@ -94,7 +116,7 @@ export type LocalSearchResponse = {
 };
 
 const SUPPORTED_V1_SCOPE_REMINDER =
-  "Supported MVP coverage is limited to U.S.-listed common stocks in the current Top-500 manifest and non-leveraged U.S.-listed equity ETFs.";
+  "Learn the Ticker currently supports U.S.-listed common stocks in the Top-500 manifest and ETFs in the approved supported ETF manifest.";
 
 const EMPTY_BLOCKED_CAPABILITIES: SearchBlockedCapabilityFlags = {
   can_open_generated_page: false,
@@ -364,6 +386,46 @@ const UNSUPPORTED_CANDIDATES: SearchCandidate[] = [
     support_classification: "recognized_unsupported",
     message: "Inverse ETFs are outside the current plain-vanilla ETF scope.",
     aliases: ["inverse qqq", "short qqq", "inverse etf"]
+  },
+  {
+    ticker: "ARKK",
+    name: "ARK Innovation ETF",
+    asset_type: "unsupported",
+    exchange: null,
+    issuer: "ARK Invest",
+    support_classification: "recognized_unsupported",
+    message: "Active ETFs are outside the current non-leveraged U.S. equity ETF scope.",
+    aliases: ["ark innovation", "active etf"]
+  },
+  {
+    ticker: "BND",
+    name: "Vanguard Total Bond Market ETF",
+    asset_type: "unsupported",
+    exchange: null,
+    issuer: "Vanguard",
+    support_classification: "recognized_unsupported",
+    message: "Fixed-income ETFs are outside the current non-leveraged U.S. equity ETF scope.",
+    aliases: ["bond etf", "fixed income etf"]
+  },
+  {
+    ticker: "GLD",
+    name: "SPDR Gold Shares",
+    asset_type: "unsupported",
+    exchange: null,
+    issuer: "State Street Global Advisors",
+    support_classification: "recognized_unsupported",
+    message: "Commodity ETFs are outside the current non-leveraged U.S. equity ETF scope.",
+    aliases: ["gold etf", "commodity etf"]
+  },
+  {
+    ticker: "AOR",
+    name: "iShares Core Growth Allocation ETF",
+    asset_type: "unsupported",
+    exchange: null,
+    issuer: "iShares",
+    support_classification: "recognized_unsupported",
+    message: "Multi-asset ETFs are outside the current non-leveraged U.S. equity ETF scope.",
+    aliases: ["allocation etf", "multi asset etf"]
   }
 ];
 
@@ -378,6 +440,16 @@ const OUT_OF_SCOPE_CANDIDATES: SearchCandidate[] = [
     message:
       "Recognized U.S.-listed common stock outside the local Top-500 manifest; out of scope for generated outputs unless explicitly approved for on-demand ingestion later.",
     aliases: ["gamestop", "gamestop corp", "common stock"]
+  },
+  {
+    ticker: "VXX",
+    name: "iPath Series B S&P 500 VIX Short-Term Futures ETN",
+    asset_type: "etf",
+    exchange: "Cboe BZX",
+    issuer: "Barclays",
+    support_classification: "out_of_scope",
+    message: "ETNs are outside the current non-leveraged U.S. equity ETF scope.",
+    aliases: ["etn", "vix etn", "volatility etn"]
   }
 ];
 
@@ -387,6 +459,10 @@ function normalizeQueryText(value: string) {
 
 function normalizeTicker(value: string) {
   return value.trim().toUpperCase();
+}
+
+function comparisonTickerFromToken(value: string) {
+  return value.trim().replace(/\.$/, "").toUpperCase();
 }
 
 function supportedCandidates(): SearchCandidate[] {
@@ -449,14 +525,238 @@ function rankedCandidates(raw_query: string, normalized_ticker: string) {
     .sort((left, right) => right[0] - left[0] || left[1].ticker.localeCompare(right[1].ticker));
 }
 
+function comparisonRouteResult(query: string): LocalSearchResponse | null {
+  const match = query.trim().match(/^([A-Za-z][A-Za-z0-9.]{0,9})\s+(?:vs\.?|versus)\s+([A-Za-z][A-Za-z0-9.]{0,9})$/i);
+  if (!match) {
+    return null;
+  }
+
+  const left = comparisonTickerFromToken(match[1]);
+  const right = comparisonTickerFromToken(match[2]);
+  if (!left || !right || left === right) {
+    return null;
+  }
+
+  const route = `/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`;
+  const result: LocalSearchResult = {
+    ticker: `${left} vs ${right}`,
+    name: `Compare ${left} and ${right}`,
+    asset_type: "unknown",
+    exchange: null,
+    issuer: null,
+    supported: false,
+    status: "comparison",
+    support_classification: "comparison_route",
+    eligible_for_ingestion: false,
+    requires_ingestion: false,
+    can_open_generated_page: false,
+    can_answer_chat: false,
+    can_compare: true,
+    generated_route: null,
+    comparison_route: route,
+    comparison_left_ticker: left,
+    comparison_right_ticker: right,
+    can_request_ingestion: false,
+    ingestion_request_route: null,
+    message:
+      "Comparison is a separate workflow. Open the comparison page so each asset can be handled with its own support state and evidence pack.",
+    blocked_explanation: null
+  };
+
+  return {
+    query,
+    results: [result],
+    state: {
+      status: "comparison",
+      message: `Compare ${left} and ${right} in the separate comparison workflow.`,
+      result_count: 1,
+      support_classification: "comparison_route",
+      requires_disambiguation: false,
+      requires_ingestion: false,
+      can_open_generated_page: false,
+      generated_route: null,
+      comparison_route: route,
+      comparison_left_ticker: left,
+      comparison_right_ticker: right,
+      can_request_ingestion: false,
+      ingestion_request_route: null,
+      blocked_explanation: null
+    }
+  };
+}
+
+export async function resolveSearchResponse(query: string, fetcher: Fetcher = fetch): Promise<LocalSearchResponse> {
+  const raw_query = query.trim();
+  const comparison = comparisonRouteResult(raw_query);
+  if (comparison) {
+    return comparison;
+  }
+
+  try {
+    return await fetchBackendSearchResponse(raw_query, fetcher);
+  } catch {
+    return resolveLocalSearchResponse(query);
+  }
+}
+
+export async function fetchBackendSearchResponse(query: string, fetcher: Fetcher = fetch): Promise<LocalSearchResponse> {
+  const endpoint = backendSearchEndpoint(query);
+  const response = await fetcher(endpoint);
+
+  if (!response.ok) {
+    throw new Error(`Search request failed with status ${response.status}`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isBackendSearchResponse(payload)) {
+    throw new Error("Search response did not match the expected backend response contract.");
+  }
+
+  return {
+    query: payload.query,
+    results: payload.results.map((result) => ({
+      ticker: result.ticker,
+      name: result.name,
+      asset_type: result.asset_type,
+      exchange: result.exchange,
+      issuer: result.issuer,
+      supported: result.supported,
+      status: result.status,
+      support_classification: result.support_classification,
+      eligible_for_ingestion: result.eligible_for_ingestion,
+      requires_ingestion: result.requires_ingestion,
+      can_open_generated_page: result.can_open_generated_page,
+      can_answer_chat: result.can_answer_chat,
+      can_compare: result.can_compare,
+      generated_route: result.generated_route ?? null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
+      can_request_ingestion: result.can_request_ingestion,
+      ingestion_request_route: result.ingestion_request_route ?? null,
+      message: result.message ?? null,
+      blocked_explanation: result.blocked_explanation ?? null
+    })),
+    state: {
+      status: payload.state.status,
+      message: payload.state.message,
+      result_count: payload.state.result_count,
+      support_classification: payload.state.support_classification ?? null,
+      requires_disambiguation: payload.state.requires_disambiguation ?? false,
+      requires_ingestion: payload.state.requires_ingestion ?? false,
+      can_open_generated_page: payload.state.can_open_generated_page ?? false,
+      generated_route: payload.state.generated_route ?? null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
+      can_request_ingestion: payload.state.can_request_ingestion ?? false,
+      ingestion_request_route: payload.state.ingestion_request_route ?? null,
+      blocked_explanation: payload.state.blocked_explanation ?? null
+    }
+  };
+}
+
+function backendSearchEndpoint(query: string) {
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim();
+  if (!apiBaseUrl) {
+    throw new Error("No API base URL is configured for search fetches.");
+  }
+  const endpoint = new URL("/api/search", apiBaseUrl);
+  endpoint.searchParams.set("q", query);
+  return endpoint.toString();
+}
+
+function isBackendSearchResponse(value: unknown): value is LocalSearchResponse {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<LocalSearchResponse>;
+  return (
+    typeof candidate.query === "string" &&
+    Array.isArray(candidate.results) &&
+    candidate.results.every(isBackendSearchResult) &&
+    !!candidate.state &&
+    typeof candidate.state === "object" &&
+    isSearchResponseStatus(candidate.state.status) &&
+    typeof candidate.state.message === "string" &&
+    typeof candidate.state.result_count === "number"
+  );
+}
+
+function isBackendSearchResult(value: unknown): value is LocalSearchResult {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<LocalSearchResult>;
+  return (
+    typeof candidate.ticker === "string" &&
+    typeof candidate.name === "string" &&
+    isSearchAssetType(candidate.asset_type) &&
+    typeof candidate.supported === "boolean" &&
+    isSearchResultStatus(candidate.status) &&
+    isSearchSupportClassification(candidate.support_classification) &&
+    typeof candidate.eligible_for_ingestion === "boolean" &&
+    typeof candidate.requires_ingestion === "boolean" &&
+    typeof candidate.can_open_generated_page === "boolean" &&
+    typeof candidate.can_answer_chat === "boolean" &&
+    typeof candidate.can_compare === "boolean" &&
+    typeof candidate.can_request_ingestion === "boolean"
+  );
+}
+
+function isSearchAssetType(value: unknown): value is SearchAssetType {
+  return value === "stock" || value === "etf" || value === "unsupported" || value === "unknown";
+}
+
+function isSearchResponseStatus(value: unknown): value is SearchResponseStatus {
+  return (
+    value === "supported" ||
+    value === "ambiguous" ||
+    value === "ingestion_needed" ||
+    value === "unsupported" ||
+    value === "out_of_scope" ||
+    value === "unknown" ||
+    value === "comparison"
+  );
+}
+
+function isSearchResultStatus(value: unknown): value is SearchResultStatus {
+  return (
+    value === "supported" ||
+    value === "ingestion_needed" ||
+    value === "unsupported" ||
+    value === "out_of_scope" ||
+    value === "unknown" ||
+    value === "comparison"
+  );
+}
+
+function isSearchSupportClassification(value: unknown): value is SearchSupportClassification {
+  return (
+    value === "cached_supported" ||
+    value === "eligible_not_cached" ||
+    value === "recognized_unsupported" ||
+    value === "out_of_scope" ||
+    value === "unknown" ||
+    value === "comparison_route"
+  );
+}
+
 function blockedExplanationForResult(result: LocalSearchResult): LocalSearchBlockedExplanation | null {
   if (result.support_classification === "recognized_unsupported") {
     const explanation_category =
-      result.ticker === "BTC" || result.ticker === "ETH"
-        ? "crypto_assets"
-        : result.ticker === "TQQQ"
-          ? "leveraged_etf"
-          : "inverse_etf";
+      {
+        BTC: "crypto_assets",
+        ETH: "crypto_assets",
+        TQQQ: "leveraged_etf",
+        SQQQ: "inverse_etf",
+        ARKK: "active_etf",
+        BND: "fixed_income_etf",
+        GLD: "commodity_etf",
+        AOR: "multi_asset_etf"
+      }[result.ticker] ?? "unsupported_etf_like_product";
 
     return {
       schema_version: "search-blocked-explanation-v1",
@@ -464,7 +764,7 @@ function blockedExplanationForResult(result: LocalSearchResult): LocalSearchBloc
       support_classification: "recognized_unsupported",
       explanation_kind: "scope_blocked_search_result",
       explanation_category,
-      summary: `${result.ticker} is recognized, but this asset category is outside the current supported MVP coverage.`,
+      summary: "We found this ticker, but it is not supported in v1.",
       scope_rationale: result.message ?? "This asset category is outside the current supported MVP scope.",
       supported_v1_scope: SUPPORTED_V1_SCOPE_REMINDER,
       blocked_capabilities: EMPTY_BLOCKED_CAPABILITIES,
@@ -475,13 +775,19 @@ function blockedExplanationForResult(result: LocalSearchResult): LocalSearchBloc
   }
 
   if (result.support_classification === "out_of_scope") {
+    const explanation_category = result.ticker === "VXX" ? "etf_like_product_scope" : "top500_manifest_scope";
+    const summary =
+      result.ticker === "VXX"
+        ? "We found this ticker, but it is outside the current supported MVP ETF scope."
+        : `${result.ticker} is recognized, but it is outside the current Top-500 manifest-backed supported MVP stock coverage.`;
+
     return {
       schema_version: "search-blocked-explanation-v1",
       status: "out_of_scope",
       support_classification: "out_of_scope",
       explanation_kind: "scope_blocked_search_result",
-      explanation_category: "top500_manifest_scope",
-      summary: `${result.ticker} is recognized, but it is outside the current Top-500 manifest-backed supported MVP stock coverage.`,
+      explanation_category,
+      summary,
       scope_rationale:
         result.message ??
         "Recognized U.S.-listed common stock outside the current Top-500 manifest-backed MVP scope.",
@@ -523,6 +829,9 @@ function candidateToResult(candidate: SearchCandidate): LocalSearchResult {
     can_answer_chat: cached_supported,
     can_compare: cached_supported,
     generated_route: cached_supported ? `/assets/${candidate.ticker}` : null,
+    comparison_route: null,
+    comparison_left_ticker: null,
+    comparison_right_ticker: null,
     can_request_ingestion: eligible_not_cached,
     ingestion_request_route: eligible_not_cached ? `/api/admin/ingest/${candidate.ticker}` : null,
     message: candidate.message,
@@ -546,6 +855,9 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
       requires_ingestion: false,
       can_open_generated_page: true,
       generated_route: result.generated_route,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
       can_request_ingestion: false,
       ingestion_request_route: null,
       blocked_explanation: null
@@ -563,6 +875,9 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
       requires_ingestion: true,
       can_open_generated_page: false,
       generated_route: null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
       can_request_ingestion: true,
       ingestion_request_route: `/api/admin/ingest/${result.ticker}`,
       blocked_explanation: null
@@ -579,6 +894,9 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
       requires_ingestion: false,
       can_open_generated_page: false,
       generated_route: null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
       can_request_ingestion: false,
       ingestion_request_route: null,
       blocked_explanation: result.blocked_explanation
@@ -597,6 +915,9 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
       requires_ingestion: false,
       can_open_generated_page: false,
       generated_route: null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
       can_request_ingestion: false,
       ingestion_request_route: null,
       blocked_explanation: result.blocked_explanation
@@ -612,6 +933,9 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
     requires_ingestion: false,
     can_open_generated_page: false,
     generated_route: null,
+    comparison_route: null,
+    comparison_left_ticker: null,
+    comparison_right_ticker: null,
     can_request_ingestion: false,
     ingestion_request_route: null,
     blocked_explanation: null
@@ -620,6 +944,11 @@ function stateForSingleResult(result: LocalSearchResult): LocalSearchState {
 
 export function resolveLocalSearchResponse(query: string): LocalSearchResponse {
   const raw_query = query.trim();
+  const comparison = comparisonRouteResult(raw_query);
+  if (comparison) {
+    return comparison;
+  }
+
   const normalized_ticker = normalizeTicker(query);
   const candidates = rankedCandidates(raw_query, normalized_ticker);
 
@@ -639,6 +968,9 @@ export function resolveLocalSearchResponse(query: string): LocalSearchResponse {
           requires_ingestion: false,
           can_open_generated_page: false,
           generated_route: null,
+          comparison_route: null,
+          comparison_left_ticker: null,
+          comparison_right_ticker: null,
           can_request_ingestion: false,
           ingestion_request_route: null,
           blocked_explanation: null
@@ -669,6 +1001,9 @@ export function resolveLocalSearchResponse(query: string): LocalSearchResponse {
     can_answer_chat: false,
     can_compare: false,
     generated_route: null,
+    comparison_route: null,
+    comparison_left_ticker: null,
+    comparison_right_ticker: null,
     can_request_ingestion: false,
     ingestion_request_route: null,
     message: "No deterministic local fixture or recognized eligible asset matched this query.",
@@ -687,6 +1022,9 @@ export function resolveLocalSearchResponse(query: string): LocalSearchResponse {
       requires_ingestion: false,
       can_open_generated_page: false,
       generated_route: null,
+      comparison_route: null,
+      comparison_left_ticker: null,
+      comparison_right_ticker: null,
       can_request_ingestion: false,
       ingestion_request_route: null,
       blocked_explanation: null
@@ -708,7 +1046,7 @@ export function formatSearchAssetType(result: Pick<LocalSearchResult, "asset_typ
 }
 
 export function searchQueryExampleText() {
-  return "Try VOO, Apple, S&P 500 ETF, SPY, BTC, GME, or ZZZZ.";
+  return "Examples only, not recommendations: VOO, QQQ, AAPL, NVDA, and SOXX.";
 }
 
 export function searchUnknownMessage() {

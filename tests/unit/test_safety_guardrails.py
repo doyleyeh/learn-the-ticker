@@ -279,6 +279,29 @@ def test_glossary_asset_context_contract_copy_is_advice_safe():
     assert_no_forbidden_phrases("glossary asset context contract", combined)
 
 
+def test_etf_universe_manifest_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "backend" / "etf_universe.py").read_text(encoding="utf-8"),
+            (ROOT / "data" / "universes" / "us_equity_etfs.current.json").read_text(encoding="utf-8"),
+        ]
+    )
+    markers = [
+        "us-equity-etf-universe-v1",
+        "eligible_not_cached",
+        "recognized_unsupported",
+        "out_of_scope",
+        "unavailable",
+        "generated outputs remain blocked",
+    ]
+
+    for marker in markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("ETF universe manifest contract", combined)
+
+
 def test_search_blocked_explanation_contract_copy_is_advice_safe():
     combined = "\n".join(
         [
@@ -298,3 +321,74 @@ def test_search_blocked_explanation_contract_copy_is_advice_safe():
         assert_no_forbidden_phrases(marker, marker)
 
     assert_no_forbidden_phrases("search blocked explanation contract", combined)
+
+
+def test_weekly_news_event_evidence_contract_copy_is_advice_safe():
+    combined = "\n".join(
+        [
+            (ROOT / "backend" / "repositories" / "weekly_news.py").read_text(encoding="utf-8"),
+            (ROOT / "backend" / "weekly_news_repository.py").read_text(encoding="utf-8"),
+            (ROOT / "alembic" / "versions" / "20260425_0008_weekly_news_event_evidence_contracts.py").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+    markers = [
+        "weekly-news-event-evidence-repository-contract-v1",
+        "persisted_evidence_only",
+        "threshold_metadata_only",
+        "source_policy_blocked",
+        "stable_facts_are_separate",
+    ]
+
+    for marker in markers:
+        assert marker in combined
+        assert_no_forbidden_phrases(marker, marker)
+
+    assert_no_forbidden_phrases("weekly news event evidence contract", combined)
+
+
+def test_mvp_functional_gap_review_copy_is_advice_safe_and_sanitized():
+    text = (ROOT / "docs/archive/2026-10-07-main" / "mvp_functional_gap_review.md").read_text(encoding="utf-8")
+
+    markers = [
+        "MVP Functional Gap Review",
+        "Golden Asset Source Handoff",
+        "data/universes/us_equity_etfs_supported.current.json",
+        "data/universes/us_etp_recognition.current.json",
+        "T-119 is complete",
+        "T-120 is complete",
+        "T-121 is complete",
+        "T-122 is complete",
+        "T-123 is complete",
+        "T-124 is complete",
+        "T-126 completed repo-native source-handoff manifest inspection/finalization smoke tooling",
+        "T-127 completed the opt-in local live-AI validation smoke",
+        "T-128: prove governed golden evidence drives backend API and frontend rendering",
+        "T-129 completed review-only launch-manifest operator automation parity",
+        "T-130 completed the local fresh-data MVP rehearsal command",
+        "scripts/run_local_fresh_data_rehearsal.py --json",
+        "Normal CI remains deterministic",
+    ]
+
+    for marker in markers:
+        assert marker in text
+        assert_no_forbidden_phrases(marker, marker)
+
+    for forbidden in [
+        "OPENROUTER_API_KEY",
+        "FMP_API_KEY",
+        "ALPHA_VANTAGE_API_KEY",
+        "FINNHUB_API_KEY",
+        "TIINGO_API_KEY",
+        "EODHD_API_KEY",
+        "BEGIN PRIVATE KEY",
+        "Authorization",
+        "Bearer ",
+        "signed URL",
+        "public storage URL",
+        "raw transcript",
+    ]:
+        assert forbidden not in text
+
+    assert_no_forbidden_phrases("mvp functional gap review", text)

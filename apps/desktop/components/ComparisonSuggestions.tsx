@@ -1,4 +1,5 @@
 import type { ComparisonSuggestionsModel } from "../lib/compareSuggestions";
+import { buildTrustMetricSurfaceDescriptor } from "../lib/trustMetrics";
 
 type ComparisonSuggestionsProps = {
   model: ComparisonSuggestionsModel;
@@ -6,6 +7,17 @@ type ComparisonSuggestionsProps = {
 
 export function ComparisonSuggestions({ model }: ComparisonSuggestionsProps) {
   const headingId = `comparison-suggestions-${model.selectedTicker.toLowerCase()}`;
+  const trustMetricDescriptor = buildTrustMetricSurfaceDescriptor({
+    eventType: "comparison_usage",
+    workflowArea: "comparison",
+    assetTicker: model.selectedTicker,
+    comparisonLeftTicker: model.requestedLeftTicker ?? model.selectedTicker,
+    comparisonRightTicker: model.requestedRightTicker ?? "",
+    comparisonState: model.requestedAvailabilityState ?? model.state,
+    selectedSection: "comparison_suggestions",
+    citationCount: 0,
+    sourceDocumentCount: 0
+  });
 
   return (
     <section
@@ -18,6 +30,21 @@ export function ComparisonSuggestions({ model }: ComparisonSuggestionsProps) {
       data-comparison-requested-left={model.requestedLeftTicker ?? ""}
       data-comparison-requested-right={model.requestedRightTicker ?? ""}
       data-comparison-requested-availability-state={model.requestedAvailabilityState ?? ""}
+      data-trust-metric-schema-version={trustMetricDescriptor.schemaVersion}
+      data-trust-metric-mode={trustMetricDescriptor.mode}
+      data-trust-metric-event={trustMetricDescriptor.eventType}
+      data-trust-metric-workflow-area={trustMetricDescriptor.workflowArea}
+      data-trust-metric-occurred-at={trustMetricDescriptor.occurredAt}
+      data-trust-metric-persistence={trustMetricDescriptor.persistence}
+      data-trust-metric-external-analytics={trustMetricDescriptor.externalAnalytics}
+      data-trust-metric-live-external-calls={trustMetricDescriptor.liveExternalCalls}
+      data-trust-metric-asset-ticker={trustMetricDescriptor.assetTicker}
+      data-trust-metric-left-ticker={trustMetricDescriptor.comparisonLeftTicker}
+      data-trust-metric-right-ticker={trustMetricDescriptor.comparisonRightTicker}
+      data-trust-metric-comparison-state={trustMetricDescriptor.comparisonState}
+      data-trust-metric-selected-section={trustMetricDescriptor.selectedSection}
+      data-trust-metric-citation-count={trustMetricDescriptor.citationCount}
+      data-trust-metric-source-document-count={trustMetricDescriptor.sourceDocumentCount}
     >
       <div className="section-heading">
         <p className="eyebrow">Compare locally</p>
@@ -36,16 +63,20 @@ export function ComparisonSuggestions({ model }: ComparisonSuggestionsProps) {
               data-comparison-suggestion-left={suggestion.leftTicker}
               data-comparison-suggestion-right={suggestion.rightTicker}
               data-comparison-suggestion-url={suggestion.compareUrl}
+              data-comparison-suggestion-availability-state={suggestion.availabilityState}
+              data-comparison-suggestion-availability-source={suggestion.availabilitySource}
+              data-comparison-suggestion-example-only={suggestion.exampleOnly ? "true" : "false"}
               aria-label={suggestion.accessibleName}
             >
               <strong>{suggestion.title}</strong>
               <span>{suggestion.description}</span>
+              <small>{suggestion.exampleOnly ? "Local example, not the requested pair" : "Backend-aligned local availability"}</small>
             </a>
           ))}
         </div>
       ) : (
         <p className="source-gap-note" data-comparison-no-local-pack>
-          No relative compare link is shown because no deterministic local comparison pack exists for this fixture.
+          No relative compare link is shown because no local comparison evidence pack exists for this asset yet.
         </p>
       )}
     </section>

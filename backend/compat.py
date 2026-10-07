@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from inspect import signature
+from types import SimpleNamespace
 from typing import Any, Callable, get_type_hints
 from urllib.parse import parse_qsl, urlsplit
 
@@ -24,11 +25,19 @@ class Response:
         return self._payload
 
 
+class HTTPException(Exception):
+    def __init__(self, status_code: int, detail: Any = None):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+
+
 class FastAPI:
     """Small local fallback used only when the FastAPI package is unavailable."""
 
     def __init__(self, **_: Any):
         self.routes: list[_Route] = []
+        self.state = SimpleNamespace()
 
     def get(self, path: str, **_: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         return self._register("GET", path)
@@ -52,6 +61,8 @@ class FastAPI:
                 continue
             try:
                 payload = route.endpoint(**_build_kwargs(route.endpoint, path_params, params or {}, json or {}))
+            except HTTPException as exc:
+                return Response(exc.status_code, {"detail": exc.detail})
             except ValidationError as exc:
                 return Response(422, {"detail": exc.errors()})
             return Response(200, _to_jsonable(payload))

@@ -26,7 +26,7 @@ from backend.models import (
 from backend.overview import generate_asset_overview
 from backend.retrieval import AssetKnowledgePack, build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.search import search_assets
-from backend.source_policy import resolve_source_policy
+from backend.source_policy import SourcePolicyAction, resolve_source_policy, validate_source_handoff
 
 
 SOURCE_DRAWER_SCHEMA_VERSION = "asset-source-drawer-v1"
@@ -42,12 +42,16 @@ def build_asset_source_drawer_response(
     *,
     citation_id: str | None = None,
     source_document_id: str | None = None,
+    persisted_pack_reader: object | None = None,
+    generated_output_cache_reader: object | None = None,
+    source_snapshot_reader: object | None = None,
+    persisted_weekly_news_reader: object | None = None,
 ) -> SourcesResponse:
     """Shape existing local overview evidence into the source drawer API contract."""
 
     normalized = ticker.strip().upper()
     filters = _filters(citation_id=citation_id, source_document_id=source_document_id)
-    pack_result = build_asset_knowledge_pack_result(normalized)
+    pack_result = build_asset_knowledge_pack_result(normalized, persisted_reader=persisted_pack_reader)
     if pack_result.build_state is not KnowledgePackBuildState.available:
         return _non_generated_response(
             asset=_asset_for_non_generated_state(normalized, pack_result.asset),
@@ -58,7 +62,13 @@ def build_asset_source_drawer_response(
         )
 
     pack = build_asset_knowledge_pack(normalized)
-    overview = generate_asset_overview(normalized)
+    overview = generate_asset_overview(
+        normalized,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+        source_snapshot_reader=source_snapshot_reader,
+        persisted_weekly_news_reader=persisted_weekly_news_reader,
+    )
     source_fixture_by_id = {source.source_document_id: source for source in pack.source_documents}
     if not overview.asset.supported:
         return _non_generated_response(
@@ -447,6 +457,9 @@ def _source_groups(
             url=source.url,
             source_identifier=source.url if source.url.startswith("local://") else None,
         )
+        handoff = validate_source_handoff(source, action=SourcePolicyAction.diagnostics)
+        if not handoff.allowed:
+            continue
         excerpts = [
             _drawer_excerpt(source, binding.citation_id, binding.chunk_id)
             for binding in bindings_by_source.get(source.source_document_id, [])
@@ -471,6 +484,13 @@ def _source_groups(
                 allowlist_status=source.allowlist_status,
                 source_use_policy=source.source_use_policy,
                 permitted_operations=decision.permitted_operations,
+                source_identity=source.source_identity or source.url,
+                storage_rights=source.storage_rights,
+                export_rights=source.export_rights,
+                review_status=source.review_status,
+                approval_rationale=source.approval_rationale,
+                parser_status=source.parser_status,
+                parser_failure_diagnostics=source.parser_failure_diagnostics,
                 citation_ids=[binding.citation_id for binding in bindings_by_source.get(source.source_document_id, [])],
                 related_claim_ids=claims_by_source.get(source.source_document_id, []),
                 section_ids=sections_by_source.get(source.source_document_id, []),
@@ -488,6 +508,7 @@ def _drawer_excerpt(source: SourceDocument, citation_id: str | None, chunk_id: s
     )
     excerpt_allowed = (
         decision.allowlist_status is SourceAllowlistStatus.allowed
+        and validate_source_handoff(source, action=SourcePolicyAction.allowed_excerpt_export).allowed
         and decision.allowed_excerpt.allowed
         and decision.permitted_operations.can_display_excerpt
         and source.source_use_policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}

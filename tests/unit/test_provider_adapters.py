@@ -1,13 +1,67 @@
+from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from backend.data import ELIGIBLE_NOT_CACHED_ASSETS
+from backend.etf_universe import eligible_not_cached_etf_entries, load_etf_universe_manifest
 from backend.models import (
+    DEFAULT_BLOCKED_EXCERPT_BEHAVIOR,
+    DEFAULT_BLOCKED_SOURCE_OPERATIONS,
+    EvidenceState,
     FreshnessState,
     ProviderDataCategory,
     ProviderKind,
     ProviderResponse,
     ProviderResponseState,
     ProviderSourceUsage,
+    SourceAllowlistStatus,
+    SourceParserStatus,
+    SourcePolicyDecision,
+    SourcePolicyDecisionState,
+    SourceQuality,
+    SourceUsePolicy,
+)
+from backend.provider_adapters import sec_stock as sec_stock_module
+from backend.provider_adapters import etf_issuer as etf_issuer_module
+from backend.provider_adapters.etf_issuer import (
+    ETF_ISSUER_ACQUISITION_BOUNDARY,
+    ETF_ISSUER_FIXTURE_CONTRACT_VERSION,
+    ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY,
+    ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY,
+    ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY,
+    ETF_ISSUER_LIVE_HTTP_FETCH_BOUNDARY,
+    ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
+    ETF_ISSUER_FIXTURES,
+    LIGHTWEIGHT_ETF_ISSUER_FIXTURES,
+    EtfIssuerFixtureContractError,
+    EtfIssuerMockFetchResponse,
+    EtfIssuerParserAdapter,
+    EtfIssuerParserDiagnostic,
+    build_etf_issuer_acquisition_result,
+    build_etf_issuer_provider_response,
+    evaluate_etf_issuer_live_acquisition_readiness,
+    execute_etf_issuer_handoff_gated_official_source_acquisition,
+    etf_issuer_fixture_for_ticker,
+)
+from backend.provider_adapters.sec_stock import (
+    SEC_STOCK_ACQUISITION_BOUNDARY,
+    SEC_STOCK_FIXTURE_CONTRACT_VERSION,
+    SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY,
+    SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY,
+    SEC_STOCK_LIVE_HTTP_FETCH_BOUNDARY,
+    SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY,
+    SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
+    SEC_STOCK_FIXTURES,
+    SecStockFixtureContractError,
+    SecStockMockFetchResponse,
+    SecStockParserAdapter,
+    SecStockParserDiagnostic,
+    build_sec_stock_acquisition_result,
+    build_sec_stock_provider_response,
+    evaluate_sec_stock_live_acquisition_readiness,
+    execute_sec_stock_handoff_gated_official_source_acquisition,
+    sec_stock_fixture_for_ticker,
 )
 from backend.providers import (
     fetch_mock_provider_response,
@@ -80,7 +134,34 @@ def test_sec_stock_adapter_returns_canonical_aapl_facts_with_official_attributio
     assert response.freshness.as_of_date == "2026-04-01"
     assert response.licensing.export_allowed is True
     assert response.licensing.redistribution_allowed is False
-    assert {fact.field_name for fact in response.facts} >= {"primary_business", "net_sales_trend_available"}
+    fields = {fact.field_name: fact for fact in response.facts}
+    assert set(fields) >= {
+        "sec_stock_identity",
+        "selected_sec_filing_metadata",
+        "primary_business",
+        "net_sales_trend_available",
+        "xbrl_company_fact_net_sales_2024",
+        "xbrl_company_fact_net_sales_2023",
+        "current_valuation_metrics",
+    }
+    assert fields["sec_stock_identity"].value == {
+        "ticker": "AAPL",
+        "company_name": "Apple Inc.",
+        "cik": "0000320193",
+        "exchange": "NASDAQ",
+        "asset_type": "stock",
+        "support_state": "supported",
+        "top500_manifest_member": True,
+        "eligible_not_cached": False,
+    }
+    assert fields["selected_sec_filing_metadata"].value["form_type"] == "10-K"
+    assert fields["selected_sec_filing_metadata"].value["source_document_id"] == "provider_sec_aapl_10k_2026"
+    assert fields["selected_sec_filing_metadata"].value["official_publisher"] == "U.S. SEC"
+    assert fields["xbrl_company_fact_net_sales_2024"].value["period"] == "FY2024"
+    assert fields["xbrl_company_fact_net_sales_2024"].unit == "USD"
+    assert fields["current_valuation_metrics"].evidence_state is EvidenceState.unavailable
+    assert fields["current_valuation_metrics"].freshness_state is FreshnessState.unavailable
+    assert fields["current_valuation_metrics"].source_document_ids == []
     assert all(source.is_official is True for source in response.source_attributions)
     assert all(source.allowlist_status.value == "allowed" for source in response.source_attributions)
     assert all(source.source_use_policy.value == "full_text_allowed" for source in response.source_attributions)
@@ -93,10 +174,357 @@ def test_sec_stock_adapter_returns_canonical_aapl_facts_with_official_attributio
     _assert_no_generated_outputs(response)
 
 
-def test_etf_issuer_adapter_returns_voo_and_qqq_official_facts_and_holdings_metadata():
+def test_sec_stock_fixture_contract_normalizes_submissions_filings_xbrl_and_gaps():
+    fixture = sec_stock_fixture_for_ticker("aapl")
+
+    assert SEC_STOCK_FIXTURE_CONTRACT_VERSION == "sec-stock-fixture-adapter-v1"
+    assert fixture is SEC_STOCK_FIXTURES["AAPL"]
+    assert fixture.identity.ticker == "AAPL"
+    assert fixture.identity.cik == "0000320193"
+    assert fixture.identity.top500_manifest_member is True
+    assert fixture.identity.eligible_not_cached is False
+    assert {source.source_type for source in fixture.sources} == {
+        "sec_submissions",
+        "sec_filing",
+        "sec_xbrl_company_facts",
+    }
+    assert fixture.selected_filings[0].form_type == "10-K"
+    assert fixture.selected_filings[0].accession_or_fixture_id
+    assert fixture.xbrl_company_facts[0].field_name == "net_sales_2024"
+    assert fixture.xbrl_company_facts[0].unit == "USD"
+    assert fixture.evidence_gaps[0].evidence_state is EvidenceState.unavailable
+    assert all(source.checksum.startswith("sha256:sec-aapl-") for source in fixture.sources)
+
+
+def test_sec_stock_acquisition_boundary_exposes_readiness_checksums_and_gap_states():
+    adapter = mock_sec_stock_adapter()
+    request = adapter.request("AAPL")
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    acquisition = build_sec_stock_acquisition_result(adapter, request, licensing)
+
+    assert acquisition.boundary == SEC_STOCK_ACQUISITION_BOUNDARY
+    assert acquisition.ticker == "AAPL"
+    assert acquisition.cik == "0000320193"
+    assert acquisition.response_state is ProviderResponseState.supported
+    assert acquisition.provider_response is not None
+    assert acquisition.provider_response.asset is not None
+    assert acquisition.provider_response.asset.ticker == "AAPL"
+    assert acquisition.configuration_readiness.user_agent_configured is False
+    assert acquisition.configuration_readiness.rate_limit_ready is True
+    assert acquisition.configuration_readiness.live_call_disabled is True
+    assert acquisition.configuration_readiness.no_live_external_calls is True
+    assert acquisition.no_live_external_calls is True
+    assert acquisition.opened_database_connection is False
+    assert acquisition.wrote_source_snapshot is False
+    assert acquisition.wrote_knowledge_pack is False
+    assert acquisition.wrote_generated_output_cache is False
+    assert acquisition.created_generated_asset_page is False
+    assert acquisition.created_generated_chat_answer is False
+    assert acquisition.created_generated_comparison is False
+    assert acquisition.created_generated_risk_summary is False
+    assert acquisition.checksum is not None
+    assert acquisition.checksum.startswith("sha256:sec-acquisition:")
+    assert len(acquisition.source_records) == 3
+    assert {record.source_type for record in acquisition.source_records} == {
+        "sec_submissions",
+        "sec_filing",
+        "sec_xbrl_company_facts",
+    }
+    assert all(record.checksum.startswith("sha256:sec-aapl-") for record in acquisition.source_records)
+    assert all(record.source_use_policy is SourceUsePolicy.full_text_allowed for record in acquisition.source_records)
+    assert all(record.allowlist_status is SourceAllowlistStatus.allowed for record in acquisition.source_records)
+    assert all(record.source_quality is SourceQuality.official for record in acquisition.source_records)
+    assert all(record.stores_raw_source_text is False for record in acquisition.source_records)
+    assert all(record.stores_raw_provider_payload is False for record in acquisition.source_records)
+    assert acquisition.evidence_gap_states == {"current_valuation_metrics": "unavailable"}
+    assert acquisition.diagnostics[0].code == "sec_evidence_gap_current_valuation_metrics"
+    assert acquisition.diagnostics[0].evidence_state is EvidenceState.unavailable
+    assert acquisition.diagnostics[0].stores_raw_source_text is False
+    assert acquisition.diagnostics[0].stores_raw_provider_payload is False
+    assert acquisition.diagnostics[0].stores_secret is False
+    _assert_no_generated_outputs(acquisition.provider_response)
+
+
+def test_sec_stock_handoff_gated_execution_runs_mocked_fetch_parser_and_handoff():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    acquisition = execute_sec_stock_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("AAPL"),
+        licensing,
+    )
+
+    assert acquisition.boundary == SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.mocked_fetch_boundary == SEC_STOCK_MOCK_HTTP_FETCH_BOUNDARY
+    assert acquisition.parser_adapter_boundary == SEC_STOCK_PARSER_ADAPTER_BOUNDARY
+    assert acquisition.response_state is ProviderResponseState.supported
+    assert acquisition.provider_response is not None
+    assert acquisition.fetched_source_count == 3
+    assert acquisition.parser_diagnostic_count >= 3
+    assert acquisition.handoff_approved_source_count == 3
+    assert acquisition.handoff_blocked_source_count == 0
+    assert all(source.parser_status is SourceParserStatus.parsed for source in acquisition.provider_response.source_attributions)
+    assert all(source.source_identity for source in acquisition.provider_response.source_attributions)
+    assert any(diagnostic.code == "sec_parser_parsed" for diagnostic in acquisition.diagnostics)
+    assert all(diagnostic.stores_raw_source_text is False for diagnostic in acquisition.diagnostics)
+    assert all(diagnostic.stores_raw_provider_payload is False for diagnostic in acquisition.diagnostics)
+
+
+class LiveSecFetcher:
+    def fetch(self, request: sec_stock_module.SecStockMockFetchRequest) -> SecStockMockFetchResponse:
+        return SecStockMockFetchResponse(
+            boundary=SEC_STOCK_LIVE_HTTP_FETCH_BOUNDARY,
+            ticker=request.ticker,
+            source_document_id=request.source_document_id,
+            source_type=request.source_type,
+            status="fetched",
+            checksum=request.expected_checksum,
+            retrieved_at=sec_stock_module.STUB_TIMESTAMP,
+            content_kind=request.source_type,
+            no_live_external_calls=False,
+        )
+
+
+def test_sec_stock_handoff_gated_execution_runs_injected_live_fetcher():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    acquisition = execute_sec_stock_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("AAPL"),
+        licensing,
+        fetcher=LiveSecFetcher(),
+    )
+
+    assert acquisition.boundary == SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.mocked_fetch_boundary is None
+    assert acquisition.no_live_external_calls is False
+    assert acquisition.response_state is ProviderResponseState.supported
+    assert acquisition.handoff_approved_source_count == 3
+    assert acquisition.handoff_blocked_source_count == 0
+
+
+class FailingSecParser(SecStockParserAdapter):
+    def parse(self, response, source):
+        return SecStockParserDiagnostic(
+            boundary=SEC_STOCK_PARSER_ADAPTER_BOUNDARY,
+            source_document_id=source.source_document_id,
+            parser_status=SourceParserStatus.failed,
+            evidence_state=EvidenceState.unavailable,
+            freshness_state=FreshnessState.unavailable,
+            code="sec_parser_forced_failure",
+            message="Mocked SEC parser failed closed before evidence use.",
+            parser_failure_diagnostics="forced_failure",
+        )
+
+
+def test_sec_stock_handoff_gated_execution_blocks_parser_failed_sources_before_persistence():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    acquisition = execute_sec_stock_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("AAPL"),
+        licensing,
+        parser=FailingSecParser(),
+    )
+
+    assert acquisition.boundary == SEC_STOCK_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.response_state is ProviderResponseState.permission_limited
+    assert acquisition.provider_response is None
+    assert acquisition.source_records == ()
+    assert acquisition.checksum is None
+    assert acquisition.handoff_blocked_source_count == 1
+    assert acquisition.handoff_approved_source_count == 0
+    assert {diagnostic.code for diagnostic in acquisition.diagnostics} >= {
+        "sec_parser_forced_failure",
+        "sec_source_handoff_failed",
+    }
+    assert acquisition.created_generated_asset_page is False
+    assert acquisition.wrote_source_snapshot is False
+    assert acquisition.wrote_knowledge_pack is False
+    assert acquisition.wrote_generated_output_cache is False
+
+
+def test_sec_stock_fixture_contract_rejects_wrong_ticker_and_policy_blocked_sources(monkeypatch):
+    adapter = mock_sec_stock_adapter()
+    request = adapter.request("MSFT")
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    monkeypatch.setitem(SEC_STOCK_FIXTURES, "MSFT", SEC_STOCK_FIXTURES["AAPL"])
+    with pytest.raises(SecStockFixtureContractError, match="requested ticker"):
+        build_sec_stock_provider_response(adapter, request, licensing)
+
+    rejected_decision = SourcePolicyDecision(
+        decision=SourcePolicyDecisionState.rejected,
+        source_id="rejected_sec_fixture",
+        matched_by="domain",
+        source_quality=SourceQuality.rejected,
+        allowlist_status=SourceAllowlistStatus.rejected,
+        source_use_policy=SourceUsePolicy.rejected,
+        permitted_operations=DEFAULT_BLOCKED_SOURCE_OPERATIONS.model_copy(),
+        allowed_excerpt=DEFAULT_BLOCKED_EXCERPT_BEHAVIOR.model_copy(),
+        canonical_facts_allowed=False,
+        reason="Test rejected source policy.",
+    )
+    monkeypatch.setattr(sec_stock_module, "resolve_source_policy", lambda url: rejected_decision)
+    with pytest.raises(SecStockFixtureContractError, match="cannot support generated claims"):
+        build_sec_stock_provider_response(adapter, adapter.request("AAPL"), licensing)
+
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    assert acquisition.response_state is ProviderResponseState.permission_limited
+    assert acquisition.provider_response is None
+    assert acquisition.diagnostics[0].code == "source_policy_blocked"
+    assert acquisition.diagnostics[0].message == "Sanitized SEC acquisition diagnostic."
+    assert acquisition.created_generated_asset_page is False
+    assert acquisition.wrote_generated_output_cache is False
+
+
+def test_sec_stock_fixture_contract_rejects_wrong_cik_and_wrong_source_binding(monkeypatch):
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+    fixture = SEC_STOCK_FIXTURES["AAPL"]
+
+    wrong_cik = replace(fixture, identity=replace(fixture.identity, cik="0000000000"))
+    monkeypatch.setitem(SEC_STOCK_FIXTURES, "AAPL", wrong_cik)
+    with pytest.raises(SecStockFixtureContractError, match="CIK"):
+        build_sec_stock_provider_response(adapter, adapter.request("AAPL"), licensing)
+
+    wrong_source_fact = replace(fixture.xbrl_company_facts[0], source_document_id="provider_sec_msft_xbrl_2026")
+    wrong_source = replace(fixture, xbrl_company_facts=(wrong_source_fact, *fixture.xbrl_company_facts[1:]))
+    monkeypatch.setitem(SEC_STOCK_FIXTURES, "AAPL", wrong_source)
+    with pytest.raises(SecStockFixtureContractError, match="invalid source evidence"):
+        build_sec_stock_provider_response(adapter, adapter.request("AAPL"), licensing)
+
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    assert acquisition.response_state is ProviderResponseState.unavailable
+    assert acquisition.provider_response is None
+    assert acquisition.diagnostics[0].code == "sec_fixture_validation_failed"
+    assert acquisition.diagnostics[0].stores_raw_provider_payload is False
+
+
+def test_sec_stock_acquisition_boundary_blocks_non_golden_or_wrong_scope_inputs():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+
+    unsupported = build_sec_stock_acquisition_result(adapter, adapter.request("TQQQ"), licensing)
+    wrong_asset_type = build_sec_stock_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    out_of_scope = build_sec_stock_acquisition_result(adapter, adapter.request("GME"), licensing)
+    eligible = build_sec_stock_acquisition_result(adapter, adapter.request("NVDA"), licensing)
+    unknown = build_sec_stock_acquisition_result(adapter, adapter.request("ZZZZ"), licensing)
+
+    assert unsupported.response_state is ProviderResponseState.unsupported
+    assert unsupported.diagnostics[0].code == "blocked_unsupported_asset"
+    assert wrong_asset_type.response_state is ProviderResponseState.out_of_scope
+    assert wrong_asset_type.diagnostics[0].code == "blocked_wrong_asset_type_for_sec_stock_acquisition"
+    assert out_of_scope.response_state is ProviderResponseState.out_of_scope
+    assert out_of_scope.diagnostics[0].code == "blocked_out_of_scope_asset"
+    assert eligible.response_state is ProviderResponseState.eligible_not_cached
+    assert eligible.diagnostics[0].code == "fixture_not_registered_for_sec_golden_path"
+    assert eligible.evidence_gap_states["sec_acquisition"] == "partial"
+    assert unknown.response_state is ProviderResponseState.unknown
+    assert unknown.diagnostics[0].code == "unknown_or_unavailable_asset"
+
+    for acquisition in [unsupported, wrong_asset_type, out_of_scope, eligible, unknown]:
+        assert acquisition.provider_response is None
+        assert acquisition.source_records == ()
+        assert acquisition.checksum is None
+        assert acquisition.no_live_external_calls is True
+        assert acquisition.created_generated_asset_page is False
+        assert acquisition.created_generated_chat_answer is False
+        assert acquisition.created_generated_comparison is False
+        assert acquisition.created_generated_risk_summary is False
+        assert acquisition.wrote_source_snapshot is False
+        assert acquisition.wrote_knowledge_pack is False
+        assert acquisition.wrote_generated_output_cache is False
+        assert acquisition.diagnostics[0].stores_raw_source_text is False
+        assert acquisition.diagnostics[0].stores_raw_provider_payload is False
+        assert acquisition.diagnostics[0].stores_secret is False
+
+
+def test_sec_stock_live_acquisition_readiness_is_explicit_opt_in_and_manifest_cik_bound():
+    adapter = mock_sec_stock_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.sec, "AAPL").licensing
+    acquisition = build_sec_stock_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+
+    blocked = evaluate_sec_stock_live_acquisition_readiness("AAPL")
+
+    assert blocked.boundary == SEC_STOCK_LIVE_ACQUISITION_READINESS_BOUNDARY
+    assert blocked.status == "blocked"
+    assert blocked.can_attempt_live_acquisition is False
+    assert "explicit_live_sec_stock_acquisition_opt_in_missing" in blocked.blocked_reasons
+    assert "sec_source_configuration_missing" in blocked.blocked_reasons
+    assert "source_rate_limit_not_ready" in blocked.blocked_reasons
+    assert "repository_writer_not_ready" in blocked.blocked_reasons
+    assert blocked.no_live_external_calls is True
+    assert "secret" not in str(blocked.sanitized_diagnostics).lower()
+
+    ready = evaluate_sec_stock_live_acquisition_readiness(
+        "AAPL",
+        opt_in_enabled=True,
+        sec_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_cik="0000320193",
+        acquisition_result=acquisition,
+    )
+    wrong_cik = evaluate_sec_stock_live_acquisition_readiness(
+        "AAPL",
+        opt_in_enabled=True,
+        sec_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_cik="0000000000",
+        acquisition_result=acquisition,
+    )
+    invalid_checksum = evaluate_sec_stock_live_acquisition_readiness(
+        "AAPL",
+        opt_in_enabled=True,
+        sec_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_cik="0000320193",
+        acquisition_result=replace(
+            acquisition,
+            source_records=(replace(acquisition.source_records[0], checksum="not-a-sha"), *acquisition.source_records[1:]),
+        ),
+    )
+    unsupported = evaluate_sec_stock_live_acquisition_readiness(
+        "TQQQ",
+        opt_in_enabled=True,
+        sec_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+    )
+
+    assert ready.status == "ready"
+    assert ready.can_attempt_live_acquisition is True
+    assert ready.blocked_reasons == ()
+    assert wrong_cik.can_attempt_live_acquisition is False
+    assert "sec_cik_validation_failed" in wrong_cik.blocked_reasons
+    assert invalid_checksum.can_attempt_live_acquisition is False
+    assert "source_use_validation_failed" in invalid_checksum.blocked_reasons
+    assert unsupported.can_attempt_live_acquisition is False
+    assert "supported_common_stock_identity_not_ready" in unsupported.blocked_reasons
+
+
+def test_etf_issuer_adapter_returns_official_facts_and_holdings_metadata_for_fixture_etfs():
     adapter = mock_etf_issuer_adapter()
 
-    for ticker, benchmark in [("VOO", "S&P 500 Index"), ("QQQ", "Nasdaq-100 Index")]:
+    expected = {
+        "VOO": ("S&P 500 Index", False),
+        "QQQ": ("Nasdaq-100 Index", False),
+        "SPY": ("S&P 500 Index", True),
+        "VTI": ("CRSP US Total Market Index", True),
+        "XLK": ("Technology Select Sector Index", True),
+    }
+    for ticker, (benchmark, eligible_not_cached) in expected.items():
         response = adapter.fetch(adapter.request(ticker))
 
         assert response.provider_kind is ProviderKind.etf_issuer
@@ -109,13 +537,450 @@ def test_etf_issuer_adapter_returns_voo_and_qqq_official_facts_and_holdings_meta
         assert all(source.is_official is True for source in response.source_attributions)
         assert all(source.source_quality.value == "issuer" for source in response.source_attributions)
         assert all(source.source_use_policy.value == "full_text_allowed" for source in response.source_attributions)
-        assert all(source.source_rank == 1 for source in response.source_attributions)
+        assert min(source.source_rank for source in response.source_attributions) == 1
+        assert max(source.source_rank for source in response.source_attributions) < 4
         fields = {fact.field_name: fact for fact in response.facts}
         assert fields["benchmark"].value == benchmark
         assert fields["expense_ratio"].unit == "%"
         assert fields["holdings_count"].data_category is ProviderDataCategory.etf_holdings_metadata
+        assert fields["etf_identity"].value["fund_name"] == response.asset.name
+        assert fields["etf_identity"].value["issuer"] == response.asset.issuer
+        assert fields["etf_identity"].value["asset_type"] == "etf"
+        assert fields["etf_identity"].value["support_state"] == "supported"
+        assert fields["etf_identity"].value["eligible_not_cached"] is eligible_not_cached
+        assert fields["etf_identity"].value["blocked_state_indicators"] == {
+            "leveraged": False,
+            "inverse": False,
+            "etn": False,
+            "active": False,
+            "fixed_income": False,
+            "commodity": False,
+            "multi_asset": False,
+        }
+        assert fields["etf_fact_sheet_metadata"].value["benchmark"] == benchmark
+        assert fields["etf_fact_sheet_metadata"].value["official_publisher"] == response.asset.issuer
+        assert fields["etf_fact_sheet_metadata"].value["source_document_id"] in {
+            source.source_document_id for source in response.source_attributions
+        }
+        assert fields["prospectus_reference"].value["document_type"] == "summary_prospectus"
+        assert fields["prospectus_reference"].value["source_use_policy"] == "full_text_allowed"
+        top_holding_fields = [fact for field_name, fact in fields.items() if field_name.startswith("top_holding_")]
+        assert len(top_holding_fields) == 1
+        assert top_holding_fields[0].value["exposure_category"] == "holding"
+        assert any(
+            fact.value["exposure_category"] in {"asset_class", "sector"}
+            for field_name, fact in fields.items()
+            if field_name.endswith("_exposure")
+        )
+        assert fields["premium_discount_or_spread"].evidence_state is EvidenceState.unavailable
+        assert fields["premium_discount_or_spread"].freshness_state is FreshnessState.unavailable
+        assert all(source.usage is ProviderSourceUsage.canonical for source in response.source_attributions)
+        assert {source.source_type for source in response.source_attributions} == {
+            "issuer_fact_sheet",
+            "summary_prospectus",
+            "issuer_holdings_file",
+            "issuer_exposure_file",
+        }
         _assert_same_asset_binding(response, ticker)
         _assert_no_generated_outputs(response)
+
+
+def test_etf_issuer_fixture_contract_normalizes_sources_holdings_exposures_and_gaps():
+    fixture = etf_issuer_fixture_for_ticker("voo")
+
+    assert ETF_ISSUER_FIXTURE_CONTRACT_VERSION == "etf-issuer-fixture-adapter-v1"
+    assert set(ETF_ISSUER_FIXTURES) == {"VOO", "QQQ"}
+    assert set(LIGHTWEIGHT_ETF_ISSUER_FIXTURES) == {"VOO", "QQQ", "SPY", "VTI", "XLK"}
+    assert fixture is ETF_ISSUER_FIXTURES["VOO"]
+    assert fixture.identity.ticker == "VOO"
+    assert fixture.identity.fund_name == "Vanguard S&P 500 ETF"
+    assert fixture.identity.etf_classification == "non_leveraged_us_equity_index_etf"
+    assert fixture.identity.eligible_not_cached is False
+    assert fixture.identity.leveraged is False
+    assert fixture.identity.inverse is False
+    assert fixture.identity.etn is False
+    assert fixture.identity.active is False
+    assert fixture.identity.fixed_income is False
+    assert fixture.identity.commodity is False
+    assert fixture.identity.multi_asset is False
+    assert {source.source_type for source in fixture.sources} == {
+        "issuer_fact_sheet",
+        "summary_prospectus",
+        "issuer_holdings_file",
+        "issuer_exposure_file",
+    }
+    assert max(source.source_rank for source in fixture.sources) < 4
+    assert fixture.fact_sheet.benchmark == "S&P 500 Index"
+    assert fixture.fact_sheet.expense_ratio == 0.03
+    assert fixture.fact_sheet.holdings_count == 500
+    assert fixture.prospectus.document_type == "summary_prospectus"
+    assert {item.exposure_category for item in fixture.holdings_or_exposures} == {"holding", "asset_class"}
+    assert fixture.evidence_gaps[0].evidence_state is EvidenceState.unavailable
+
+
+def test_etf_issuer_acquisition_boundary_exposes_readiness_checksums_and_gap_states():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+
+    for ticker, issuer in [("VOO", "Vanguard"), ("QQQ", "Invesco")]:
+        acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request(ticker), licensing)
+
+        assert acquisition.boundary == ETF_ISSUER_ACQUISITION_BOUNDARY
+        assert acquisition.ticker == ticker
+        assert acquisition.issuer == issuer
+        assert acquisition.response_state is ProviderResponseState.supported
+        assert acquisition.provider_response is not None
+        assert acquisition.provider_response.asset is not None
+        assert acquisition.provider_response.asset.ticker == ticker
+        assert acquisition.configuration_readiness.issuer_source_configured is True
+        assert acquisition.configuration_readiness.rate_limit_ready is True
+        assert acquisition.configuration_readiness.live_call_disabled is True
+        assert acquisition.configuration_readiness.no_live_external_calls is True
+        assert acquisition.no_live_external_calls is True
+        assert acquisition.opened_database_connection is False
+        assert acquisition.wrote_source_snapshot is False
+        assert acquisition.wrote_knowledge_pack is False
+        assert acquisition.wrote_generated_output_cache is False
+        assert acquisition.created_generated_asset_page is False
+        assert acquisition.created_generated_chat_answer is False
+        assert acquisition.created_generated_comparison is False
+        assert acquisition.created_generated_risk_summary is False
+        assert acquisition.checksum is not None
+        assert acquisition.checksum.startswith("sha256:etf-issuer-acquisition:")
+        assert len(acquisition.source_records) == 4
+        assert {record.source_type for record in acquisition.source_records} == {
+            "issuer_fact_sheet",
+            "summary_prospectus",
+            "issuer_holdings_file",
+            "issuer_exposure_file",
+        }
+        assert all(record.checksum.startswith(f"sha256:issuer-{ticker.lower()}-") for record in acquisition.source_records)
+        assert all(record.source_use_policy is SourceUsePolicy.full_text_allowed for record in acquisition.source_records)
+        assert all(record.allowlist_status is SourceAllowlistStatus.allowed for record in acquisition.source_records)
+        assert all(record.source_quality is SourceQuality.issuer for record in acquisition.source_records)
+        assert all(record.stores_raw_source_text is False for record in acquisition.source_records)
+        assert all(record.stores_raw_provider_payload is False for record in acquisition.source_records)
+        assert acquisition.evidence_gap_states == {"premium_discount_or_spread": "unavailable"}
+        assert acquisition.diagnostics[0].code == "etf_issuer_evidence_gap_premium_discount_or_spread"
+        assert acquisition.diagnostics[0].evidence_state is EvidenceState.unavailable
+        assert acquisition.diagnostics[0].stores_raw_source_text is False
+        assert acquisition.diagnostics[0].stores_raw_provider_payload is False
+        assert acquisition.diagnostics[0].stores_secret is False
+        _assert_no_generated_outputs(acquisition.provider_response)
+
+
+def test_etf_issuer_handoff_gated_execution_runs_mocked_fetch_parser_and_handoff():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+
+    acquisition = execute_etf_issuer_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("VOO"),
+        licensing,
+    )
+
+    assert acquisition.boundary == ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.mocked_fetch_boundary == ETF_ISSUER_MOCK_HTTP_FETCH_BOUNDARY
+    assert acquisition.parser_adapter_boundary == ETF_ISSUER_PARSER_ADAPTER_BOUNDARY
+    assert acquisition.response_state is ProviderResponseState.supported
+    assert acquisition.provider_response is not None
+    assert acquisition.fetched_source_count == 4
+    assert acquisition.parser_diagnostic_count >= 4
+    assert acquisition.handoff_approved_source_count == 4
+    assert acquisition.handoff_blocked_source_count == 0
+    assert all(source.parser_status is SourceParserStatus.parsed for source in acquisition.provider_response.source_attributions)
+    assert all(source.source_identity for source in acquisition.provider_response.source_attributions)
+    assert any(diagnostic.code == "etf_issuer_parser_parsed" for diagnostic in acquisition.diagnostics)
+
+
+class LiveEtfIssuerFetcher:
+    def fetch(self, request: etf_issuer_module.EtfIssuerMockFetchRequest) -> EtfIssuerMockFetchResponse:
+        return EtfIssuerMockFetchResponse(
+            boundary=ETF_ISSUER_LIVE_HTTP_FETCH_BOUNDARY,
+            ticker=request.ticker,
+            source_document_id=request.source_document_id,
+            source_type=request.source_type,
+            status="fetched",
+            checksum=request.expected_checksum,
+            retrieved_at=etf_issuer_module.STUB_TIMESTAMP,
+            content_kind=request.source_type,
+            no_live_external_calls=False,
+        )
+
+
+def test_etf_issuer_handoff_gated_execution_runs_injected_live_fetcher():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+
+    acquisition = execute_etf_issuer_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("VOO"),
+        licensing,
+        fetcher=LiveEtfIssuerFetcher(),
+    )
+
+    assert acquisition.boundary == ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.mocked_fetch_boundary is None
+    assert acquisition.no_live_external_calls is False
+    assert acquisition.response_state is ProviderResponseState.supported
+    assert acquisition.handoff_approved_source_count == 4
+    assert acquisition.handoff_blocked_source_count == 0
+
+
+class FailingEtfIssuerParser(EtfIssuerParserAdapter):
+    def parse(self, response, source):
+        return EtfIssuerParserDiagnostic(
+            boundary=ETF_ISSUER_PARSER_ADAPTER_BOUNDARY,
+            source_document_id=source.source_document_id,
+            parser_status=SourceParserStatus.failed,
+            evidence_state=EvidenceState.unavailable,
+            freshness_state=FreshnessState.unavailable,
+            code="etf_issuer_parser_forced_failure",
+            message="Mocked ETF issuer parser failed closed before evidence use.",
+            parser_failure_diagnostics="forced_failure",
+        )
+
+
+def test_etf_issuer_handoff_gated_execution_blocks_parser_failed_sources_before_persistence():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+
+    acquisition = execute_etf_issuer_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("VOO"),
+        licensing,
+        parser=FailingEtfIssuerParser(),
+    )
+
+    assert acquisition.boundary == ETF_ISSUER_HANDOFF_GATED_EXECUTION_BOUNDARY
+    assert acquisition.response_state is ProviderResponseState.permission_limited
+    assert acquisition.provider_response is None
+    assert acquisition.source_records == ()
+    assert acquisition.checksum is None
+    assert acquisition.handoff_blocked_source_count == 1
+    assert acquisition.handoff_approved_source_count == 0
+    assert {diagnostic.code for diagnostic in acquisition.diagnostics} >= {
+        "etf_issuer_parser_forced_failure",
+        "etf_issuer_source_handoff_failed",
+    }
+    assert acquisition.created_generated_asset_page is False
+    assert acquisition.wrote_source_snapshot is False
+    assert acquisition.wrote_knowledge_pack is False
+    assert acquisition.wrote_generated_output_cache is False
+
+
+def test_etf_issuer_fixture_contract_rejects_wrong_ticker_issuer_blocked_classes_and_policy(monkeypatch):
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+    fixture = ETF_ISSUER_FIXTURES["VOO"]
+
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "SPY", fixture)
+    with pytest.raises(EtfIssuerFixtureContractError, match="requested ticker"):
+        build_etf_issuer_provider_response(adapter, adapter.request("SPY"), licensing)
+
+    wrong_issuer = replace(
+        fixture,
+        sources=(replace(fixture.sources[0], publisher="Wrong Issuer"), *fixture.sources[1:]),
+    )
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "VOO", wrong_issuer)
+    with pytest.raises(EtfIssuerFixtureContractError, match="wrong issuer"):
+        build_etf_issuer_provider_response(adapter, adapter.request("VOO"), licensing)
+
+    blocked_class = replace(fixture, identity=replace(fixture.identity, leveraged=True))
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "VOO", blocked_class)
+    with pytest.raises(EtfIssuerFixtureContractError, match="blocked ETF classes"):
+        build_etf_issuer_provider_response(adapter, adapter.request("VOO"), licensing)
+
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "VOO", fixture)
+    rejected_decision = SourcePolicyDecision(
+        decision=SourcePolicyDecisionState.rejected,
+        source_id="rejected_etf_fixture",
+        matched_by="domain",
+        source_quality=SourceQuality.rejected,
+        allowlist_status=SourceAllowlistStatus.rejected,
+        source_use_policy=SourceUsePolicy.rejected,
+        permitted_operations=DEFAULT_BLOCKED_SOURCE_OPERATIONS.model_copy(),
+        allowed_excerpt=DEFAULT_BLOCKED_EXCERPT_BEHAVIOR.model_copy(),
+        canonical_facts_allowed=False,
+        reason="Test rejected source policy.",
+    )
+    monkeypatch.setattr(etf_issuer_module, "resolve_source_policy", lambda url: rejected_decision)
+    with pytest.raises(EtfIssuerFixtureContractError, match="cannot support generated claims"):
+        build_etf_issuer_provider_response(adapter, adapter.request("VOO"), licensing)
+
+
+def test_etf_issuer_acquisition_boundary_sanitizes_policy_and_fixture_failures(monkeypatch):
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+    fixture = ETF_ISSUER_FIXTURES["VOO"]
+
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "SPY", fixture)
+    wrong_ticker = build_etf_issuer_acquisition_result(adapter, adapter.request("SPY"), licensing)
+    assert wrong_ticker.response_state is ProviderResponseState.unavailable
+    assert wrong_ticker.provider_response is None
+    assert wrong_ticker.diagnostics[0].code == "etf_issuer_fixture_validation_failed"
+    assert wrong_ticker.diagnostics[0].message == "Sanitized ETF issuer acquisition diagnostic."
+    assert wrong_ticker.diagnostics[0].stores_raw_provider_payload is False
+
+    blocked_class = replace(fixture, identity=replace(fixture.identity, leveraged=True))
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "VOO", blocked_class)
+    blocked = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    assert blocked.response_state is ProviderResponseState.unavailable
+    assert blocked.provider_response is None
+    assert blocked.diagnostics[0].code == "etf_issuer_fixture_validation_failed"
+
+    monkeypatch.setitem(ETF_ISSUER_FIXTURES, "VOO", fixture)
+    rejected_decision = SourcePolicyDecision(
+        decision=SourcePolicyDecisionState.rejected,
+        source_id="rejected_etf_fixture",
+        matched_by="domain",
+        source_quality=SourceQuality.rejected,
+        allowlist_status=SourceAllowlistStatus.rejected,
+        source_use_policy=SourceUsePolicy.rejected,
+        permitted_operations=DEFAULT_BLOCKED_SOURCE_OPERATIONS.model_copy(),
+        allowed_excerpt=DEFAULT_BLOCKED_EXCERPT_BEHAVIOR.model_copy(),
+        canonical_facts_allowed=False,
+        reason="Test rejected source policy.",
+    )
+    monkeypatch.setattr(etf_issuer_module, "resolve_source_policy", lambda url: rejected_decision)
+    source_blocked = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+    assert source_blocked.response_state is ProviderResponseState.permission_limited
+    assert source_blocked.provider_response is None
+    assert source_blocked.diagnostics[0].code == "source_policy_blocked"
+    assert source_blocked.diagnostics[0].message == "Sanitized ETF issuer acquisition diagnostic."
+    assert source_blocked.wrote_generated_output_cache is False
+    assert source_blocked.created_generated_asset_page is False
+
+
+def test_etf_issuer_fixture_contract_rejects_wrong_source_binding(monkeypatch):
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+    fixture = ETF_ISSUER_FIXTURES["VOO"]
+
+    wrong_source = replace(
+        fixture.holdings_or_exposures[0],
+        source_document_id="provider_issuer_qqq_holdings_2026",
+    )
+    monkeypatch.setitem(
+        ETF_ISSUER_FIXTURES,
+        "VOO",
+        replace(fixture, holdings_or_exposures=(wrong_source, *fixture.holdings_or_exposures[1:])),
+    )
+    with pytest.raises(EtfIssuerFixtureContractError, match="invalid source evidence"):
+        build_etf_issuer_provider_response(adapter, adapter.request("VOO"), licensing)
+
+
+def test_etf_issuer_acquisition_boundary_blocks_non_golden_or_wrong_scope_inputs():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+
+    wrong_asset_type = build_etf_issuer_acquisition_result(adapter, adapter.request("AAPL"), licensing)
+    eligible = build_etf_issuer_acquisition_result(adapter, adapter.request("IVV"), licensing)
+    unsupported = build_etf_issuer_acquisition_result(adapter, adapter.request("TQQQ"), licensing)
+    out_of_scope = build_etf_issuer_acquisition_result(adapter, adapter.request("VXX"), licensing)
+    unknown = build_etf_issuer_acquisition_result(adapter, adapter.request("ZZZZ"), licensing)
+
+    assert wrong_asset_type.response_state is ProviderResponseState.out_of_scope
+    assert wrong_asset_type.diagnostics[0].code == "blocked_wrong_asset_type_for_etf_issuer_acquisition"
+    assert eligible.response_state is ProviderResponseState.eligible_not_cached
+    assert eligible.diagnostics[0].code == "fixture_not_registered_for_etf_golden_path"
+    assert eligible.evidence_gap_states["etf_issuer_acquisition"] == "partial"
+    assert unsupported.response_state is ProviderResponseState.unsupported
+    assert unsupported.diagnostics[0].code == "blocked_unsupported_asset"
+    assert out_of_scope.response_state is ProviderResponseState.out_of_scope
+    assert out_of_scope.diagnostics[0].code == "blocked_out_of_scope_asset"
+    assert unknown.response_state is ProviderResponseState.unknown
+    assert unknown.diagnostics[0].code == "unknown_or_unavailable_asset"
+
+    for acquisition in [wrong_asset_type, eligible, unsupported, out_of_scope, unknown]:
+        assert acquisition.provider_response is None
+        assert acquisition.source_records == ()
+        assert acquisition.checksum is None
+        assert acquisition.no_live_external_calls is True
+        assert acquisition.created_generated_asset_page is False
+        assert acquisition.created_generated_chat_answer is False
+        assert acquisition.created_generated_comparison is False
+        assert acquisition.created_generated_risk_summary is False
+        assert acquisition.wrote_source_snapshot is False
+        assert acquisition.wrote_knowledge_pack is False
+        assert acquisition.wrote_generated_output_cache is False
+        assert acquisition.diagnostics[0].stores_raw_source_text is False
+        assert acquisition.diagnostics[0].stores_raw_provider_payload is False
+        assert acquisition.diagnostics[0].stores_secret is False
+
+
+def test_etf_issuer_live_acquisition_readiness_requires_issuer_binding_and_supported_etf_scope():
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(ProviderKind.etf_issuer, "VOO").licensing
+    acquisition = build_etf_issuer_acquisition_result(adapter, adapter.request("VOO"), licensing)
+
+    blocked = evaluate_etf_issuer_live_acquisition_readiness("VOO")
+
+    assert blocked.boundary == ETF_ISSUER_LIVE_ACQUISITION_READINESS_BOUNDARY
+    assert blocked.status == "blocked"
+    assert blocked.can_attempt_live_acquisition is False
+    assert "explicit_live_etf_issuer_acquisition_opt_in_missing" in blocked.blocked_reasons
+    assert "issuer_source_configuration_missing" in blocked.blocked_reasons
+    assert "source_rate_limit_not_ready" in blocked.blocked_reasons
+    assert "repository_writer_not_ready" in blocked.blocked_reasons
+    assert blocked.no_live_external_calls is True
+
+    ready = evaluate_etf_issuer_live_acquisition_readiness(
+        "VOO",
+        opt_in_enabled=True,
+        issuer_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_issuer="Vanguard",
+        acquisition_result=acquisition,
+    )
+    wrong_issuer = evaluate_etf_issuer_live_acquisition_readiness(
+        "VOO",
+        opt_in_enabled=True,
+        issuer_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_issuer="Wrong Issuer",
+        acquisition_result=acquisition,
+    )
+    wrong_source_binding = acquisition.provider_response.model_copy(
+        update={
+            "source_attributions": [
+                acquisition.provider_response.source_attributions[0].model_copy(update={"asset_ticker": "QQQ"}),
+                *acquisition.provider_response.source_attributions[1:],
+            ]
+        }
+    )
+    invalid_source = evaluate_etf_issuer_live_acquisition_readiness(
+        "VOO",
+        opt_in_enabled=True,
+        issuer_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+        expected_issuer="Vanguard",
+        acquisition_result=replace(acquisition, provider_response=wrong_source_binding),
+    )
+    unsupported = evaluate_etf_issuer_live_acquisition_readiness(
+        "TQQQ",
+        opt_in_enabled=True,
+        issuer_source_configured=True,
+        rate_limit_ready=True,
+        source_snapshot_writer_ready=True,
+        knowledge_pack_writer_ready=True,
+    )
+
+    assert ready.status == "ready"
+    assert ready.can_attempt_live_acquisition is True
+    assert ready.blocked_reasons == ()
+    assert wrong_issuer.can_attempt_live_acquisition is False
+    assert "issuer_or_source_binding_validation_failed" in wrong_issuer.blocked_reasons
+    assert invalid_source.can_attempt_live_acquisition is False
+    assert "source_use_validation_failed" in invalid_source.blocked_reasons
+    assert unsupported.can_attempt_live_acquisition is False
+    assert "supported_non_leveraged_us_equity_etf_identity_not_ready" in unsupported.blocked_reasons
 
 
 def test_market_reference_adapter_covers_supported_and_eligible_not_cached_with_restricted_licensing():
@@ -159,12 +1024,24 @@ def test_market_reference_adapter_covers_supported_and_eligible_not_cached_with_
         assert response.generated_output.creates_generated_chat_answer is False
         assert response.generated_output.creates_generated_comparison is False
 
+    manifest_eligible_etfs = eligible_not_cached_etf_entries()
+    assert set(manifest_eligible_etfs) <= set(ELIGIBLE_NOT_CACHED_ASSETS)
+    assert load_etf_universe_manifest().local_path == "data/universes/us_equity_etfs_supported.current.json"
+    for ticker, entry in manifest_eligible_etfs.items():
+        response = adapter.fetch(adapter.request(ticker, ProviderDataCategory.asset_resolution))
+        assert response.state is ProviderResponseState.eligible_not_cached
+        assert response.asset is not None
+        assert response.asset.ticker == entry.ticker
+        assert response.generated_output.creates_generated_asset_page is False
+        assert response.generated_output.creates_generated_chat_answer is False
+        assert response.generated_output.creates_generated_comparison is False
+
 
 def test_provider_failure_states_are_explicit_without_invented_facts():
     market = mock_market_reference_adapter()
     recent = mock_recent_development_adapter()
 
-    for ticker in ["BTC", "TQQQ", "SQQQ"]:
+    for ticker in ["BTC", "TQQQ", "SQQQ", "ARKK", "BND", "GLD", "AOR"]:
         response = market.fetch(market.request(ticker))
         assert response.state is ProviderResponseState.unsupported
         assert response.asset is not None
@@ -190,6 +1067,17 @@ def test_provider_failure_states_are_explicit_without_invented_facts():
     assert out_of_scope.source_attributions == []
     assert out_of_scope.errors[0].code == "recognized_common_stock_outside_top500_manifest"
     _assert_no_generated_outputs(out_of_scope)
+
+    etn = market.fetch(market.request("VXX"))
+    assert etn.state is ProviderResponseState.out_of_scope
+    assert etn.asset is not None
+    assert etn.asset.ticker == "VXX"
+    assert etn.asset.asset_type.value == "etf"
+    assert etn.asset.supported is False
+    assert etn.facts == []
+    assert etn.source_attributions == []
+    assert etn.errors[0].code == "recognized_etf_like_product_outside_mvp_scope"
+    _assert_no_generated_outputs(etn)
 
     unavailable = recent.fetch(recent.request("ZZZZ"))
     assert unavailable.state is ProviderResponseState.unavailable
@@ -254,7 +1142,12 @@ def test_source_hierarchy_keeps_official_sources_ahead_of_structured_and_recent_
 
 
 def test_provider_module_has_no_live_call_or_credential_imports():
-    source = (ROOT / "backend" / "providers.py").read_text(encoding="utf-8")
+    sources = [
+        (ROOT / "backend" / "etf_universe.py").read_text(encoding="utf-8"),
+        (ROOT / "backend" / "providers.py").read_text(encoding="utf-8"),
+        (ROOT / "backend" / "provider_adapters" / "sec_stock.py").read_text(encoding="utf-8"),
+        (ROOT / "backend" / "provider_adapters" / "etf_issuer.py").read_text(encoding="utf-8"),
+    ]
     forbidden = [
         "import requests",
         "import httpx",
@@ -268,5 +1161,6 @@ def test_provider_module_has_no_live_call_or_credential_imports():
         "os.environ",
         "api_key",
     ]
-    for needle in forbidden:
-        assert needle not in source
+    for source in sources:
+        for needle in forbidden:
+            assert needle not in source

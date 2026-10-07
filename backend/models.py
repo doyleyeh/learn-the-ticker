@@ -7,6 +7,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+RuntimeDiagnosticValue = str | int | float | bool | None | list[str] | list[list[str]]
+
+
 class AssetType(str, Enum):
     stock = "stock"
     etf = "etf"
@@ -83,10 +86,13 @@ class IngestionJobType(str, Enum):
 
 
 class IngestionJobState(str, Enum):
+    queued = "queued"
     pending = "pending"
     running = "running"
     succeeded = "succeeded"
     failed = "failed"
+    cancelled = "cancelled"
+    partial = "partial"
     refresh_needed = "refresh_needed"
     no_ingestion_needed = "no_ingestion_needed"
     unsupported = "unsupported"
@@ -218,6 +224,37 @@ class SourcePolicyDecisionState(str, Enum):
     rejected = "rejected"
     pending_review = "pending_review"
     not_allowlisted = "not_allowlisted"
+
+
+class SourceReviewStatus(str, Enum):
+    approved = "approved"
+    pending_review = "pending_review"
+    rejected = "rejected"
+
+
+class SourceParserStatus(str, Enum):
+    parsed = "parsed"
+    partial = "partial"
+    failed = "failed"
+    not_applicable = "not_applicable"
+    pending_review = "pending_review"
+
+
+class SourceStorageRights(str, Enum):
+    raw_snapshot_allowed = "raw_snapshot_allowed"
+    summary_allowed = "summary_allowed"
+    metadata_only = "metadata_only"
+    link_only = "link_only"
+    rejected = "rejected"
+    unknown = "unknown"
+
+
+class SourceExportRights(str, Enum):
+    excerpts_allowed = "excerpts_allowed"
+    metadata_only = "metadata_only"
+    link_only = "link_only"
+    rejected = "rejected"
+    unknown = "unknown"
 
 
 class SourceOperationPermissions(BaseModel):
@@ -401,9 +438,230 @@ class Top500StockUniverseManifest(BaseModel):
     entries: list[Top500StockUniverseEntry]
 
 
+class Top500CandidateRankBasis(str, Enum):
+    iwb_weight_proxy = "iwb_weight_proxy"
+    sp500_etf_weight_proxy_fallback = "sp500_etf_weight_proxy_fallback"
+
+
+class Top500CandidateSourceRole(str, Enum):
+    primary = "primary"
+    fallback = "fallback"
+
+
+class Top500CandidateValidationStatus(str, Enum):
+    validated = "validated"
+    warning = "warning"
+    rejected = "rejected"
+
+
+class Top500CandidateSourceInput(BaseModel):
+    source_id: str
+    ticker: str
+    source_role: Top500CandidateSourceRole
+    title: str
+    publisher: str
+    source_type: str
+    source_identity: str
+    source_snapshot_date: str
+    source_checksum: str
+    retrieved_at: str
+    freshness_state: FreshnessState
+    is_official: bool
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
+
+
+class Top500CandidateHoldingInput(BaseModel):
+    source_id: str
+    ticker: str
+    name: str
+    weight: float
+    asset_type: str = "stock"
+    security_type: str = "common_stock"
+    exchange: str | None = None
+
+
+class Top500CandidateRow(BaseModel):
+    ticker: str
+    name: str
+    asset_type: Literal["stock"] = "stock"
+    security_type: Literal["us_listed_common_stock"] = "us_listed_common_stock"
+    cik: str | None = None
+    exchange: str
+    rank: int
+    rank_basis: Top500CandidateRankBasis
+    source_provenance: str
+    source_snapshot_date: str
+    source_checksum: str
+    validation_status: Top500CandidateValidationStatus
+    warnings: list[str] = Field(default_factory=list)
+    checksum_input: str
+    generated_checksum: str
+
+
+class Top500CandidateManifest(BaseModel):
+    schema_version: Literal["top500-us-common-stock-candidate-v1"]
+    manifest_id: str
+    universe_name: str
+    local_path: str
+    approved_current_manifest_path: str
+    candidate_month: str
+    generated_at: str
+    rank_limit: int
+    rank_basis: Top500CandidateRankBasis
+    source_used: list[str]
+    source_dates: dict[str, str]
+    source_checksums: dict[str, str]
+    fallback_used: bool
+    fallback_reason: str | None = None
+    validation_coverage: float
+    manual_approval_required: bool
+    manual_review_triggers: list[str]
+    operator_review_note_block: list[str] = Field(default_factory=list)
+    diff_report_path: str
+    manifest_checksum_input: str
+    generated_checksum: str
+    entries: list[Top500CandidateRow]
+
+
+class Top500CandidateDiffReport(BaseModel):
+    schema_version: Literal["top500-candidate-diff-v1"]
+    candidate_manifest_path: str
+    approved_current_manifest_path: str
+    candidate_month: str
+    generated_at: str
+    source_used: list[str]
+    source_dates: dict[str, str]
+    source_checksums: dict[str, str]
+    fallback_used: bool
+    fallback_reason: str | None = None
+    added_tickers: list[str]
+    removed_tickers: list[str]
+    rank_changes: list[dict[str, int | str]]
+    missing_ciks: list[str]
+    nasdaq_validation_failures: list[dict[str, str]]
+    source_warnings: list[str]
+    manual_approval_required: bool
+    manual_review_triggers: list[str]
+    operator_review_note_block: list[str] = Field(default_factory=list)
+    generated_checksum: str
+
+
+class ETFUniverseSupportState(str, Enum):
+    cached_supported = "cached_supported"
+    eligible_not_cached = "eligible_not_cached"
+    recognized_unsupported = "recognized_unsupported"
+    out_of_scope = "out_of_scope"
+    unknown = "unknown"
+    unavailable = "unavailable"
+
+
+class ETFUniverseLaunchCacheState(str, Enum):
+    cached = "cached"
+    not_cached = "not_cached"
+    blocked = "blocked"
+    unknown = "unknown"
+    unavailable = "unavailable"
+
+
+class ETFUniverseCategory(str, Enum):
+    us_equity_index_etf = "us_equity_index_etf"
+    us_equity_sector_etf = "us_equity_sector_etf"
+    us_equity_thematic_etf = "us_equity_thematic_etf"
+    leveraged_etf = "leveraged_etf"
+    inverse_etf = "inverse_etf"
+    etn = "etn"
+    fixed_income_etf = "fixed_income_etf"
+    commodity_etf = "commodity_etf"
+    active_etf = "active_etf"
+    multi_asset_etf = "multi_asset_etf"
+    unknown = "unknown"
+    unavailable = "unavailable"
+    other_unsupported = "other_unsupported"
+
+
+class ETFUniverseExclusionFlags(BaseModel):
+    leveraged: bool = False
+    inverse: bool = False
+    etn: bool = False
+    fixed_income: bool = False
+    commodity: bool = False
+    active: bool = False
+    multi_asset: bool = False
+    crypto: bool = False
+    international: bool = False
+    other_unsupported: bool = False
+
+
+class ETFUniverseEvidenceMetadata(BaseModel):
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    evidence_as_of: str | None = None
+    retrieved_at: str | None = None
+    source_use_policy: SourceUsePolicy = SourceUsePolicy.metadata_only
+    source_quality: SourceQuality = SourceQuality.fixture
+    unavailable_reason: str | None = None
+
+
+class ETFUniverseEntry(BaseModel):
+    ticker: str
+    fund_name: str
+    issuer: str | None = None
+    asset_type: Literal["etf"]
+    exchange: str | None = None
+    listing_country: str = "US"
+    etf_category: ETFUniverseCategory
+    support_state: ETFUniverseSupportState
+    launch_cache_state: ETFUniverseLaunchCacheState
+    aliases: list[str] = Field(default_factory=list)
+    exclusion_flags: ETFUniverseExclusionFlags = Field(default_factory=ETFUniverseExclusionFlags)
+    evidence: ETFUniverseEvidenceMetadata
+    source_provenance: str
+    entry_provenance: str
+    snapshot_date: str
+    checksum_input: str
+    generated_checksum: str
+    approval_timestamp: str
+    non_advice_framing: str
+
+
+class ETFUniverseManifest(BaseModel):
+    schema_version: str
+    manifest_id: str
+    universe_name: str
+    local_path: str
+    production_mirror_env_var: str
+    coverage_purpose: str
+    policy_note: str
+    snapshot_date: str
+    generated_at: str
+    approved_at: str
+    source_provenance: str
+    checksum_input: str
+    generated_checksum: str
+    entries: list[ETFUniverseEntry]
+
+
 class StateMessage(BaseModel):
     status: AssetStatus
     message: str
+
+
+RUNTIME_SECTION_STATE_SCHEMA_VERSION = "runtime-section-state-v1"
+
+
+class RuntimeSectionState(BaseModel):
+    schema_version: Literal["runtime-section-state-v1"] = RUNTIME_SECTION_STATE_SCHEMA_VERSION
+    section_id: str
+    label: str | None = None
+    data_origin: str
+    section_status: str
+    fallback_reason: str | None = None
+    freshness_state: str | None = None
+    source_handoff_state: str = "not_applicable"
+    cache_state: str | None = None
+    evidence_state: str | None = None
+    diagnostics: dict[str, RuntimeDiagnosticValue] = Field(default_factory=dict)
 
 
 class SearchBlockedCapabilityFlags(BaseModel):
@@ -470,6 +728,7 @@ class SearchResult(BaseModel):
     ingestion_request_route: str | None = None
     message: str | None = None
     blocked_explanation: SearchBlockedExplanation | None = None
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
 class SearchResponse(BaseModel):
@@ -616,6 +875,13 @@ class ProviderSourceAttribution(BaseModel):
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
 
 
 class ProviderFact(BaseModel):
@@ -694,6 +960,131 @@ class ProviderResponse(BaseModel):
     message: str
 
 
+class DataPolicyMode(str, Enum):
+    strict = "strict"
+    lightweight = "lightweight"
+
+
+class LightweightSourceLabel(str, Enum):
+    official = "official"
+    reputable_third_party = "reputable_third_party"
+    provider_derived = "provider_derived"
+    fallback = "fallback"
+    partial = "partial"
+    unavailable = "unavailable"
+
+
+class LightweightFetchState(str, Enum):
+    supported = "supported"
+    partial = "partial"
+    unsupported = "unsupported"
+    out_of_scope = "out_of_scope"
+    unknown = "unknown"
+    unavailable = "unavailable"
+
+
+class LightweightFetchSource(BaseModel):
+    source_document_id: str
+    source_label: LightweightSourceLabel
+    source_type: str
+    title: str
+    publisher: str
+    provider_name: str | None = None
+    url: str | None = None
+    is_official: bool
+    source_quality: SourceQuality
+    source_use_policy: SourceUsePolicy
+    allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
+    published_at: str | None = None
+    as_of_date: str | None = None
+    retrieved_at: str
+    date_precision: Literal["day", "month", "year", "unknown"] = "unknown"
+    freshness_state: FreshnessState
+    fallback_reason: str | None = None
+    rights_note: str
+    raw_payload_exposed: bool = False
+    export_allowed: bool = False
+
+
+class LightweightFetchCitation(BaseModel):
+    citation_id: str
+    source_document_id: str
+    title: str
+    publisher: str
+    source_label: LightweightSourceLabel
+    freshness_state: FreshnessState
+
+
+class LightweightFetchFact(BaseModel):
+    fact_id: str
+    field_name: str
+    value: Any
+    evidence_state: EvidenceState
+    freshness_state: FreshnessState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    source_document_ids: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_labels: list[LightweightSourceLabel] = Field(default_factory=list)
+    fallback_used: bool = False
+    limitations: str | None = None
+
+
+class LightweightFallbackFreshnessSummary(BaseModel):
+    page_last_updated_at: str | None = None
+    facts_as_of: str | None = None
+    holdings_as_of: str | None = None
+    recent_events_as_of: str | None = None
+    freshness_state: FreshnessState
+
+
+class LightweightApiFallbackDiagnostics(BaseModel):
+    schema_version: Literal["lightweight-api-fallback-diagnostics-v1"] = "lightweight-api-fallback-diagnostics-v1"
+    source_path: str
+    reason_codes: list[str] = Field(default_factory=list)
+    fetch_state: LightweightFetchState
+    page_render_state: EvidenceState
+    generated_output_eligible: bool
+    source_labels: list[LightweightSourceLabel] = Field(default_factory=list)
+    source_label_counts: dict[str, int] = Field(default_factory=dict)
+    source_count: int = 0
+    citation_count: int = 0
+    fact_count: int = 0
+    gap_count: int = 0
+    official_source_count: int = 0
+    provider_fallback_source_count: int = 0
+    partial_source_count: int = 0
+    unavailable_source_count: int = 0
+    issuer_evidence_state: str = "not_applicable"
+    freshness: LightweightFallbackFreshnessSummary
+    raw_payload_exposed: bool = False
+    secret_values_exposed: bool = False
+    raw_payload_fields_exposed: bool = False
+    hidden_prompt_or_reasoning_exposed: bool = False
+    diagnostics_are_sanitized: bool = True
+
+
+class LightweightFetchResponse(BaseModel):
+    schema_version: Literal["lightweight-asset-fetch-v1"] = "lightweight-asset-fetch-v1"
+    ticker: str
+    data_policy_mode: DataPolicyMode
+    fetch_state: LightweightFetchState
+    asset: AssetIdentity
+    generated_output_eligible: bool
+    page_render_state: EvidenceState
+    source_priority: list[str] = Field(default_factory=list)
+    freshness: Freshness
+    facts: list[LightweightFetchFact] = Field(default_factory=list)
+    sources: list[LightweightFetchSource] = Field(default_factory=list)
+    citations: list[LightweightFetchCitation] = Field(default_factory=list)
+    gaps: list[LightweightFetchFact] = Field(default_factory=list)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
+    no_live_external_calls: bool = True
+    raw_payload_exposed: bool = False
+    message: str
+
+
 class LlmProviderKind(str, Enum):
     mock = "mock"
     openrouter = "openrouter"
@@ -717,9 +1108,17 @@ class LlmLiveGateState(str, Enum):
     enabled = "enabled"
 
 
+class LlmReadinessStatus(str, Enum):
+    disabled_by_default = "disabled_by_default"
+    unavailable = "unavailable"
+    validation_not_ready = "validation_not_ready"
+    ready_for_explicit_live_call = "ready_for_explicit_live_call"
+
+
 class LlmGenerationAttemptStatus(str, Enum):
     not_attempted = "not_attempted"
     mock_succeeded = "mock_succeeded"
+    blocked = "blocked"
     provider_error = "provider_error"
     rate_limited = "rate_limited"
     structured_output_failed = "structured_output_failed"
@@ -728,14 +1127,18 @@ class LlmGenerationAttemptStatus(str, Enum):
 
 
 class LlmValidationStatus(str, Enum):
+    not_validated = "not_validated"
     valid = "valid"
     invalid_schema = "invalid_schema"
     invalid_citation = "invalid_citation"
     invalid_source_policy = "invalid_source_policy"
+    invalid_freshness = "invalid_freshness"
     invalid_safety = "invalid_safety"
     invalid_hidden_prompt = "invalid_hidden_prompt"
     invalid_raw_reasoning = "invalid_raw_reasoning"
     invalid_unrestricted_source_text = "invalid_unrestricted_source_text"
+    invalid_unsupported_claim = "invalid_unsupported_claim"
+    invalid_weekly_news_evidence = "invalid_weekly_news_evidence"
 
 
 class LlmFallbackTrigger(str, Enum):
@@ -752,6 +1155,27 @@ class LlmAnswerState(str, Enum):
     unavailable = "unavailable"
 
 
+class LlmTransportMode(str, Enum):
+    schema_mode = "schema_mode"
+    json_mode = "json_mode"
+
+
+class LlmTransportStatus(str, Enum):
+    blocked = "blocked"
+    succeeded = "succeeded"
+    timeout = "timeout"
+    retryable_provider_error = "retryable_provider_error"
+    nonretryable_provider_error = "nonretryable_provider_error"
+    invalid_response_shape = "invalid_response_shape"
+    missing_content = "missing_content"
+
+
+class LlmTransportRetryability(str, Enum):
+    retryable = "retryable"
+    nonretryable = "nonretryable"
+    not_applicable = "not_applicable"
+
+
 class LlmModelDescriptor(BaseModel):
     provider_kind: LlmProviderKind
     model_name: str
@@ -762,16 +1186,22 @@ class LlmModelDescriptor(BaseModel):
 class LlmRuntimeConfig(BaseModel):
     provider_kind: LlmProviderKind = LlmProviderKind.mock
     runtime_mode: LlmRuntimeMode = LlmRuntimeMode.deterministic_mock
+    readiness_status: LlmReadinessStatus = LlmReadinessStatus.disabled_by_default
     live_generation_enabled: bool = False
     live_gate_state: LlmLiveGateState = LlmLiveGateState.disabled
     server_side_key_present: bool = False
+    base_url_configured: bool = False
+    model_chain_configured: bool = False
     endpoint_configured: bool = False
     configured_model_chain: list[LlmModelDescriptor] = Field(default_factory=list)
     paid_fallback_model: LlmModelDescriptor | None = None
     paid_fallback_enabled: bool = False
     validation_retry_count: int = 1
     reasoning_summary_only: bool = True
+    validation_ready: bool = True
+    validation_gates: list[str] = Field(default_factory=list)
     live_network_calls_allowed: bool = False
+    no_live_call_status: Literal["no_live_calls_attempted"] = "no_live_calls_attempted"
     unavailable_reasons: list[str] = Field(default_factory=list)
 
 
@@ -787,6 +1217,49 @@ class LlmGenerationRequestMetadata(BaseModel):
     knowledge_pack_hash: str | None = None
     source_freshness_hash: str | None = None
     request_id: str = "deterministic-llm-request"
+
+
+class LlmTransportRequestMetadata(BaseModel):
+    schema_version: Literal["llm-transport-contract-v1"] = "llm-transport-contract-v1"
+    provider_kind: LlmProviderKind
+    request_mode: LlmTransportMode
+    active_model: LlmModelDescriptor | None = None
+    configured_model_chain: list[LlmModelDescriptor] = Field(default_factory=list)
+    paid_fallback_model: LlmModelDescriptor | None = None
+    base_url_configured: bool = False
+    model_chain_configured: bool = False
+    endpoint_configured: bool = False
+    validation_retry_count: int = 1
+    reasoning_summary_only: bool = True
+    timeout_seconds: int = 30
+    retryable: bool = True
+    sanitized_diagnostics: dict[str, str | int | bool | float | None] = Field(default_factory=dict)
+
+
+class LlmTransportResponseMetadata(BaseModel):
+    schema_version: Literal["llm-transport-contract-v1"] = "llm-transport-contract-v1"
+    provider_kind: LlmProviderKind
+    status: LlmTransportStatus
+    retryability: LlmTransportRetryability
+    diagnostic_code: str
+    request_mode: LlmTransportMode
+    model_name: str | None = None
+    model_tier: LlmModelTier | None = None
+    provider_status: str | None = None
+    finish_reason: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    cost_usd: float | None = None
+    latency_ms: int | None = None
+    sanitized_diagnostics: dict[str, str | int | bool | float | None] = Field(default_factory=dict)
+
+
+class LlmTransportResult(BaseModel):
+    request: LlmTransportRequestMetadata | None = None
+    response: LlmTransportResponseMetadata
+    content: str | None = None
+    no_live_external_calls: bool = True
 
 
 class LlmValidationResult(BaseModel):
@@ -865,6 +1338,8 @@ class LlmOrchestrationResult(BaseModel):
     fallback_decision: LlmFallbackDecision
     public_metadata: LlmPublicResponseMetadata
     cache_decision: LlmCacheEligibilityDecision
+    generated_content_usable: bool = False
+    sanitized_diagnostics: dict[str, str | int | bool | float | None] = Field(default_factory=dict)
     no_live_external_calls: bool = True
 
 
@@ -972,6 +1447,15 @@ class SourceChecksumInput(BaseModel):
     redistribution_allowed: bool = False
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
+    source_identity: str | None = None
+    is_official: bool | None = False
+    source_quality: SourceQuality = SourceQuality.fixture
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
 
 
 class SourceChecksumRecord(BaseModel):
@@ -985,6 +1469,18 @@ class SourceChecksumRecord(BaseModel):
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     source_type: str
     source_rank: int | None = None
+    source_identity: str | None = None
+    retrieved_at: str | None = None
+    as_of_date: str | None = None
+    published_at: str | None = None
+    is_official: bool | None = False
+    source_quality: SourceQuality = SourceQuality.fixture
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
     citation_ids: list[str] = Field(default_factory=list)
     fact_bindings: list[str] = Field(default_factory=list)
     recent_event_bindings: list[str] = Field(default_factory=list)
@@ -1134,6 +1630,13 @@ class KnowledgePackSourceMetadata(BaseModel):
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
     citation_ids: list[str] = Field(default_factory=list)
     fact_ids: list[str] = Field(default_factory=list)
     recent_event_ids: list[str] = Field(default_factory=list)
@@ -1396,6 +1899,7 @@ class SourceDocument(BaseModel):
     source_type: str
     title: str
     publisher: str
+    provider_name: str | None = None
     url: str
     published_at: str | None = None
     as_of_date: str | None = None
@@ -1407,6 +1911,20 @@ class SourceDocument(BaseModel):
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
+
+
+class AnalysisPackRuntimeMetadata(BaseModel):
+    analysis_source: Literal["imported_local_pack", "backend_generated", "deterministic_fixture"]
+    freshness_expires_at: str | None = None
+    import_bundle_id: str | None = None
+    validation_status: Literal["passed", "failed", "not_applicable"] = "not_applicable"
 
 
 class SourceDrawerState(str, Enum):
@@ -1494,6 +2012,13 @@ class SourceDrawerSourceGroup(BaseModel):
     allowlist_status: SourceAllowlistStatus
     source_use_policy: SourceUsePolicy
     permitted_operations: SourceOperationPermissions
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
     citation_ids: list[str] = Field(default_factory=list)
     related_claim_ids: list[str] = Field(default_factory=list)
     section_ids: list[str] = Field(default_factory=list)
@@ -1650,6 +2175,7 @@ class GlossaryResponse(BaseModel):
     selected_asset: AssetIdentity
     state: StateMessage
     glossary_state: GlossaryResponseState
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     terms: list[GlossaryTermResponse] = Field(default_factory=list)
     evidence_references: list[GlossaryEvidenceReference] = Field(default_factory=list)
     citation_bindings: list[GlossaryCitationBinding] = Field(default_factory=list)
@@ -1716,6 +2242,22 @@ class WeeklyNewsContractState(str, Enum):
     suppressed = "suppressed"
 
 
+class WeeklyNewsEvidenceLimitedState(str, Enum):
+    full = "full"
+    limited_verified_set = "limited_verified_set"
+    empty = "empty"
+    unavailable = "unavailable"
+    insufficient_evidence = "insufficient_evidence"
+
+
+class MarketNewsTopicBucket(str, Enum):
+    macro_fed = "macro_fed"
+    markets_earnings = "markets_earnings"
+    ai_technology_semiconductors = "ai_technology_semiconductors"
+    geopolitics_energy_supply_chain = "geopolitics_energy_supply_chain"
+    credit_liquidity_sentiment = "credit_liquidity_sentiment"
+
+
 class MarketWeekPeriod(BaseModel):
     start: str | None = None
     end: str | None = None
@@ -1729,6 +2271,8 @@ class WeeklyNewsWindow(BaseModel):
     news_window_start: str
     news_window_end: str
     includes_current_week_to_date: bool
+    includes_current_day: bool = False
+    window_policy: Literal["strict_completed_day", "local_live_current_day"] = "strict_completed_day"
 
 
 class WeeklyNewsDeduplicationMetadata(BaseModel):
@@ -1756,6 +2300,7 @@ class WeeklyNewsSourceMetadata(BaseModel):
     source_type: str
     title: str
     publisher: str
+    provider_name: str | None = None
     url: str
     published_at: str | None = None
     as_of_date: str | None = None
@@ -1765,6 +2310,51 @@ class WeeklyNewsSourceMetadata(BaseModel):
     source_quality: SourceQuality
     allowlist_status: SourceAllowlistStatus
     source_use_policy: SourceUsePolicy
+
+
+class EconomicIndicatorCategory(str, Enum):
+    official_historical_actual = "official_historical_actual"
+    market_reference = "market_reference"
+
+
+class EconomicIndicatorTrendDirection(str, Enum):
+    up = "up"
+    down = "down"
+    neutral = "neutral"
+    unknown = "unknown"
+
+
+class EconomicIndicatorItem(BaseModel):
+    indicator_id: str
+    name: str
+    category: EconomicIndicatorCategory
+    value: str
+    numeric_value: float | None = None
+    unit: str | None = None
+    period: str
+    as_of_date: str
+    published_at: str | None = None
+    retrieved_at: str
+    source: WeeklyNewsSourceMetadata
+    freshness_state: FreshnessState
+    trend_direction: EconomicIndicatorTrendDirection = EconomicIndicatorTrendDirection.unknown
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    evidence_state: EvidenceState = EvidenceState.supported
+
+
+class EconomicIndicatorsPackResponse(BaseModel):
+    schema_version: Literal["economic-indicators-pack-v1"] = "economic-indicators-pack-v1"
+    state: WeeklyNewsContractState
+    region: Literal["US"] = "US"
+    as_of_date: str
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
+    items: list[EconomicIndicatorItem] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    analysis_pack_metadata: AnalysisPackRuntimeMetadata | None = None
+    no_live_external_calls: bool = True
+    stable_facts_are_separate: bool = True
 
 
 class WeeklyNewsItem(BaseModel):
@@ -1797,10 +2387,17 @@ class WeeklyNewsFocusResponse(BaseModel):
     asset: AssetIdentity
     state: WeeklyNewsContractState
     window: WeeklyNewsWindow
+    configured_max_item_count: int = 8
+    selected_item_count: int = 0
+    suppressed_candidate_count: int = 0
+    evidence_state: EvidenceState = EvidenceState.unknown
+    evidence_limited_state: WeeklyNewsEvidenceLimitedState = WeeklyNewsEvidenceLimitedState.unavailable
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     items: list[WeeklyNewsItem] = Field(default_factory=list)
     empty_state: WeeklyNewsEmptyState | None = None
     citations: list[Citation] = Field(default_factory=list)
     source_documents: list[SourceDocument] = Field(default_factory=list)
+    selection_diagnostics: dict[str, Any] = Field(default_factory=dict)
     no_live_external_calls: bool = True
     stable_facts_are_separate: bool = True
 
@@ -1824,12 +2421,27 @@ class AIComprehensiveAnalysisSection(BaseModel):
     uncertainty: list[str] = Field(default_factory=list)
 
 
+class GenerationDiagnostics(BaseModel):
+    attempted_live: bool = False
+    used_fallback: bool = True
+    fallback_reason_codes: list[str] = Field(default_factory=list)
+    model_name: str | None = None
+    attempt_count: int = 0
+    attempted_model_batches: list[list[str]] = Field(default_factory=list)
+    attempted_models: list[str] = Field(default_factory=list)
+    skipped_model_cooldowns: list[str] = Field(default_factory=list)
+
+
 class AIComprehensiveAnalysisResponse(BaseModel):
     schema_version: Literal["ai-comprehensive-analysis-v1"] = "ai-comprehensive-analysis-v1"
     asset: AssetIdentity
     state: WeeklyNewsContractState
     analysis_available: bool
+    minimum_weekly_news_item_count: int = 2
+    weekly_news_selected_item_count: int = 0
     suppression_reason: str | None = None
+    validation_reason_codes: list[str] = Field(default_factory=list)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
     sections: list[AIComprehensiveAnalysisSection] = Field(default_factory=list)
     citation_ids: list[str] = Field(default_factory=list)
     source_document_ids: list[str] = Field(default_factory=list)
@@ -1837,6 +2449,134 @@ class AIComprehensiveAnalysisResponse(BaseModel):
     canonical_fact_citation_ids: list[str] = Field(default_factory=list)
     no_live_external_calls: bool = True
     stable_facts_are_separate: bool = True
+    generation_diagnostics: GenerationDiagnostics = Field(default_factory=GenerationDiagnostics)
+
+
+class MarketNewsClusterMetadata(BaseModel):
+    cluster_id: str
+    representative_article_id: str
+    supporting_sources: list[str] = Field(default_factory=list)
+    article_count: int = 1
+    suppressed_duplicate_count: int = 0
+    topic_bucket: MarketNewsTopicBucket
+    critical_claim: bool = False
+    corroborated: bool = True
+
+
+class MarketNewsSelectionRationale(BaseModel):
+    source_quality_score: int
+    freshness_score: int
+    topic_relevance_score: int
+    market_impact_score: int
+    corroboration_score: int
+    novelty_score: int
+    penalty_score: int = 0
+    total_score: int
+    selected: bool
+    exclusion_reasons: list[str] = Field(default_factory=list)
+
+
+class MarketNewsItem(BaseModel):
+    story_id: str
+    title: str
+    summary: str
+    published_at: str
+    topic_bucket: MarketNewsTopicBucket
+    entities: list[str] = Field(default_factory=list)
+    citation_ids: list[str]
+    source: WeeklyNewsSourceMetadata
+    freshness_state: FreshnessState
+    importance_score: int
+    cluster: MarketNewsClusterMetadata
+    selection_rationale: MarketNewsSelectionRationale
+
+
+class MarketNewsAuditMetadata(BaseModel):
+    candidate_count: int = 0
+    cluster_count: int = 0
+    selected_cluster_count: int = 0
+    suppressed_candidate_count: int = 0
+    topic_bucket_counts: dict[str, int] = Field(default_factory=dict)
+    provider_counts: dict[str, int] = Field(default_factory=dict)
+    no_raw_article_text: bool = True
+    no_raw_provider_payload: bool = True
+    no_unrestricted_media: bool = True
+    no_generated_output_cache_write: bool = True
+
+
+class MarketNewsFocusResponse(BaseModel):
+    schema_version: Literal["market-news-focus-v1"] = "market-news-focus-v1"
+    state: WeeklyNewsContractState
+    window: WeeklyNewsWindow
+    configured_max_item_count: int = 20
+    selected_item_count: int = 0
+    suppressed_candidate_count: int = 0
+    evidence_state: EvidenceState = EvidenceState.unknown
+    evidence_limited_state: WeeklyNewsEvidenceLimitedState = WeeklyNewsEvidenceLimitedState.unavailable
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
+    items: list[MarketNewsItem] = Field(default_factory=list)
+    empty_state: WeeklyNewsEmptyState | None = None
+    citations: list[Citation] = Field(default_factory=list)
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    audit: MarketNewsAuditMetadata = Field(default_factory=MarketNewsAuditMetadata)
+    no_live_external_calls: bool = True
+    stable_facts_are_separate: bool = True
+    reusable_across_tickers: bool = True
+
+
+class MarketAIAnalysisSection(BaseModel):
+    section_id: Literal[
+        "what_changed_this_week",
+        "macro_policy",
+        "equity_market_drivers",
+        "ai_technology_semiconductors",
+        "geopolitical_energy_risks",
+        "credit_liquidity_sentiment",
+        "scenario_lens",
+        "practical_watchpoints",
+    ]
+    label: Literal[
+        "What Changed This Week",
+        "Macro & Policy",
+        "Equity Market Drivers",
+        "AI / Technology / Semiconductors",
+        "Geopolitical & Energy Risks",
+        "Credit / Liquidity / Sentiment",
+        "Scenario Lens",
+        "Practical Watchpoints",
+    ]
+    analysis: str
+    bullets: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    uncertainty: list[str] = Field(default_factory=list)
+
+
+class MarketAIComprehensiveAnalysisResponse(BaseModel):
+    schema_version: Literal["market-ai-comprehensive-analysis-v1"] = "market-ai-comprehensive-analysis-v1"
+    state: WeeklyNewsContractState
+    analysis_available: bool
+    minimum_market_news_item_count: int = 5
+    minimum_topic_bucket_count: int = 3
+    market_news_selected_item_count: int = 0
+    selected_topic_bucket_count: int = 0
+    suppression_reason: str | None = None
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
+    sections: list[MarketAIAnalysisSection] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    market_news_story_ids: list[str] = Field(default_factory=list)
+    no_live_external_calls: bool = True
+    stable_facts_are_separate: bool = True
+    generation_diagnostics: GenerationDiagnostics = Field(default_factory=GenerationDiagnostics)
+
+
+class MarketNewsResponse(BaseModel):
+    schema_version: Literal["market-news-response-v1"] = "market-news-response-v1"
+    state: StateMessage
+    market_news_focus: MarketNewsFocusResponse
+    market_ai_comprehensive_analysis: MarketAIComprehensiveAnalysisResponse
+    analysis_pack_metadata: AnalysisPackRuntimeMetadata | None = None
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
 
 
 class WeeklyNewsResponse(BaseModel):
@@ -1844,6 +2584,48 @@ class WeeklyNewsResponse(BaseModel):
     state: StateMessage
     weekly_news_focus: WeeklyNewsFocusResponse
     ai_comprehensive_analysis: AIComprehensiveAnalysisResponse
+    analysis_pack_metadata: AnalysisPackRuntimeMetadata | None = None
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
+
+
+class AnalysisPackValidationMetadata(BaseModel):
+    validation_status: Literal["passed", "failed"]
+    validator_version: str = "analysis-pack-import-validator-v1"
+    checksum_algorithm: Literal["sha256"] = "sha256"
+    checksum: str | None = None
+    checked_at: str | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class AnalysisPackImportBundle(BaseModel):
+    schema_version: Literal["analysis-pack-import-bundle-v1"] = "analysis-pack-import-bundle-v1"
+    bundle_id: str
+    generated_at: str
+    freshness_expires_at: str
+    prompt_version: str
+    validation: AnalysisPackValidationMetadata
+    market_context_pack_schema_version: Literal["market_context_pack-v1"] = "market_context_pack-v1"
+    market_context_pack: MarketNewsResponse | None = None
+    ticker_packs: dict[str, WeeklyNewsResponse] = Field(default_factory=dict)
+    economic_indicators: EconomicIndicatorsPackResponse | None = None
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+    validation_metadata: dict[str, Any] = Field(default_factory=dict)
+    checksums: dict[str, str] = Field(default_factory=dict)
+    longer_ticker_candidate_history: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    raw_article_text_collected: bool = False
+    raw_provider_payload_exposed: bool = False
+
+
+class AnalysisPackImportResponse(BaseModel):
+    schema_version: Literal["analysis-pack-import-response-v1"] = "analysis-pack-import-response-v1"
+    imported: bool
+    bundle_id: str
+    validation_status: Literal["passed", "failed"]
+    reason_codes: list[str] = Field(default_factory=list)
+    imported_market_context_pack: bool = False
+    imported_ticker_packs: list[str] = Field(default_factory=list)
+    imported_economic_indicators: bool = False
 
 
 class SuitabilitySummary(BaseModel):
@@ -1927,6 +2709,63 @@ class OverviewMetric(BaseModel):
     limitations: str | None = None
 
 
+class OverviewTableColumn(BaseModel):
+    column_id: str
+    label: str
+    value_type: Literal["text", "number", "percent", "currency"] = "text"
+    align: Literal["left", "right", "center"] = "left"
+
+
+class OverviewTableRow(BaseModel):
+    row_id: str
+    label: str | None = None
+    values: dict[str, str | float | int | None] = Field(default_factory=dict)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    limitations: str | None = None
+
+
+class OverviewTable(BaseModel):
+    table_id: str
+    title: str
+    columns: list[OverviewTableColumn] = Field(default_factory=list)
+    rows: list[OverviewTableRow] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    limitations: str | None = None
+
+
+class OverviewChartPoint(BaseModel):
+    timestamp: str
+    close: float
+    volume: float | int | None = None
+
+
+class OverviewChart(BaseModel):
+    chart_id: str
+    title: str
+    range: str
+    interval: str
+    points: list[OverviewChartPoint] = Field(default_factory=list)
+    currency: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    retrieved_at: str | None = None
+    delayed_or_best_effort_label: str | None = None
+    limitations: str | None = None
+
+
 class OverviewSectionItem(BaseModel):
     item_id: str
     title: str
@@ -1949,6 +2788,8 @@ class OverviewSection(BaseModel):
     beginner_summary: str | None = None
     items: list[OverviewSectionItem] = Field(default_factory=list)
     metrics: list[OverviewMetric] = Field(default_factory=list)
+    table: OverviewTable | None = None
+    chart: OverviewChart | None = None
     citation_ids: list[str] = Field(default_factory=list)
     source_document_ids: list[str] = Field(default_factory=list)
     freshness_state: FreshnessState
@@ -1966,6 +2807,9 @@ class OverviewResponse(BaseModel):
     beginner_summary: BeginnerSummary | None = None
     top_risks: list[RiskItem] = Field(default_factory=list)
     recent_developments: list[RecentDevelopment] = Field(default_factory=list)
+    market_news_focus: MarketNewsFocusResponse | None = None
+    market_ai_comprehensive_analysis: MarketAIComprehensiveAnalysisResponse | None = None
+    economic_indicators: EconomicIndicatorsPackResponse | None = None
     weekly_news_focus: WeeklyNewsFocusResponse | None = None
     ai_comprehensive_analysis: AIComprehensiveAnalysisResponse | None = None
     suitability_summary: SuitabilitySummary | None = None
@@ -1974,6 +2818,23 @@ class OverviewResponse(BaseModel):
     source_documents: list[SourceDocument] = Field(default_factory=list)
     sections: list[OverviewSection] = Field(default_factory=list)
     section_freshness_validation: list[OverviewSectionFreshnessValidation] = Field(default_factory=list)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
+    generation_diagnostics: dict[str, GenerationDiagnostics] = Field(default_factory=dict)
+
+
+class AssetChartResponse(BaseModel):
+    schema_version: str = "asset-chart-v1"
+    asset: AssetIdentity
+    state: StateMessage
+    requested_range: str
+    supported_ranges: list[str] = Field(default_factory=list)
+    default_range: str
+    chart: OverviewChart | None = None
+    citations: list[Citation] = Field(default_factory=list)
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
 class DetailsResponse(BaseModel):
@@ -1982,6 +2843,8 @@ class DetailsResponse(BaseModel):
     freshness: Freshness
     facts: dict[str, MetricValue | str | int | float | list[Any] | None]
     citations: list[Citation] = Field(default_factory=list)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
 
 
 class SourcesResponse(BaseModel):
@@ -1996,6 +2859,18 @@ class SourcesResponse(BaseModel):
     related_claims: list[SourceDrawerRelatedClaim] = Field(default_factory=list)
     section_references: list[SourceDrawerSectionReference] = Field(default_factory=list)
     diagnostics: SourceDrawerDiagnostics = Field(default_factory=SourceDrawerDiagnostics)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
+    fallback_diagnostics: LightweightApiFallbackDiagnostics | None = None
+
+
+class AssetPageResponse(BaseModel):
+    schema_version: str = "asset-page-aggregate-v1"
+    asset: AssetIdentity
+    state: StateMessage
+    overview: OverviewResponse
+    details: DetailsResponse
+    sources: SourcesResponse
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
 
 
 class RecentResponse(BaseModel):
@@ -2022,6 +2897,31 @@ class KeyDifference(BaseModel):
 class BeginnerBottomLine(BaseModel):
     summary: str
     citation_ids: list[str]
+
+
+class ComparisonMetricRow(BaseModel):
+    metric_id: str
+    label: str
+    left_value: str | float | int | None = None
+    right_value: str | float | int | None = None
+    unit: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    as_of_date: str | None = None
+    limitations: str | None = None
+
+
+class ComparisonMetricGroup(BaseModel):
+    group_id: str
+    title: str
+    rows: list[ComparisonMetricRow] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    source_document_ids: list[str] = Field(default_factory=list)
+    freshness_state: FreshnessState
+    evidence_state: EvidenceState
+    limitations: str | None = None
 
 
 class ComparisonEvidenceAvailabilityState(str, Enum):
@@ -2161,6 +3061,50 @@ class ComparisonEvidenceAvailability(BaseModel):
     diagnostics: ComparisonEvidenceDiagnostics = Field(default_factory=ComparisonEvidenceDiagnostics)
 
 
+class StockEtfRelationshipBadge(BaseModel):
+    label: str
+    value: str
+    marker: Literal["comparison_type", "stock_ticker", "etf_ticker", "relationship_state", "evidence_boundary"]
+    relationship_state: Literal["direct_holding", "sector_or_theme", "broad_market_context", "weak_relationship", "unknown"]
+    evidence_state: EvidenceState
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class StockEtfBasketStructure(BaseModel):
+    stock_ticker: str
+    etf_ticker: str
+    stock_role_summary: str
+    etf_basket_summary: str
+    relationship_summary: str
+    overlap_or_membership_state: Literal[
+        "direct_holding",
+        "sector_or_theme",
+        "broad_market_context",
+        "weak_relationship",
+        "unknown",
+    ]
+    evidence_state: EvidenceState
+    unavailable_detail: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class StockEtfRelationshipModel(BaseModel):
+    schema_version: Literal["stock-etf-relationship-v1"] = "stock-etf-relationship-v1"
+    comparison_type: Literal["stock_vs_etf"] = "stock_vs_etf"
+    stock_ticker: str
+    etf_ticker: str
+    relationship_state: Literal[
+        "direct_holding",
+        "sector_or_theme",
+        "broad_market_context",
+        "weak_relationship",
+        "unknown",
+    ]
+    evidence_state: EvidenceState
+    badges: list[StockEtfRelationshipBadge] = Field(default_factory=list)
+    basket_structure: StockEtfBasketStructure
+
+
 class CompareResponse(BaseModel):
     left_asset: AssetIdentity
     right_asset: AssetIdentity
@@ -2171,6 +3115,9 @@ class CompareResponse(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     source_documents: list[SourceDocument] = Field(default_factory=list)
     evidence_availability: ComparisonEvidenceAvailability | None = None
+    stock_etf_relationship: StockEtfRelationshipModel | None = None
+    metric_groups: list[ComparisonMetricGroup] = Field(default_factory=list)
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):
@@ -2205,6 +3152,13 @@ class ChatSourceDocument(BaseModel):
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
 
 
 class ChatCompareRouteDiagnostics(BaseModel):
@@ -2303,6 +3257,7 @@ class ChatResponse(BaseModel):
     safety_classification: SafetyClassification
     compare_route_suggestion: ChatCompareRouteSuggestion | None = None
     session: ChatSessionPublicMetadata | None = None
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)
 
 
 class ExportExcerpt(BaseModel):
@@ -2332,6 +3287,13 @@ class ExportSourceMetadata(BaseModel):
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
     permitted_operations: SourceOperationPermissions = Field(default_factory=lambda: DEFAULT_ALLOWED_SOURCE_OPERATIONS.model_copy())
+    source_identity: str | None = None
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
     allowed_excerpt: ExportExcerpt | None = None
 
 
@@ -2518,3 +3480,4 @@ class ExportResponse(BaseModel):
     rendered_markdown: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     export_validation: ExportValidation | None = None
+    section_states: list[RuntimeSectionState] = Field(default_factory=list)

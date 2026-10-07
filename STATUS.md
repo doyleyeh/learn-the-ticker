@@ -2,6 +2,8 @@
 
 Updated: 2026-10-07 (Asia/Taipei). Public Windows v1 is **not ready**.
 
+- Current owner-requested maintenance: **M0-T05 IN_PROGRESS**, PR #7 conflicts against main `2547bd6` are resolved locally. Q passed **2,594 Python/2 Linux-only skips/96 frontend**, B **9 workflows**, and full isolated PostgreSQL lifecycle/restore D passed. [Resolution, repairs and limits](docs/verification/2026-10-07-pr7-merge.md). Next: commit/push the reviewed merge and confirm GitHub mergeability. The PR's retired Vercel web deployment check is separate. Commercial-agent delivery resumes at the existing WSL sign-in handoff afterward.
+
 - Owner-approved future local route (DEC-067): after DEC-066's active commercial-agent targets, **M8-T06 / M8-T06a TODO** starts with the existing Codex harness plus Ollama and compares LM Studio. Other harnesses/frameworks remain candidates. Roadmap checkpoint Q passed **2,154 Python/2 Linux-only skips/94 frontend**; [evidence and limits](docs/verification/2026-10-07-local-model-roadmap.md). No local runtime/model installed, tested or enabled by this decision; the current WSL sign-in handoff remains the next active work.
 
 - Active owner-directed task: **M8-T04 / M8-T04b IN_PROGRESS**, Codex on WSL2 (DEC-066), followed by Antigravity WSL2 and Claude Code on native Windows/WSL2 when subscribed access is available. Native Windows Antigravity is now owner-PAUSED; its isolation blocker remains unresolved. Preserve scoped Windows Codex evidence. OpenCode/Ollama follow commercial agents; macOS is future work. This replaces older next-task/platform directions below.

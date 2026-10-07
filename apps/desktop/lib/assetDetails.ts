@@ -5,6 +5,8 @@ import {
   type Citation,
   type FreshnessState
 } from "./fixtures";
+import { runtimeSectionStatesFromPayload } from "./runtimeSectionStates";
+import { sanitizeSourceDisplayTitle } from "./sourceDisplay";
 
 type Fetcher = typeof fetch;
 
@@ -22,7 +24,7 @@ type BackendFreshness = {
   page_last_updated_at: string;
   facts_as_of: string;
   holdings_as_of: string | null;
-  recent_events_as_of: string;
+  recent_events_as_of: string | null;
   freshness_state: string;
 };
 
@@ -57,6 +59,7 @@ type BackendDetailsResponse = {
   freshness: BackendFreshness;
   facts: BackendDetailsFacts;
   citations: BackendCitation[];
+  section_states?: unknown[];
 };
 
 export async function fetchSupportedAssetDetails(
@@ -112,7 +115,10 @@ function isSupportedAssetDetailsResponse(
     typeof candidate.freshness !== "object" ||
     typeof candidate.freshness.page_last_updated_at !== "string" ||
     typeof candidate.freshness.facts_as_of !== "string" ||
-    typeof candidate.freshness.recent_events_as_of !== "string" ||
+    !(
+      typeof candidate.freshness.recent_events_as_of === "string" ||
+      candidate.freshness.recent_events_as_of === null
+    ) ||
     !candidate.facts ||
     typeof candidate.facts !== "object" ||
     !Array.isArray(candidate.citations)
@@ -140,13 +146,17 @@ function mergeAssetFixtureWithDetails(fallbackAsset: AssetFixture, details: Back
       pageLastUpdatedAt: details.freshness.page_last_updated_at,
       factsAsOf: details.freshness.facts_as_of,
       holdingsAsOf: details.freshness.holdings_as_of ?? fallbackAsset.freshness.holdingsAsOf,
-      recentEventsAsOf: details.freshness.recent_events_as_of
+      recentEventsAsOf:
+        details.freshness.recent_events_as_of ??
+        fallbackAsset.freshness.recentEventsAsOf ??
+        details.freshness.page_last_updated_at
     },
     citations: mergeUniqueBy(
       details.citations.map(toCitation),
       fallbackAsset.citations,
       (citation) => citation.citationId
-    )
+    ),
+    sectionStates: mergeSectionStates(fallbackAsset.sectionStates, runtimeSectionStatesFromPayload(details))
   };
 
   if (assetWithFreshness.assetType === "stock") {
@@ -154,6 +164,14 @@ function mergeAssetFixtureWithDetails(fallbackAsset: AssetFixture, details: Back
   }
 
   return mergeEtfDetails(assetWithFreshness, details.facts);
+}
+
+function mergeSectionStates(
+  fallbackStates: AssetFixture["sectionStates"] = [],
+  backendStates: AssetFixture["sectionStates"] = []
+) {
+  const byId = new Map([...(fallbackStates ?? []), ...(backendStates ?? [])].map((state) => [state.sectionId, state]));
+  return [...byId.values()];
 }
 
 function mergeStockDetails(asset: AssetFixture, facts: BackendDetailsFacts): AssetFixture {
@@ -363,7 +381,10 @@ function toCitation(citation: BackendCitation): Citation {
   return {
     citationId: citation.citation_id,
     sourceDocumentId: citation.source_document_id,
-    title: citation.title,
+    title: sanitizeSourceDisplayTitle(citation.title, {
+      source_type: citation.source_document_id,
+      source_quality: citation.source_document_id.includes("provider_issuer") ? "issuer" : undefined
+    }),
     publisher: citation.publisher,
     freshnessState: toFreshnessState(citation.freshness_state)
   };

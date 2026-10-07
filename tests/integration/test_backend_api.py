@@ -2,18 +2,993 @@ import os
 
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
 
+import pytest
+
+from backend.analysis_packs import (
+    DurableAnalysisPackRepository,
+    analysis_pack_repository,
+    build_economic_indicators_pack,
+    build_fixture_analysis_pack_import_bundle,
+    configure_analysis_pack_repository,
+)
+from backend.economic_indicators_live import EconomicIndicatorFetchError
 from backend.main import app
+from backend.chat import generate_asset_chat
+from backend.comparison import generate_comparison
+from backend.generated_output_cache_repository import InMemoryGeneratedOutputCacheRepository
+from backend.ingestion import execute_ingestion_job_through_ledger, get_pre_cache_job_status
+from backend.ingestion_worker import DeterministicIngestionWorker, InMemoryIngestionWorkerLedger, IngestionWorkerFixtureOutcome
+from backend.knowledge_pack_repository import (
+    AssetKnowledgePackRepository,
+    InMemoryAssetKnowledgePackRepository,
+    knowledge_pack_records_from_acquisition_result,
+)
+from backend.lightweight_data_fetch import clear_lightweight_fetch_reuse_cache, fetch_lightweight_asset_data
+from backend.lightweight_page import build_lightweight_overview_response
+from backend.market_news import build_market_news_response
+from backend.models import (
+    FreshnessState,
+    GenerationDiagnostics,
+    SourceAllowlistStatus,
+    SourceQuality,
+    SourceUsePolicy,
+    WeeklyNewsEventType,
+)
+from backend.overview import (
+    _asset_knowledge_pack_from_repository_records,
+    _maybe_write_overview_generated_output_cache,
+    generate_asset_overview,
+    generate_overview_from_pack,
+)
+from backend.persistence import BackendReadDependencies, configure_backend_read_dependencies
+from backend.provider_adapters.etf_issuer import execute_etf_issuer_handoff_gated_official_source_acquisition
+from backend.providers import fetch_mock_provider_response, mock_etf_issuer_adapter
+from backend.retrieval import build_asset_knowledge_pack, build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
+from backend.settings import build_lightweight_data_settings
+from backend.source_snapshot_repository import (
+    InMemorySourceSnapshotArtifactRepository,
+    SourceSnapshotArtifactCategory,
+    SourceSnapshotRepositoryRecords,
+    artifact_from_knowledge_pack_source,
+    source_snapshot_records_from_acquisition_result,
+)
 from backend.testing import TestClient
+from backend.repositories.ingestion_jobs import IngestionLedgerJobState, serialize_ingestion_job_response
+from backend.weekly_news_repository import (
+    InMemoryWeeklyNewsEventEvidenceRepository,
+    WeeklyNewsEventCandidateRow,
+    WeeklyNewsSourceRankTier,
+    acquire_weekly_news_event_evidence_from_fixtures,
+)
+from scripts.run_local_fresh_data_rehearsal import run_rehearsal
+from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetcher, RETRIEVED_AT
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clear_analysis_pack_repository_between_route_tests():
+    analysis_pack_repository().clear()
+    yield
+    analysis_pack_repository().clear()
+
+
+class RouteReaderSpy:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def read_knowledge_pack_records(self, ticker: str):
+        self.calls.append(("knowledge_pack", (ticker,)))
+        return None
+
+    def read_generated_output_cache_records(self, *args: str):
+        self.calls.append(("generated_output_cache", tuple(args)))
+        return None
+
+    def read_comparison_records(self, left_ticker: str, right_ticker: str):
+        self.calls.append(("comparison_cache", (left_ticker, right_ticker)))
+        return None
+
+    def read_chat_answer_records(self, ticker: str):
+        self.calls.append(("chat_cache", (ticker,)))
+        return None
+
+    def read_weekly_news_event_evidence_records(self, ticker: str):
+        self.calls.append(("weekly_news", (ticker,)))
+        return None
+
+    def read_chat_session_records(self, conversation_id: str):
+        self.calls.append(("chat_session", (conversation_id,)))
+        return None
+
+    def persist_chat_session_records(self, records):
+        self.calls.append(("chat_session_persist", (records.envelopes[0].conversation_id,)))
+        return records
+
+    def mark_chat_session_deleted(self, records):
+        self.calls.append(("chat_session_delete", (records.envelopes[0].conversation_id,)))
+        return records
+
+
+class RecordingKnowledgePackRepository(InMemoryAssetKnowledgePackRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[str] = []
+
+    def read_knowledge_pack_records(self, ticker: str):
+        self.calls.append(ticker.strip().upper())
+        return super().read_knowledge_pack_records(ticker)
+
+
+class RecordingGeneratedOutputRepository(InMemoryGeneratedOutputCacheRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def read_generated_output_cache_records(self, *args: str):
+        self.calls.append(("generic", tuple(arg.strip().upper() for arg in args)))
+        return super().read_generated_output_cache_records(*args)
+
+    def read_asset_overview_records(self, ticker: str):
+        self.calls.append(("asset_overview", (ticker.strip().upper(),)))
+        return super().read_asset_overview_records(ticker)
+
+    def read_chat_answer_records(self, ticker: str):
+        self.calls.append(("chat_answer", (ticker.strip().upper(),)))
+        return super().read_chat_answer_records(ticker)
+
+    def read_comparison_records(self, left_ticker: str, right_ticker: str):
+        self.calls.append(("comparison", (left_ticker.strip().upper(), right_ticker.strip().upper())))
+        return super().read_comparison_records(left_ticker, right_ticker)
+
+
+class RecordingWeeklyNewsRepository(InMemoryWeeklyNewsEventEvidenceRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[str] = []
+
+    def read_weekly_news_event_evidence_records(self, ticker: str):
+        self.calls.append(ticker.strip().upper())
+        return super().read_weekly_news_event_evidence_records(ticker)
+
+
+class RecordingSourceSnapshotRepository(InMemorySourceSnapshotArtifactRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[str] = []
+
+    def read_source_snapshot_records(self, ticker: str):
+        self.calls.append(ticker.strip().upper())
+        return super().read_source_snapshot_records(ticker)
 
 
 def _without_session(payload: dict) -> dict:
     stripped = dict(payload)
     stripped.pop("session", None)
     return stripped
+
+
+def _assert_runtime_section_state(payload: dict, section_id: str) -> dict:
+    states = payload.get("section_states")
+    assert isinstance(states, list)
+    state = next((item for item in states if item.get("section_id") == section_id), None)
+    assert state is not None
+    assert state["schema_version"] == "runtime-section-state-v1"
+    assert state["data_origin"]
+    assert state["section_status"]
+    assert "fallback_reason" in state
+    assert "freshness_state" in state
+    assert state["source_handoff_state"]
+    assert "cache_state" in state
+    assert "evidence_state" in state
+    return state
+
+
+def _fixture_knowledge_pack_records(ticker: str):
+    return AssetKnowledgePackRepository().serialize(
+        build_asset_knowledge_pack_result(ticker),
+        retrieval_pack=build_asset_knowledge_pack(ticker),
+    )
+
+
+def _persist_fixture_knowledge_pack(repository: InMemoryAssetKnowledgePackRepository, ticker: str) -> None:
+    repository.persist(_fixture_knowledge_pack_records(ticker))
+
+
+def _persist_fixture_source_snapshots(repository: InMemorySourceSnapshotArtifactRepository, ticker: str) -> None:
+    response = build_asset_knowledge_pack_result(ticker)
+    records = SourceSnapshotRepositoryRecords(
+        artifacts=[
+            artifact_from_knowledge_pack_source(
+                source,
+                artifact_id=f"governed-golden-{ticker.lower()}-{source.source_document_id}",
+                artifact_category=(
+                    SourceSnapshotArtifactCategory.raw_source
+                    if source.source_use_policy is SourceUsePolicy.full_text_allowed
+                    else SourceSnapshotArtifactCategory.summary
+                ),
+                checksum=f"sha256:governed-golden:{ticker.lower()}:{source.source_document_id}",
+                byte_size=0,
+                content_type="text/plain",
+                created_at="2026-04-25T18:04:25Z",
+                storage_key=f"snapshots/governed-golden/{ticker.lower()}/{source.source_document_id}.json",
+                ingestion_job_id=f"pre-cache-launch-{ticker.lower()}",
+            )
+            for source in response.source_documents
+        ]
+    )
+    repository.persist(records)
+
+
+def _weekly_candidate(ticker: str, event_id: str) -> WeeklyNewsEventCandidateRow:
+    return WeeklyNewsEventCandidateRow(
+        candidate_event_id=event_id,
+        window_id=f"wnf_window:{ticker}:2026-04-23",
+        asset_ticker=ticker,
+        source_asset_ticker=ticker,
+        event_type=WeeklyNewsEventType.methodology_change.value,
+        event_date="2026-04-21",
+        published_at="2026-04-21T12:00:00Z",
+        retrieved_at="2026-04-23T12:00:00Z",
+        period_bucket="current_week_to_date",
+        source_document_id=f"src_{ticker.lower()}_{event_id}",
+        source_chunk_id=f"chk_{ticker.lower()}_{event_id}",
+        citation_ids=[f"c_weekly_{ticker.lower()}_{event_id}"],
+        citation_asset_tickers={f"c_weekly_{ticker.lower()}_{event_id}": ticker},
+        source_type=WeeklyNewsSourceRankTier.official_filing.value,
+        source_rank=1,
+        source_rank_tier=WeeklyNewsSourceRankTier.official_filing.value,
+        source_quality=SourceQuality.official.value,
+        allowlist_status=SourceAllowlistStatus.allowed.value,
+        source_use_policy=SourceUsePolicy.summary_allowed.value,
+        freshness_state=FreshnessState.fresh.value,
+        evidence_state="supported",
+        importance_score=10,
+        duplicate_group_id=event_id,
+        candidate_decision="selected",
+        title_checksum=f"sha256:title:{ticker}:{event_id}",
+        evidence_checksum=f"sha256:evidence:{ticker}:{event_id}",
+    )
+
+
+def _persist_weekly_news(
+    repository: InMemoryWeeklyNewsEventEvidenceRepository,
+    ticker: str,
+    candidates: list[WeeklyNewsEventCandidateRow] | None = None,
+) -> None:
+    repository.persist(
+        acquire_weekly_news_event_evidence_from_fixtures(
+            asset_ticker=ticker,
+            as_of="2026-04-23",
+            created_at="2026-04-23T12:00:00Z",
+            candidates=candidates or [],
+        )
+    )
+
+
+def test_asset_aggregate_route_supports_deployment_smoke():
+    response = client.get("/api/assets/VOO")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == "asset-page-aggregate-v1"
+    assert body["asset"]["ticker"] == "VOO"
+    assert body["overview"]["asset"]["ticker"] == "VOO"
+    assert body["details"]["asset"]["ticker"] == "VOO"
+    assert body["sources"]["asset"]["ticker"] == "VOO"
+
+
+def test_admin_routes_default_disabled_in_production(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("ADMIN_ROUTES_ENABLED", raising=False)
+    bundle = build_fixture_analysis_pack_import_bundle().model_dump(mode="json")
+
+    ingest = client.post("/api/admin/ingest/SPY")
+    pre_cache = client.post("/api/admin/pre-cache/SPY")
+    import_route = client.post("/api/admin/analysis-packs/import", json=bundle)
+    public_status = client.get("/api/jobs/missing-job")
+
+    assert ingest.status_code == 404
+    assert pre_cache.status_code == 404
+    assert import_route.status_code == 404
+    assert public_status.status_code == 200
+
+
+def _configured_golden_repositories():
+    knowledge_repo = RecordingKnowledgePackRepository()
+    generated_repo = RecordingGeneratedOutputRepository()
+    weekly_repo = RecordingWeeklyNewsRepository()
+    source_snapshot_repo = RecordingSourceSnapshotRepository()
+
+    for ticker in ["AAPL", "VOO", "QQQ"]:
+        _persist_fixture_knowledge_pack(knowledge_repo, ticker)
+        _persist_fixture_source_snapshots(source_snapshot_repo, ticker)
+        persisted_pack = _asset_knowledge_pack_from_repository_records(knowledge_repo.read_knowledge_pack_records(ticker))
+        persisted_overview = generate_overview_from_pack(persisted_pack)
+        _maybe_write_overview_generated_output_cache(persisted_overview, persisted_pack, generated_repo)
+        generate_asset_chat(ticker, "What is this fund?", generated_output_cache_writer=generated_repo)
+        _persist_weekly_news(
+            weekly_repo,
+            ticker,
+            [_weekly_candidate(ticker, "official_fixture_update")] if ticker == "QQQ" else [],
+        )
+
+    generate_comparison("VOO", "QQQ", generated_output_cache_writer=generated_repo)
+    return knowledge_repo, generated_repo, weekly_repo, source_snapshot_repo
+
+
+def test_configured_backend_readers_are_route_wired_with_fixture_fallback():
+    spy = RouteReaderSpy()
+    configure_backend_read_dependencies(
+        app,
+        BackendReadDependencies(
+            persisted_reads_enabled=True,
+            knowledge_pack_reader=spy,
+            generated_output_cache_reader=spy,
+            weekly_news_reader=spy,
+            chat_session_reader=spy,
+            chat_session_writer=spy,
+        ),
+    )
+    try:
+        overview = client.get("/api/assets/VOO/overview").json()
+        weekly = client.get("/api/assets/VOO/weekly-news").json()
+        details = client.get("/api/assets/VOO/details").json()
+        sources = client.get("/api/assets/VOO/sources").json()
+        knowledge_pack = client.get("/api/assets/VOO/knowledge-pack").json()
+        comparison = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+        asset_export = client.get("/api/assets/VOO/export").json()
+        comparison_export = client.get("/api/compare/export", params={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+        chat = client.post("/api/assets/VOO/chat", json={"question": "What is VOO?"}).json()
+        status = client.get("/api/chat-sessions/missing-session").json()
+        chat_export = client.post("/api/assets/VOO/chat/export", json={"question": "What is VOO?"}).json()
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    assert overview["asset"]["ticker"] == "VOO"
+    assert weekly["weekly_news_focus"]["selected_item_count"] == 0
+    assert details["facts"]
+    assert sources["drawer_state"] == "available"
+    assert knowledge_pack["build_state"] == "available"
+    assert comparison["comparison_type"] == "etf_vs_etf"
+    assert asset_export["export_state"] == "available"
+    assert comparison_export["export_state"] == "available"
+    assert chat["asset"]["ticker"] == "VOO"
+    assert status["session"]["lifecycle_state"] == "unavailable"
+    assert chat_export["export_state"] == "available"
+
+    assert ("knowledge_pack", ("VOO",)) in spy.calls
+    assert ("knowledge_pack", ("QQQ",)) in spy.calls
+    assert ("weekly_news", ("VOO",)) in spy.calls
+    assert ("chat_session", ("missing-session",)) in spy.calls
+
+
+def test_market_news_endpoint_returns_reusable_market_context_without_asset_unlocking():
+    response = client.get("/api/market-news")
+
+    assert response.status_code == 200
+    body = response.json()
+    focus = body["market_news_focus"]
+    analysis = body["market_ai_comprehensive_analysis"]
+    assert body["schema_version"] == "market-news-response-v1"
+    assert focus["schema_version"] == "market-news-focus-v1"
+    assert focus["reusable_across_tickers"] is True
+    assert 0 < focus["selected_item_count"] <= 20
+    assert focus["audit"]["no_raw_article_text"] is True
+    assert focus["audit"]["no_raw_provider_payload"] is True
+    assert focus["audit"]["no_generated_output_cache_write"] is True
+    assert analysis["schema_version"] == "market-ai-comprehensive-analysis-v1"
+    assert analysis["analysis_available"] is True
+    assert analysis["generation_diagnostics"]["used_fallback"] is True
+    assert [section["label"] for section in analysis["sections"]] == [
+        "What Changed This Week",
+        "Macro & Policy",
+        "Equity Market Drivers",
+        "AI / Technology / Semiconductors",
+        "Geopolitical & Energy Risks",
+        "Credit / Liquidity / Sentiment",
+        "Scenario Lens",
+        "Practical Watchpoints",
+    ]
+    rendered = str(body).lower()
+    for forbidden in ["you should buy", "you should sell", "raw article body", "provider payload value"]:
+        assert forbidden not in rendered
+
+
+def test_economic_indicators_endpoint_returns_us_only_cited_pack():
+    response = client.get("/api/economic-indicators")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == "economic-indicators-pack-v1"
+    assert body["region"] == "US"
+    assert body["no_live_external_calls"] is True
+    assert body["stable_facts_are_separate"] is True
+    assert body["analysis_pack_metadata"]["analysis_source"] == "deterministic_fixture"
+    assert {"gdp", "cpi", "ppi", "nonfarm_payrolls", "treasury_10y"} <= {
+        item["indicator_id"] for item in body["items"]
+    }
+    citation_ids = {citation["citation_id"] for citation in body["citations"]}
+    source_ids = {source["source_document_id"] for source in body["source_documents"]}
+    for item in body["items"]:
+        assert set(item["citation_ids"]) <= citation_ids
+        assert set(item["source_document_ids"]) <= source_ids
+        assert item["source"]["source_use_policy"] != "rejected"
+
+
+def test_economic_indicators_endpoint_prefers_live_pack_when_enabled(monkeypatch):
+    import backend.main as main_module
+
+    calls: list[tuple[str, int]] = []
+
+    def fake_live_economic_indicators_pack(*, generated_at: str, timeout_seconds: int):
+        calls.append((generated_at, timeout_seconds))
+        return build_economic_indicators_pack().model_copy(
+            update={
+                "analysis_pack_metadata": None,
+                "no_live_external_calls": False,
+            }
+        )
+
+    monkeypatch.setenv("ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setenv("ECONOMIC_INDICATORS_FETCH_TIMEOUT_SECONDS", "7")
+    monkeypatch.setattr(main_module, "build_live_economic_indicators_pack", fake_live_economic_indicators_pack)
+
+    response = client.get("/api/economic-indicators")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert calls
+    assert calls[0][1] == 7
+    assert body["no_live_external_calls"] is False
+    assert body["analysis_pack_metadata"]["analysis_source"] == "backend_generated"
+    state = _assert_runtime_section_state(body, "economic_indicators")
+    assert state["data_origin"] == "backend_generated"
+    assert state["source_handoff_state"] == "approved"
+
+
+def test_economic_indicators_endpoint_uses_fixture_when_live_pack_fails(monkeypatch):
+    import backend.main as main_module
+
+    def fake_live_economic_indicators_pack(*, generated_at: str, timeout_seconds: int):
+        raise EconomicIndicatorFetchError("economic_indicator_live_fetch_failed")
+
+    monkeypatch.setenv("ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setattr(main_module, "build_live_economic_indicators_pack", fake_live_economic_indicators_pack)
+
+    response = client.get("/api/economic-indicators")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["no_live_external_calls"] is True
+    assert body["analysis_pack_metadata"]["analysis_source"] == "deterministic_fixture"
+    state = _assert_runtime_section_state(body, "economic_indicators")
+    assert state["data_origin"] == "deterministic_fixture"
+    assert state["fallback_reason"] == "economic_indicators_live_fetch_failed"
+    assert state["freshness_state"] == "unknown"
+
+
+def test_route_contracts_expose_runtime_section_states():
+    overview = client.get("/api/assets/VOO/overview").json()
+    details = client.get("/api/assets/VOO/details").json()
+    weekly = client.get("/api/assets/VOO/weekly-news").json()
+    market = client.get("/api/market-news").json()
+    indicators = client.get("/api/economic-indicators").json()
+    sources = client.get("/api/assets/VOO/sources").json()
+    glossary = client.get("/api/assets/VOO/glossary", params={"term": "expense ratio"}).json()
+    chat = client.post("/api/assets/VOO/chat", json={"question": "What is VOO?"}).json()
+    comparison = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+    export = client.get("/api/assets/VOO/export", params={"export_format": "json"}).json()
+
+    assert _assert_runtime_section_state(overview, "asset_overview")["data_origin"] == "deterministic_fixture"
+    assert _assert_runtime_section_state(details, "asset_details")["data_origin"] == "deterministic_fixture"
+    assert _assert_runtime_section_state(weekly, "weekly_news")["section_status"] in {"available", "empty"}
+    weekly_ai_state = _assert_runtime_section_state(weekly, "ai_comprehensive_analysis")
+    assert weekly_ai_state["section_status"] in {"available", "partial", "insufficient_evidence"}
+    assert "used_fallback" in weekly_ai_state["diagnostics"]
+    assert _assert_runtime_section_state(market, "market_news")["data_origin"] == "backend_generated"
+    market_ai_state = _assert_runtime_section_state(market, "market_ai_comprehensive_analysis")
+    assert market_ai_state["data_origin"] == "backend_generated"
+    assert market_ai_state["section_status"] in {"available", "partial", "insufficient_evidence"}
+    assert "fallback_reason_codes" in market_ai_state["diagnostics"]
+    assert _assert_runtime_section_state(indicators, "economic_indicators")["data_origin"] == "deterministic_fixture"
+    assert _assert_runtime_section_state(sources, "source_drawer")["section_status"] == "available"
+    assert _assert_runtime_section_state(glossary, "glossary_context")["section_status"] == "available"
+    assert _assert_runtime_section_state(chat, "asset_chat")["section_status"] == "available"
+    assert _assert_runtime_section_state(comparison, "comparison")["section_status"] == "available"
+    assert _assert_runtime_section_state(export, "export")["section_status"] == "available"
+
+
+def test_asset_page_stable_overview_omits_slow_timely_context_but_keeps_generation_diagnostics(monkeypatch):
+    clear_lightweight_fetch_reuse_cache()
+    settings_override = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    shared_fetcher = LocalFreshDataSliceFakeFetcher()
+
+    def fake_fetch(ticker, settings=None, chart_range="6mo"):  # noqa: ANN001 - monkeypatch target matches production call shapes.
+        del settings
+        return fetch_lightweight_asset_data(
+            ticker,
+            settings=settings_override,
+            fetcher=shared_fetcher,
+            retrieved_at=RETRIEVED_AT,
+            chart_range=chart_range,
+        )
+
+    monkeypatch.setenv("DATA_POLICY_MODE", "lightweight")
+    monkeypatch.setenv("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setenv("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
+    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "learn-the-ticker-tests/0.1 test@example.com")
+    monkeypatch.setattr("backend.lightweight_page.fetch_lightweight_asset_data", fake_fetch)
+    monkeypatch.setattr("backend.main.fetch_lightweight_asset_data", fake_fetch)
+
+    response = client.get("/api/assets/VOO/overview", params={"mode": "asset_page_stable"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["asset"]["ticker"] == "VOO"
+    assert body["market_news_focus"] is None
+    assert body["market_ai_comprehensive_analysis"] is None
+    assert body["weekly_news_focus"] is None
+    assert body["ai_comprehensive_analysis"] is None
+    assert "beginner_summary" in body["generation_diagnostics"]
+    assert "top_3_risks" in body["generation_diagnostics"]
+    assert body["generation_diagnostics"]["beginner_summary"]["attempted_live"] is False
+    assert body["generation_diagnostics"]["beginner_summary"]["fallback_reason_codes"] == [
+        "deterministic_summary_generation"
+    ]
+    assert "indexing investment approach" in body["beginner_summary"]["what_it_is"]
+    assert "provider-derived fund profile" not in body["beginner_summary"]["what_it_is"]
+    assert "..." not in body["beginner_summary"]["what_it_is"]
+
+
+def test_weekly_news_section_states_accept_nested_generation_diagnostics(monkeypatch):
+    overview = generate_asset_overview("AAPL")
+    diagnostics = GenerationDiagnostics(
+        attempted_live=True,
+        used_fallback=True,
+        fallback_reason_codes=["provider_rate_limited:qwen/qwen3-next-80b-a3b-instruct:free"],
+        model_name="openai/gpt-oss-120b:free",
+        attempt_count=2,
+        attempted_model_batches=[
+            ["openai/gpt-oss-120b:free"],
+            ["qwen/qwen3-next-80b-a3b-instruct:free"],
+        ],
+        attempted_models=[
+            "openai/gpt-oss-120b:free",
+            "qwen/qwen3-next-80b-a3b-instruct:free",
+        ],
+    )
+    analysis = overview.ai_comprehensive_analysis.model_copy(update={"generation_diagnostics": diagnostics})
+    fake_overview = overview.model_copy(update={"ai_comprehensive_analysis": analysis})
+
+    monkeypatch.setattr("backend.main.fetch_lightweight_page_data_if_enabled", lambda ticker: None)
+    monkeypatch.setattr("backend.main.generate_asset_overview", lambda *args, **kwargs: fake_overview)
+
+    response = client.get("/api/assets/AAPL/weekly-news")
+
+    assert response.status_code == 200
+    body = response.json()
+    section_state = _assert_runtime_section_state(body, "ai_comprehensive_analysis")
+    assert section_state["diagnostics"]["attempted_model_batches"] == [
+        ["openai/gpt-oss-120b:free"],
+        ["qwen/qwen3-next-80b-a3b-instruct:free"],
+    ]
+    assert section_state["diagnostics"]["attempted_models"] == [
+        "openai/gpt-oss-120b:free",
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+    ]
+
+
+def test_admin_analysis_pack_import_routes_choose_fresh_imported_packs():
+    bundle = build_fixture_analysis_pack_import_bundle(
+        bundle_id="route-import-fixture",
+        generated_at="2999-01-01T00:00:00Z",
+        freshness_expires_at="2999-01-08T00:00:00Z",
+    )
+
+    imported = client.post("/api/admin/analysis-packs/import", json=bundle.model_dump(mode="json")).json()
+    market = client.get("/api/market-news").json()
+    weekly = client.get("/api/assets/QQQ/weekly-news").json()
+    indicators = client.get("/api/economic-indicators").json()
+
+    assert imported["imported"] is True
+    assert imported["imported_market_context_pack"] is True
+    assert imported["imported_ticker_packs"] == ["QQQ"]
+    assert imported["imported_economic_indicators"] is True
+    assert market["analysis_pack_metadata"]["analysis_source"] == "imported_local_pack"
+    assert market["analysis_pack_metadata"]["import_bundle_id"] == "route-import-fixture"
+    assert weekly["analysis_pack_metadata"]["analysis_source"] == "imported_local_pack"
+    assert weekly["analysis_pack_metadata"]["import_bundle_id"] == "route-import-fixture"
+    assert indicators["analysis_pack_metadata"]["analysis_source"] == "imported_local_pack"
+    assert indicators["analysis_pack_metadata"]["freshness_expires_at"] == "2999-01-08T00:00:00Z"
+
+
+def test_admin_analysis_pack_import_writes_file_backed_history(tmp_path):
+    repository = DurableAnalysisPackRepository(tmp_path / "analysis-pack-store.json")
+    configure_analysis_pack_repository(repository)
+    bundle = build_fixture_analysis_pack_import_bundle(
+        bundle_id="route-import-history-fixture",
+        generated_at="2999-01-01T00:00:00Z",
+        freshness_expires_at="2999-01-08T00:00:00Z",
+    )
+
+    try:
+        imported = client.post("/api/admin/analysis-packs/import", json=bundle.model_dump(mode="json")).json()
+
+        assert imported["imported"] is True
+        assert repository.storage_path.exists()
+        assert repository.history_path.exists()
+        assert "route-import-history-fixture" in repository.history_path.read_text(encoding="utf-8")
+    finally:
+        configure_analysis_pack_repository(None)
+
+
+def test_market_news_endpoint_uses_runtime_market_news_boundary(monkeypatch):
+    import backend.main as main_module
+
+    calls: list[str] = []
+    sentinel = build_market_news_response(as_of="2026-04-23")
+
+    def fake_runtime_market_news_response(**kwargs):
+        calls.append("runtime")
+        assert "economic_indicators" in kwargs
+        return sentinel
+
+    monkeypatch.setattr(main_module, "build_runtime_market_news_response", fake_runtime_market_news_response)
+    response = client.get("/api/market-news")
+
+    assert response.status_code == 200
+    assert calls == ["runtime"]
+
+
+def test_configured_governed_golden_records_drive_learning_surfaces_end_to_end():
+    knowledge_repo, generated_repo, weekly_repo, source_snapshot_repo = _configured_golden_repositories()
+    configure_backend_read_dependencies(
+        app,
+        BackendReadDependencies(
+            persisted_reads_enabled=True,
+            knowledge_pack_reader=knowledge_repo,
+            generated_output_cache_reader=generated_repo,
+            weekly_news_reader=weekly_repo,
+            source_snapshot_repository=source_snapshot_repo,
+        ),
+    )
+    try:
+        overview = client.get("/api/assets/QQQ/overview").json()
+        weekly = client.get("/api/assets/QQQ/weekly-news").json()
+        aapl_weekly = client.get("/api/assets/AAPL/weekly-news").json()
+        sources = client.get("/api/assets/VOO/sources").json()
+        glossary = client.get("/api/assets/AAPL/glossary", params={"term": "revenue"}).json()
+        comparison = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "QQQ"}).json()
+        chat = client.post("/api/assets/VOO/chat", json={"question": "What does it hold?"}).json()
+        asset_export = client.get("/api/assets/VOO/export", params={"export_format": "json"}).json()
+        source_export = client.get("/api/assets/VOO/sources/export", params={"export_format": "json"}).json()
+        comparison_export = client.get(
+            "/api/compare/export",
+            params={"left_ticker": "VOO", "right_ticker": "QQQ", "export_format": "json"},
+        ).json()
+        chat_export = client.post(
+            "/api/assets/VOO/chat/export",
+            json={"question": "What does it hold?", "export_format": "json"},
+        ).json()
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    assert overview["asset"]["ticker"] == "QQQ"
+    assert overview["weekly_news_focus"]["selected_item_count"] == 1
+    assert overview["weekly_news_focus"]["configured_max_item_count"] == 8
+    assert overview["weekly_news_focus"]["evidence_limited_state"] == "limited_verified_set"
+    assert len(overview["weekly_news_focus"]["items"]) == 1
+    assert overview["ai_comprehensive_analysis"]["analysis_available"] is False
+    assert overview["ai_comprehensive_analysis"]["weekly_news_selected_item_count"] == 1
+    assert overview["ai_comprehensive_analysis"]["minimum_weekly_news_item_count"] == 2
+    assert weekly["weekly_news_focus"] == overview["weekly_news_focus"]
+    assert weekly["ai_comprehensive_analysis"] == overview["ai_comprehensive_analysis"]
+    assert aapl_weekly["asset"]["ticker"] == "AAPL"
+    assert aapl_weekly["weekly_news_focus"]["selected_item_count"] == 0
+    assert aapl_weekly["weekly_news_focus"]["evidence_limited_state"] == "empty"
+    assert aapl_weekly["ai_comprehensive_analysis"]["analysis_available"] is False
+
+    assert sources["drawer_state"] == "available"
+    assert sources["source_groups"]
+    assert sources["citation_bindings"]
+    assert all(group["title"] and group["publisher"] and group["url"] for group in sources["source_groups"])
+    assert all(group["retrieved_at"] for group in sources["source_groups"])
+    assert all(group["allowlist_status"] == "allowed" for group in sources["source_groups"])
+    assert all(group["source_use_policy"] in {"full_text_allowed", "summary_allowed"} for group in sources["source_groups"])
+    assert all(group["permitted_operations"]["can_export_full_text"] is False for group in sources["source_groups"])
+    assert any(group["allowed_excerpts"] for group in sources["source_groups"])
+
+    assert glossary["glossary_state"] == "available"
+    assert glossary["selected_asset"]["ticker"] == "AAPL"
+    assert glossary["terms"][0]["term_identity"]["term"] == "revenue"
+    assert glossary["terms"][0]["asset_context"]["citation_ids"]
+    assert glossary["citation_bindings"]
+    assert {binding["asset_ticker"] for binding in glossary["citation_bindings"]} == {"AAPL"}
+    assert all(binding["supports_asset_specific_context"] for binding in glossary["citation_bindings"])
+
+    assert comparison["comparison_type"] == "etf_vs_etf"
+    assert comparison["evidence_availability"]["availability_state"] == "available"
+    assert comparison["bottom_line_for_beginners"]["citation_ids"]
+    comparison_source_ids = {source["source_document_id"] for source in comparison["source_documents"]}
+    assert {citation["source_document_id"] for citation in comparison["citations"]} <= comparison_source_ids
+    assert {
+        binding["source_document_id"] for binding in comparison["evidence_availability"]["citation_bindings"]
+    } <= comparison_source_ids
+
+    assert chat["asset"]["ticker"] == "VOO"
+    assert chat["safety_classification"] == "educational"
+    assert chat["citations"]
+    assert chat["source_documents"]
+    assert {citation["source_document_id"] for citation in chat["citations"]} <= {
+        source["source_document_id"] for source in chat["source_documents"]
+    }
+
+    for export in [asset_export, source_export, comparison_export, chat_export]:
+        assert export["export_format"] == "json"
+        assert export["export_state"] == "available"
+        assert export["disclaimer"]
+        assert export["licensing_note"]["note_id"] == "export_licensing_scope"
+        assert export["export_validation"]["schema_version"] == "export-validation-v1"
+        assert export["export_validation"]["diagnostics"]["no_live_external_calls"] is True
+        assert export["source_documents"]
+        assert all(source["title"] and source["url"] and source["retrieved_at"] for source in export["source_documents"])
+        assert all(source["source_use_policy"] in {"full_text_allowed", "summary_allowed"} for source in export["source_documents"])
+        assert all(source["allowed_excerpt"] is not None for source in export["source_documents"])
+        assert "raw_model_reasoning" not in str(export).lower()
+        assert "openrouter" not in str(export).lower()
+
+    assert asset_export["content_type"] == "asset_page"
+    assert asset_export["export_validation"]["binding_scope"] == "same_asset"
+    assert source_export["content_type"] == "asset_source_list"
+    assert source_export["export_validation"]["binding_scope"] == "same_asset"
+    assert comparison_export["content_type"] == "comparison"
+    assert comparison_export["export_validation"]["binding_scope"] == "same_comparison_pack"
+    assert comparison_export["export_validation"]["diagnostics"]["same_comparison_pack_citation_bindings_only"] is True
+    assert chat_export["content_type"] == "chat_transcript"
+    assert chat_export["export_validation"]["binding_scope"] == "same_asset"
+    assert chat_export["export_validation"]["diagnostics"]["used_existing_chat_contract"] is True
+
+    assert {"AAPL", "VOO", "QQQ"} <= set(knowledge_repo.calls)
+    assert {"AAPL", "VOO", "QQQ"} <= set(weekly_repo.calls)
+    assert ("generic", ("QQQ",)) in generated_repo.calls
+    assert ("chat_answer", ("VOO",)) in generated_repo.calls
+    assert ("comparison", ("VOO", "QQQ")) in generated_repo.calls
+    assert {"AAPL", "VOO", "QQQ"} <= set(source_snapshot_repo.calls)
+    assert all(artifact.no_public_snapshot_access for artifact in source_snapshot_repo.records().artifacts)
+    assert all(artifact.can_feed_generated_output for artifact in source_snapshot_repo.records().artifacts)
+
+
+def test_configured_ingestion_ledger_is_route_wired_with_fixture_fallback():
+    ledger = InMemoryIngestionWorkerLedger()
+    configure_backend_read_dependencies(
+        app,
+        BackendReadDependencies(
+            persisted_reads_enabled=True,
+            ingestion_job_ledger=ledger,
+        ),
+    )
+    try:
+        created = client.post("/api/admin/ingest/SPY").json()
+        queued = client.get("/api/jobs/ingest-on-demand-spy").json()
+        execution = execute_ingestion_job_through_ledger("ingest-on-demand-spy", ingestion_job_ledger=ledger)
+        completed = client.get("/api/jobs/ingest-on-demand-spy").json()
+        pre_cache = client.post("/api/admin/pre-cache/SPY").json()
+        pre_cache_status = client.get("/api/admin/pre-cache/jobs/pre-cache-launch-spy").json()
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    assert created["job_state"] == "pending"
+    assert queued["job_state"] == "pending"
+    assert execution.summary.terminal_state == "succeeded"
+    assert completed["job_state"] == "succeeded"
+    assert completed["generated_route"] is None
+    assert completed["capabilities"]["can_open_generated_page"] is False
+    assert pre_cache["job_id"] == "pre-cache-launch-spy"
+    assert pre_cache_status["job_id"] == "pre-cache-launch-spy"
+
+
+def test_t118_local_fresh_data_ingest_to_render_smoke_path_is_deterministic():
+    ledger = InMemoryIngestionWorkerLedger()
+    source_snapshot_repo = InMemorySourceSnapshotArtifactRepository()
+    knowledge_repo = RecordingKnowledgePackRepository()
+    generated_repo = RecordingGeneratedOutputRepository()
+    weekly_repo = RecordingWeeklyNewsRepository()
+
+    configure_backend_read_dependencies(
+        app,
+        BackendReadDependencies(
+            persisted_reads_enabled=True,
+            ingestion_job_ledger=ledger,
+            source_snapshot_repository=source_snapshot_repo,
+        ),
+    )
+    try:
+        requested = client.post("/api/admin/pre-cache/VOO").json()
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    pending_records = serialize_ingestion_job_response(get_pre_cache_job_status("pre-cache-launch-voo"))
+    pending_records = pending_records.model_copy(
+        update={
+            "ledger": pending_records.ledger.model_copy(
+                update={
+                    "job_state": IngestionLedgerJobState.pending.value,
+                    "worker_status": None,
+                    "started_at": None,
+                    "finished_at": None,
+                }
+            )
+        }
+    )
+    ledger.save(pending_records)
+
+    adapter = mock_etf_issuer_adapter()
+    licensing = fetch_mock_provider_response(adapter.provider_kind, "VOO").licensing
+    acquisition = execute_etf_issuer_handoff_gated_official_source_acquisition(
+        adapter,
+        adapter.request("VOO"),
+        licensing,
+    )
+    snapshot_records = source_snapshot_records_from_acquisition_result(
+        acquisition,
+        ingestion_job_id="pre-cache-launch-voo",
+    )
+    acquisition_pack_records = knowledge_pack_records_from_acquisition_result(acquisition, snapshot_records)
+    fixture_pack_records = _fixture_knowledge_pack_records("VOO")
+    weekly_records = acquire_weekly_news_event_evidence_from_fixtures(
+        asset_ticker="VOO",
+        as_of="2026-04-23",
+        created_at="2026-04-23T12:00:00Z",
+        candidates=[
+            _weekly_candidate("VOO", "issuer_announcement"),
+            _weekly_candidate("VOO", "fact_sheet_change"),
+        ],
+    )
+    generate_asset_overview("VOO", generated_output_cache_writer=generated_repo)
+    generated_overview_records = generated_repo.read_asset_overview_records("VOO")
+    assert generated_overview_records is not None
+    generate_asset_chat("VOO", "What does it hold?", generated_output_cache_writer=generated_repo)
+    _persist_fixture_knowledge_pack(knowledge_repo, "QQQ")
+    generate_comparison("VOO", "QQQ", generated_output_cache_writer=generated_repo)
+
+    worker = DeterministicIngestionWorker(
+        ledger_boundary=ledger,
+        source_snapshot_repository=source_snapshot_repo,
+        knowledge_pack_repository=knowledge_repo,
+        weekly_news_repository=weekly_repo,
+        generated_output_cache_repository=generated_repo,
+        fixture_outcomes={
+            "pre-cache-launch-voo": IngestionWorkerFixtureOutcome(
+                terminal_state=IngestionLedgerJobState.succeeded,
+                source_policy_ref=acquisition.source_policy_ref,
+                checksum=acquisition.checksum,
+                source_snapshot_records=snapshot_records,
+                knowledge_pack_records=fixture_pack_records,
+                weekly_news_records=weekly_records,
+                generated_output_cache_records=generated_overview_records,
+                live_acquisition_attempted=True,
+                live_acquisition_readiness_passed=True,
+                live_repository_writers_required=True,
+                official_source_handoff_passed=True,
+                retrieval_outcome="mocked_official_fetch_completed",
+                parser_outcome="parsed",
+                source_handoff_outcome="approved",
+            )
+        },
+    )
+
+    result = worker.execute("pre-cache-launch-voo")
+    assert requested["job_id"] == "pre-cache-launch-voo"
+    assert result.summary.transitions == ["pending", "running", "succeeded"]
+    assert result.summary.no_live_external_calls is True
+    assert result.summary.opened_database_connection is False
+    assert result.summary.called_live_provider is False
+    assert result.summary.generated_output_cacheable is True
+    metadata = result.records.ledger.compact_metadata
+    assert metadata["source_snapshot_persistence_configured"] is True
+    assert metadata["knowledge_pack_persistence_configured"] is True
+    assert metadata["weekly_news_persistence_configured"] is True
+    assert metadata["generated_output_cache_persistence_configured"] is True
+    assert metadata["official_source_handoff_passed"] is True
+    assert metadata["retrieval_outcome"] == "mocked_official_fetch_completed"
+    assert metadata["parser_outcome"] == "parsed"
+    assert metadata["source_handoff_outcome"] == "approved"
+
+    persisted_snapshots = source_snapshot_repo.records()
+    persisted_acquisition_pack = acquisition_pack_records
+    assert persisted_snapshots.artifacts
+    assert persisted_acquisition_pack.normalized_facts
+    assert persisted_acquisition_pack.envelope.generated_output_available is False
+    assert all(artifact.raw_provider_payload_stored is False for artifact in persisted_snapshots.artifacts)
+    assert all(artifact.secrets_stored is False for artifact in persisted_snapshots.artifacts)
+    assert knowledge_repo.read_knowledge_pack_records("VOO") is not None
+    assert weekly_repo.read_weekly_news_event_evidence_records("VOO") is not None
+    assert generated_repo.read_asset_overview_records("VOO") is not None
+
+    configure_backend_read_dependencies(
+        app,
+        BackendReadDependencies(
+            persisted_reads_enabled=True,
+            knowledge_pack_reader=knowledge_repo,
+            generated_output_cache_reader=generated_repo,
+            weekly_news_reader=weekly_repo,
+            ingestion_job_ledger=ledger,
+            source_snapshot_repository=source_snapshot_repo,
+        ),
+    )
+    try:
+        completed = client.get("/api/admin/pre-cache/jobs/pre-cache-launch-voo").json()
+        overview = client.get("/api/assets/VOO/overview").json()
+        weekly = client.get("/api/assets/VOO/weekly-news").json()
+        sources = client.get("/api/assets/VOO/sources").json()
+        knowledge_pack = client.get("/api/assets/VOO/knowledge-pack").json()
+        glossary = client.get("/api/assets/VOO/glossary", params={"term": "expense ratio"}).json()
+        chat = client.post("/api/assets/VOO/chat", json={"question": "What does it hold?"}).json()
+        comparison_export = client.get(
+            "/api/compare/export",
+            params={"left_ticker": "VOO", "right_ticker": "QQQ", "export_format": "json"},
+        ).json()
+        asset_export = client.get("/api/assets/VOO/export", params={"export_format": "json"}).json()
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    assert completed["job_state"] == "succeeded"
+    assert completed["generated_output_available"] is True
+    assert overview["asset"]["ticker"] == "VOO"
+    assert overview["weekly_news_focus"]["selected_item_count"] == 2
+    assert overview["weekly_news_focus"]["evidence_limited_state"] == "limited_verified_set"
+    assert overview["ai_comprehensive_analysis"]["analysis_available"] is True
+    assert weekly["weekly_news_focus"] == overview["weekly_news_focus"]
+    assert sources["drawer_state"] == "available"
+    assert all(group["allowlist_status"] == "allowed" for group in sources["source_groups"])
+    assert all(group["allowed_excerpts"] for group in sources["source_groups"])
+    assert knowledge_pack["ticker"] == "VOO"
+    assert knowledge_pack["build_state"] == "available"
+    assert glossary["glossary_state"] == "available"
+    assert chat["asset"]["ticker"] == "VOO"
+    assert chat["citations"]
+    assert asset_export["export_state"] == "available"
+    assert comparison_export["export_state"] == "available"
+    assert "raw_model_reasoning" not in str(asset_export).lower()
+    assert "openrouter" not in str(asset_export).lower()
+    assert {"VOO", "QQQ"} <= set(knowledge_repo.calls)
+    assert "VOO" in weekly_repo.calls
+    assert ("asset_overview", ("VOO",)) in generated_repo.calls
+    assert ("chat_answer", ("VOO",)) in generated_repo.calls
+    assert ("comparison", ("VOO", "QQQ")) in generated_repo.calls
+
+
+def test_t130_local_fresh_data_mvp_rehearsal_ties_governed_path_to_render_surfaces():
+    result = run_rehearsal(env={})
+    checks = {check["check_id"]: check for check in result["checks"]}
+
+    assert result["status"] == "blocked"
+    assert result["normal_ci_requires_live_calls"] is False
+    assert result["production_services_started"] is False
+    assert result["sources_approved_by_rehearsal"] is False
+    assert result["local_mvp_threshold_summary"]["overall_local_approval_status"] == "blocked_for_local_operator_review"
+    assert result["local_mvp_threshold_summary"]["launch_or_public_deployment_approved"] is False
+    assert result["local_mvp_threshold_summary"]["asset_state_summary"]["generated_surface_violation_count"] == 0
+    assert checks["source_handoff_approval_gate"]["status"] == "pass"
+    assert checks["governed_golden_api_rendering"]["status"] == "pass"
+    assert checks["governed_golden_api_rendering"]["details"]["blocked_search_cases"] == [
+        "out_of_scope",
+        "pending_ingestion",
+        "unknown",
+        "unsupported",
+    ]
+    assert checks["launch_manifest_review_packets"]["status"] == "pass"
+    assert checks["frontend_v04_smoke_markers"]["reason_code"] == "legacy_web_runtime_retired"
 
 
 def test_health_endpoint_available():
@@ -55,6 +1030,8 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
     ingestion_needed = client.get("/api/search", params={"q": "SPY"}).json()
     launch_stock = client.get("/api/search", params={"q": "BRK.B"}).json()
     launch_etf = client.get("/api/search", params={"q": "SOXX"}).json()
+    unsupported_etf = client.get("/api/search", params={"q": "ARKK"}).json()
+    out_of_scope_etf = client.get("/api/search", params={"q": "VXX"}).json()
 
     assert ambiguous["state"]["status"] == "ambiguous"
     assert ambiguous["state"]["requires_disambiguation"] is True
@@ -112,6 +1089,200 @@ def test_search_classification_states_cover_ambiguous_unknown_and_ingestion_need
         assert body["results"][0]["can_answer_chat"] is False
         assert body["results"][0]["can_compare"] is False
 
+    assert unsupported_etf["state"]["status"] == "unsupported"
+    assert unsupported_etf["state"]["support_classification"] == "recognized_unsupported"
+    assert unsupported_etf["state"]["blocked_explanation"]["explanation_category"] == "active_etf"
+    assert unsupported_etf["results"][0]["ticker"] == "ARKK"
+    assert unsupported_etf["results"][0]["asset_type"] == "unsupported"
+    assert unsupported_etf["results"][0]["generated_route"] is None
+    assert unsupported_etf["results"][0]["can_answer_chat"] is False
+    assert unsupported_etf["results"][0]["can_compare"] is False
+
+    assert out_of_scope_etf["state"]["status"] == "out_of_scope"
+    assert out_of_scope_etf["state"]["support_classification"] == "out_of_scope"
+    assert out_of_scope_etf["state"]["blocked_explanation"]["explanation_category"] == "etf_like_product_scope"
+    assert out_of_scope_etf["results"][0]["ticker"] == "VXX"
+    assert out_of_scope_etf["results"][0]["asset_type"] == "etf"
+    assert out_of_scope_etf["results"][0]["generated_route"] is None
+    assert out_of_scope_etf["results"][0]["can_answer_chat"] is False
+    assert out_of_scope_etf["results"][0]["can_compare"] is False
+
+
+def test_lightweight_api_fallback_diagnostics_are_exposed_without_unlocking_cached_or_blocked_rows(monkeypatch):
+    clear_lightweight_fetch_reuse_cache()
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    shared_fetcher = LocalFreshDataSliceFakeFetcher()
+
+    def fake_fetch(ticker, settings=None, chart_range="6mo"):  # noqa: ANN001 - monkeypatch target matches production call shapes.
+        del settings
+        return fetch_lightweight_asset_data(
+            ticker,
+            settings=settings_override,
+            fetcher=shared_fetcher,
+            retrieved_at=RETRIEVED_AT,
+            chart_range=chart_range,
+        )
+
+    settings_override = settings
+    monkeypatch.setenv("DATA_POLICY_MODE", "lightweight")
+    monkeypatch.setenv("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setenv("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
+    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "learn-the-ticker-tests/0.1 test@example.com")
+    monkeypatch.setattr("backend.search.fetch_lightweight_asset_data", fake_fetch)
+    monkeypatch.setattr("backend.lightweight_page.fetch_lightweight_asset_data", fake_fetch)
+    monkeypatch.setattr("backend.main.fetch_lightweight_asset_data", fake_fetch)
+
+    cached_search = client.get("/api/search", params={"q": "VOO"}).json()
+    issuer_backed_search = client.get("/api/search", params={"q": "SPY"}).json()
+    overview = client.get("/api/assets/SPY/overview").json()
+    chart_6mo = client.get("/api/assets/SPY/chart", params={"range": "6mo"}).json()
+    chart_invalid = client.get("/api/assets/SPY/chart", params={"range": "2y"}).json()
+    details = client.get("/api/assets/SPY/details").json()
+    sources = client.get("/api/assets/SPY/sources").json()
+    blocked_fresh_data = client.get("/api/assets/TQQQ/fresh-data").json()
+
+    assert cached_search["state"]["support_classification"] == "cached_supported"
+    assert cached_search["results"][0]["fallback_diagnostics"] is None
+
+    search_diagnostics = issuer_backed_search["results"][0]["fallback_diagnostics"]
+    search_fetch_url_count = len(shared_fetcher.urls)
+    assert issuer_backed_search["state"]["status"] == "supported"
+    assert issuer_backed_search["results"][0]["ticker"] == "SPY"
+    assert search_diagnostics["schema_version"] == "lightweight-api-fallback-diagnostics-v1"
+    assert search_diagnostics["source_path"] == "issuer_backed_etf_provider_fallback"
+    assert search_diagnostics["fetch_state"] == "supported"
+    assert search_diagnostics["page_render_state"] == "supported"
+    assert search_diagnostics["generated_output_eligible"] is True
+    assert search_diagnostics["source_labels"] == ["official", "partial", "provider_derived"]
+    assert search_diagnostics["source_count"] == 6
+    assert search_diagnostics["official_source_count"] == 4
+    assert search_diagnostics["provider_fallback_source_count"] == 1
+    assert search_diagnostics["gap_count"] == 1
+    assert search_diagnostics["issuer_evidence_state"] == "supported"
+    assert search_diagnostics["freshness"]["holdings_as_of"] == "2026-04-01"
+    assert search_diagnostics["raw_payload_exposed"] is False
+    assert search_diagnostics["secret_values_exposed"] is False
+
+    for payload in (overview, details, sources):
+        diagnostics = payload["fallback_diagnostics"]
+        assert diagnostics["schema_version"] == "lightweight-api-fallback-diagnostics-v1"
+        assert diagnostics["source_path"] == "issuer_backed_etf_provider_fallback"
+        assert diagnostics["issuer_evidence_state"] == "supported"
+        assert diagnostics["official_source_count"] == 4
+        assert diagnostics["raw_payload_exposed"] is False
+        assert diagnostics["secret_values_exposed"] is False
+    assert len(shared_fetcher.urls) == search_fetch_url_count
+
+    sections = {section["section_id"]: section for section in overview["sections"]}
+    assert sections["holdings_exposure"]["table"]["table_id"] == "top_holdings"
+    assert len(sections["holdings_exposure"]["table"]["rows"]) == 10
+    assert sections["sector_weightings"]["table"]["table_id"] == "sector_weightings"
+    assert sections["performance"]["table"]["table_id"] == "performance_returns"
+    assert sections["price_chart"]["chart"]["chart_id"] == "provider_price_chart"
+    assert sections["price_chart"]["chart"]["range"] == "6mo"
+    assert len(sections["price_chart"]["chart"]["points"]) >= 6
+    assert sections["price_chart"]["table"]["table_id"] == "quote_stats"
+    assert any(row["row_id"] == "expense_ratio" and row["evidence_state"] == "supported" for row in sections["price_chart"]["table"]["rows"])
+    assert chart_6mo["schema_version"] == "asset-chart-v1"
+    assert chart_6mo["requested_range"] == "6mo"
+    assert chart_6mo["default_range"] == "6mo"
+    assert chart_6mo["supported_ranges"] == ["1d", "5d", "1mo", "6mo", "ytd", "1y", "5y", "max"]
+    assert chart_6mo["chart"]["range"] == "6mo"
+    assert len(chart_6mo["chart"]["points"]) >= 6
+    assert chart_6mo["citations"]
+    assert chart_6mo["source_documents"]
+    for supported_range in chart_6mo["supported_ranges"]:
+        range_payload = client.get("/api/assets/SPY/chart", params={"range": supported_range}).json()
+        assert range_payload["requested_range"] == supported_range
+        assert range_payload["chart"]["range"] == supported_range
+        assert len(range_payload["chart"]["points"]) >= 6
+    assert chart_invalid["chart"] is None
+    assert chart_invalid["state"]["status"] == "unknown"
+    assert chart_invalid["supported_ranges"] == chart_6mo["supported_ranges"]
+    serialized_overview = str(overview).lower()
+    assert "'raw'" not in serialized_overview
+    assert '"raw"' not in serialized_overview
+
+    blocked_diagnostics = blocked_fresh_data["fallback_diagnostics"]
+    assert blocked_fresh_data["generated_output_eligible"] is False
+    assert blocked_fresh_data["sources"] == []
+    assert blocked_fresh_data["citations"] == []
+    assert blocked_fresh_data["facts"] == []
+    assert blocked_diagnostics["source_path"] == "blocked_scope_screen"
+    assert blocked_diagnostics["generated_output_eligible"] is False
+    assert blocked_diagnostics["source_count"] == 0
+    assert blocked_diagnostics["raw_payload_exposed"] is False
+
+
+def test_lightweight_weekly_news_endpoint_matches_overview_when_enabled(monkeypatch):
+    clear_lightweight_fetch_reuse_cache()
+    settings_override = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    shared_fetcher = LocalFreshDataSliceFakeFetcher()
+
+    def fake_fetch(ticker, settings=None, chart_range="6mo"):  # noqa: ANN001 - monkeypatch target matches production call shapes.
+        del settings
+        return fetch_lightweight_asset_data(
+            ticker,
+            settings=settings_override,
+            fetcher=shared_fetcher,
+            retrieved_at=RETRIEVED_AT,
+            chart_range=chart_range,
+        )
+
+    monkeypatch.setenv("DATA_POLICY_MODE", "lightweight")
+    monkeypatch.setenv("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "true")
+    monkeypatch.setenv("LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED", "true")
+    monkeypatch.setenv("LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED", "true")
+    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "learn-the-ticker-tests/0.1 test@example.com")
+    monkeypatch.setattr("backend.lightweight_page.fetch_lightweight_asset_data", fake_fetch)
+    monkeypatch.setattr("backend.main.fetch_lightweight_asset_data", fake_fetch)
+
+    overview_response = client.get("/api/assets/VOO/overview")
+    details_response = client.get("/api/assets/VOO/details")
+    weekly_response = client.get("/api/assets/VOO/weekly-news")
+    sources_response = client.get("/api/assets/VOO/sources")
+    chart_response = client.get("/api/assets/VOO/chart", params={"range": "6mo"})
+
+    assert overview_response.status_code == 200
+    assert details_response.status_code == 200
+    assert weekly_response.status_code == 200
+    assert sources_response.status_code == 200
+    assert chart_response.status_code == 200
+
+    overview = overview_response.json()
+    weekly = weekly_response.json()
+    details = details_response.json()
+    sources = sources_response.json()
+    chart = chart_response.json()
+
+    assert overview["weekly_news_focus"]["selected_item_count"] == 2
+    assert overview["weekly_news_focus"]["items"][0]["source"]["source_quality"] == "provider"
+    assert overview["ai_comprehensive_analysis"]["analysis_available"] is True
+    assert weekly["weekly_news_focus"] == overview["weekly_news_focus"]
+    assert weekly["ai_comprehensive_analysis"] == overview["ai_comprehensive_analysis"]
+    assert weekly["weekly_news_focus"]["stable_facts_are_separate"] is True
+    assert details["facts"]["holdings"]
+    assert sources["sources"]
+    assert chart["chart"]["points"]
+    assert any(section.get("chart") for section in overview["sections"])
+    assert any((section.get("table") or {}).get("table_id") == "etf_overview" for section in overview["sections"])
+    assert any((section.get("table") or {}).get("table_id") == "top_holdings" for section in overview["sections"])
+
 
 def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     eligible = client.post("/api/admin/ingest/SPY").json()
@@ -119,7 +1290,9 @@ def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     eligible_launch = client.post("/api/admin/ingest/SOXX").json()
     cached = client.post("/api/admin/ingest/VOO").json()
     unsupported = client.post("/api/admin/ingest/TQQQ").json()
+    unsupported_etf = client.post("/api/admin/ingest/ARKK").json()
     out_of_scope = client.post("/api/admin/ingest/GME").json()
+    out_of_scope_etf = client.post("/api/admin/ingest/VXX").json()
     unknown = client.post("/api/admin/ingest/ZZZZ").json()
 
     assert eligible == eligible_again
@@ -158,6 +1331,14 @@ def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     assert unsupported["capabilities"]["can_answer_chat"] is False
     assert unsupported["capabilities"]["can_compare"] is False
 
+    assert unsupported_etf["ticker"] == "ARKK"
+    assert unsupported_etf["job_id"] is None
+    assert unsupported_etf["job_state"] == "unsupported"
+    assert unsupported_etf["generated_route"] is None
+    assert unsupported_etf["capabilities"]["can_open_generated_page"] is False
+    assert unsupported_etf["capabilities"]["can_answer_chat"] is False
+    assert unsupported_etf["capabilities"]["can_compare"] is False
+
     assert out_of_scope["ticker"] == "GME"
     assert out_of_scope["asset_type"] == "stock"
     assert out_of_scope["job_id"] is None
@@ -167,6 +1348,16 @@ def test_ingestion_request_route_returns_deterministic_job_or_non_job_states():
     assert out_of_scope["capabilities"]["can_answer_chat"] is False
     assert out_of_scope["capabilities"]["can_compare"] is False
     assert out_of_scope["capabilities"]["can_request_ingestion"] is False
+
+    assert out_of_scope_etf["ticker"] == "VXX"
+    assert out_of_scope_etf["asset_type"] == "etf"
+    assert out_of_scope_etf["job_id"] is None
+    assert out_of_scope_etf["job_state"] == "out_of_scope"
+    assert out_of_scope_etf["generated_route"] is None
+    assert out_of_scope_etf["capabilities"]["can_open_generated_page"] is False
+    assert out_of_scope_etf["capabilities"]["can_answer_chat"] is False
+    assert out_of_scope_etf["capabilities"]["can_compare"] is False
+    assert out_of_scope_etf["capabilities"]["can_request_ingestion"] is False
 
     assert unknown["ticker"] == "ZZZZ"
     assert unknown["asset_type"] == "unknown"
@@ -241,8 +1432,12 @@ def test_pre_cache_asset_and_status_routes_cover_non_generated_states():
     failed = client.get("/api/admin/pre-cache/jobs/pre-cache-launch-amzn").json()
     unsupported = client.post("/api/admin/pre-cache/TQQQ").json()
     unsupported_status = client.get("/api/admin/pre-cache/jobs/pre-cache-unsupported-tqqq").json()
+    unsupported_etf = client.post("/api/admin/pre-cache/ARKK").json()
+    unsupported_etf_status = client.get("/api/admin/pre-cache/jobs/pre-cache-unsupported-arkk").json()
     out_of_scope = client.post("/api/admin/pre-cache/GME").json()
     out_of_scope_status = client.get("/api/admin/pre-cache/jobs/pre-cache-out-of-scope-gme").json()
+    out_of_scope_etf = client.post("/api/admin/pre-cache/VXX").json()
+    out_of_scope_etf_status = client.get("/api/admin/pre-cache/jobs/pre-cache-out-of-scope-vxx").json()
     unknown = client.post("/api/admin/pre-cache/ZZZZ").json()
     unknown_status = client.get("/api/admin/pre-cache/jobs/pre-cache-unknown-zzzz").json()
     missing = client.get("/api/admin/pre-cache/jobs/missing-pre-cache-job").json()
@@ -260,16 +1455,33 @@ def test_pre_cache_asset_and_status_routes_cover_non_generated_states():
     assert unsupported == unsupported_status
     assert unsupported["asset_type"] == "unsupported"
     assert unsupported["job_state"] == "unsupported"
+    assert unsupported_etf == unsupported_etf_status
+    assert unsupported_etf["asset_type"] == "unsupported"
+    assert unsupported_etf["job_state"] == "unsupported"
     assert out_of_scope == out_of_scope_status
     assert out_of_scope["asset_type"] == "stock"
     assert out_of_scope["job_state"] == "out_of_scope"
+    assert out_of_scope_etf == out_of_scope_etf_status
+    assert out_of_scope_etf["asset_type"] == "etf"
+    assert out_of_scope_etf["job_state"] == "out_of_scope"
     assert unknown == unknown_status
     assert unknown["asset_type"] == "unknown"
     assert unknown["job_state"] == "unknown"
     assert missing["job_state"] == "unavailable"
     assert missing["generated_route"] is None
 
-    for body in [queued_etf, queued_stock, running, failed, unsupported, out_of_scope, unknown, missing]:
+    for body in [
+        queued_etf,
+        queued_stock,
+        running,
+        failed,
+        unsupported,
+        unsupported_etf,
+        out_of_scope,
+        out_of_scope_etf,
+        unknown,
+        missing,
+    ]:
         assert body["generated_route"] is None
         assert body["generated_output_available"] is False
         assert body["citation_ids"] == []
@@ -294,13 +1506,31 @@ def test_overview_has_beginner_sections_and_citations():
     assert body["top_risks"][0]["citation_ids"][0] in citation_ids
     assert body["recent_developments"][0]["citation_ids"][0] in citation_ids
     assert body["weekly_news_focus"]["schema_version"] == "weekly-news-focus-v1"
+    assert body["market_news_focus"]["schema_version"] == "market-news-focus-v1"
+    assert body["market_news_focus"]["reusable_across_tickers"] is True
+    assert body["market_news_focus"]["configured_max_item_count"] == 20
+    assert body["market_news_focus"]["selected_item_count"] <= 20
+    assert body["market_ai_comprehensive_analysis"]["schema_version"] == "market-ai-comprehensive-analysis-v1"
+    assert body["market_ai_comprehensive_analysis"]["analysis_available"] is True
+    assert body["market_ai_comprehensive_analysis"]["generation_diagnostics"]["used_fallback"] is True
+    assert "market_ai_comprehensive_analysis" in body["generation_diagnostics"]
+    assert "beginner_summary" in body["generation_diagnostics"]
+    assert body["generation_diagnostics"]["beginner_summary"]["used_fallback"] is True
     assert body["weekly_news_focus"]["window"]["news_window_start"] == "2026-04-13"
     assert body["weekly_news_focus"]["window"]["news_window_end"] == "2026-04-22"
+    assert body["weekly_news_focus"]["configured_max_item_count"] == 8
+    assert body["weekly_news_focus"]["selected_item_count"] == 0
+    assert body["weekly_news_focus"]["suppressed_candidate_count"] >= 0
+    assert body["weekly_news_focus"]["evidence_state"] == "no_high_signal"
+    assert body["weekly_news_focus"]["evidence_limited_state"] == "empty"
     assert body["weekly_news_focus"]["items"] == []
     assert body["weekly_news_focus"]["empty_state"]["evidence_state"] == "no_high_signal"
     assert body["ai_comprehensive_analysis"]["schema_version"] == "ai-comprehensive-analysis-v1"
     assert body["ai_comprehensive_analysis"]["analysis_available"] is False
+    assert body["ai_comprehensive_analysis"]["minimum_weekly_news_item_count"] == 2
+    assert body["ai_comprehensive_analysis"]["weekly_news_selected_item_count"] == 0
     assert body["ai_comprehensive_analysis"]["sections"] == []
+    assert body["ai_comprehensive_analysis"]["generation_diagnostics"]["used_fallback"] is True
     assert "src_voo_fact_sheet_fixture" in source_ids
     assert "src_voo_recent_review" in source_ids
     sections = {section["section_id"]: section for section in body["sections"]}
@@ -375,12 +1605,14 @@ def test_details_sources_and_recent_routes_exist():
     recent = client.get("/api/assets/AAPL/recent")
     weekly = client.get("/api/assets/AAPL/weekly-news")
     glossary = client.get("/api/assets/AAPL/glossary")
+    fresh_data = client.get("/api/assets/AAPL/fresh-data")
 
     assert details.status_code == 200
     assert sources.status_code == 200
     assert recent.status_code == 200
     assert weekly.status_code == 200
     assert glossary.status_code == 200
+    assert fresh_data.status_code == 200
     assert details.json()["facts"]["business_model"]
     assert sources.json()["sources"][0]["source_document_id"] == "src_aapl_10k_fixture"
     assert sources.json()["sources"][0]["publisher"] == "U.S. SEC"
@@ -395,11 +1627,19 @@ def test_details_sources_and_recent_routes_exist():
     assert sources.json()["section_references"][0]["freshness_state"]
     assert recent.json()["recent_developments"][0]["freshness_state"] == "fresh"
     assert weekly.json()["weekly_news_focus"]["state"] == "no_high_signal"
+    assert weekly.json()["weekly_news_focus"]["configured_max_item_count"] == 8
+    assert weekly.json()["weekly_news_focus"]["selected_item_count"] == 0
+    assert weekly.json()["weekly_news_focus"]["evidence_limited_state"] == "empty"
     assert weekly.json()["ai_comprehensive_analysis"]["state"] == "suppressed"
+    assert weekly.json()["ai_comprehensive_analysis"]["weekly_news_selected_item_count"] == 0
     assert glossary.json()["schema_version"] == "glossary-asset-context-v1"
     assert glossary.json()["glossary_state"] == "available"
     assert {term["term_identity"]["term"] for term in glossary.json()["terms"]} >= {"revenue", "P/E ratio"}
     assert glossary.json()["diagnostics"]["no_live_external_calls"] is True
+    assert fresh_data.json()["schema_version"] == "lightweight-asset-fetch-v1"
+    assert fresh_data.json()["fetch_state"] == "unavailable"
+    assert fresh_data.json()["diagnostics"]["reason_code"] == "lightweight_live_fetch_disabled"
+    assert fresh_data.json()["no_live_external_calls"] is True
 
 
 def test_glossary_route_serializes_supported_filtered_and_non_generated_states():
@@ -555,6 +1795,94 @@ def test_asset_page_and_source_list_export_routes_return_contract_payloads():
     assert source_body["source_documents"][0]["permitted_operations"]["can_export_full_text"] is False
 
 
+def test_lightweight_fresh_data_export_routes_use_renderable_local_evidence(monkeypatch):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    lightweight_response = fetch_lightweight_asset_data(
+        "SPY",
+        settings=settings,
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    overview = build_lightweight_overview_response(lightweight_response)
+    monkeypatch.setattr(
+        "backend.export.build_lightweight_overview_response_if_enabled",
+        lambda ticker: overview if ticker.upper() == "SPY" else None,
+    )
+
+    asset_export = client.get("/api/assets/SPY/export", params={"export_format": "json"})
+    source_export = client.get("/api/assets/SPY/sources/export", params={"export_format": "json"})
+
+    assert asset_export.status_code == 200
+    assert source_export.status_code == 200
+    for body in (asset_export.json(), source_export.json()):
+        assert body["export_state"] == "available"
+        assert body["asset"]["ticker"] == "SPY"
+        assert body["metadata"]["source"] == "lightweight_fresh_data_overview"
+        assert body["metadata"]["lightweight_fresh_data_export"] is True
+        assert body["metadata"]["strict_audit_quality_source_approval_granted"] is False
+        assert body["metadata"]["generated_output_cache_promoted"] is False
+        assert body["metadata"]["fallback_diagnostics"]["source_path"] == "issuer_backed_etf_provider_fallback"
+        assert body["export_validation"]["binding_scope"] == "same_asset"
+        assert body["export_validation"]["diagnostics"]["same_asset_citation_bindings_only"] is True
+        assert body["export_validation"]["diagnostics"]["same_asset_source_bindings_only"] is True
+        assert body["citations"]
+        assert body["source_documents"]
+        assert any(source["is_official"] is True for source in body["source_documents"])
+        assert any(source["source_use_policy"] == "metadata_only" for source in body["source_documents"])
+        assert all(source["permitted_operations"]["can_export_full_text"] is False for source in body["source_documents"])
+        assert "raw_payload" not in body["rendered_markdown"]
+        assert not find_forbidden_output_phrases(str(body).lower())
+
+
+def test_lightweight_fresh_data_chat_route_uses_renderable_local_evidence(monkeypatch):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    lightweight_response = fetch_lightweight_asset_data(
+        "SPY",
+        settings=settings,
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    monkeypatch.setattr(
+        "backend.lightweight_page.fetch_lightweight_page_data_if_enabled",
+        lambda ticker: lightweight_response if ticker.upper() == "SPY" else None,
+    )
+    generated_repo = InMemoryGeneratedOutputCacheRepository()
+    configure_backend_read_dependencies(app, BackendReadDependencies(generated_output_cache_reader=generated_repo))
+    try:
+        response = client.post("/api/assets/SPY/chat", json={"question": "What does it hold?"})
+    finally:
+        configure_backend_read_dependencies(app, None)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["asset"]["ticker"] == "SPY"
+    assert body["safety_classification"] == "educational"
+    assert body["citations"]
+    assert body["source_documents"]
+    assert {citation["source_document_id"] for citation in body["citations"]} <= {
+        source["source_document_id"] for source in body["source_documents"]
+    }
+    assert any(source["retrieved_at"] == RETRIEVED_AT for source in body["source_documents"])
+    assert all(source["source_use_policy"] != "metadata_only" for source in body["source_documents"])
+    assert any("Lightweight fallback diagnostics:" in item for item in body["uncertainty"])
+    assert body["session"]["lifecycle_state"] == "active"
+    assert generated_repo.read_chat_answer_records("SPY") is None
+
+
 def test_trust_metrics_catalog_route_is_validation_only_contract():
     response = client.get("/api/trust-metrics/catalog")
 
@@ -702,10 +2030,19 @@ def test_llm_runtime_route_is_sanitized_diagnostics_only_contract():
     assert body["schema_version"] == "llm-runtime-contract-v1"
     assert body["runtime"]["provider_kind"] == "mock"
     assert body["runtime"]["runtime_mode"] == "deterministic_mock"
+    assert body["runtime"]["readiness_status"] == "disabled_by_default"
     assert body["runtime"]["live_generation_enabled"] is False
     assert body["runtime"]["live_gate_state"] == "disabled"
     assert body["runtime"]["server_side_key_present"] is False
+    assert body["runtime"]["base_url_configured"] is False
+    assert body["runtime"]["model_chain_configured"] is True
+    assert body["runtime"]["validation_retry_count"] == 1
+    assert body["runtime"]["reasoning_summary_only"] is True
+    assert body["runtime"]["validation_ready"] is True
+    assert body["runtime"]["no_live_call_status"] == "no_live_calls_attempted"
     assert body["runtime"]["live_network_calls_allowed"] is False
+    assert "schema_validation_required" in body["runtime"]["validation_gates"]
+    assert "same_asset_or_comparison_pack_source_binding_required" in body["runtime"]["validation_gates"]
     assert body["credential_values_exposed"] is False
     assert body["private_prompt_fields_exposed"] is False
     assert body["model_reasoning_payload_exposed"] is False
@@ -723,6 +2060,7 @@ def test_comparison_and_chat_export_routes_return_explicit_shapes():
         json={"left_ticker": "VOO", "right_ticker": "QQQ", "export_format": "markdown"},
     )
     comparison_query = client.get("/api/compare/export", params={"left_ticker": "VOO", "right_ticker": "QQQ"})
+    stock_etf_query = client.get("/api/compare/export", params={"left_ticker": "AAPL", "right_ticker": "VOO"})
     chat = client.post(
         "/api/assets/QQQ/chat/export",
         json={"question": "What is this fund?", "conversation_id": "local-test"},
@@ -730,7 +2068,14 @@ def test_comparison_and_chat_export_routes_return_explicit_shapes():
 
     assert comparison.status_code == 200
     assert comparison_query.status_code == 200
+    assert stock_etf_query.status_code == 200
     assert chat.status_code == 200
+    stock_etf_body = stock_etf_query.json()
+    assert stock_etf_body["export_state"] == "available"
+    assert stock_etf_body["metadata"]["comparison_type"] == "stock_vs_etf"
+    assert "stock_etf_relationship_context" in {section["section_id"] for section in stock_etf_body["sections"]}
+    assert stock_etf_body["citations"]
+    assert stock_etf_body["source_documents"]
 
     comparison_body = comparison.json()
     assert comparison_query.json() == comparison_body
@@ -922,7 +2267,12 @@ def test_compare_route_uses_fixture_pipeline_in_reverse_order_and_unavailable_st
     unsupported = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "BTC"}).json()
     eligible = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "SPY"}).json()
     out_of_scope = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "GME"}).json()
-    no_local_pack = client.post("/api/compare", json={"left_ticker": "AAPL", "right_ticker": "VOO"}).json()
+    stock_etf = client.post("/api/compare", json={"left_ticker": "AAPL", "right_ticker": "VOO"}).json()
+    stock_etf_reverse = client.post("/api/compare", json={"left_ticker": "VOO", "right_ticker": "AAPL"}).json()
+    stock_stock = client.post("/api/compare", json={"left_ticker": "AAPL", "right_ticker": "MSFT"}).json()
+    stock_stock_reverse = client.post("/api/compare", json={"left_ticker": "MSFT", "right_ticker": "AAPL"}).json()
+    no_local_pack = client.post("/api/compare", json={"left_ticker": "AAPL", "right_ticker": "QQQ"}).json()
+    issuer_pair_without_pack = client.post("/api/compare", json={"left_ticker": "SPY", "right_ticker": "VTI"}).json()
 
     assert reverse["left_asset"]["ticker"] == "QQQ"
     assert reverse["right_asset"]["ticker"] == "VOO"
@@ -935,6 +2285,75 @@ def test_compare_route_uses_fixture_pipeline_in_reverse_order_and_unavailable_st
         for item in reverse["evidence_availability"]["evidence_items"]
         if item["side_role"] == "left_side_support"
     } == {"QQQ"}
+    assert stock_etf["comparison_type"] == "stock_vs_etf"
+    assert stock_etf["state"]["status"] == "supported"
+    assert stock_etf["evidence_availability"]["availability_state"] == "available"
+    assert stock_etf["stock_etf_relationship"]["schema_version"] == "stock-etf-relationship-v1"
+    assert stock_etf["stock_etf_relationship"]["relationship_state"] == "direct_holding"
+    assert stock_etf["stock_etf_relationship"]["basket_structure"]["evidence_state"] == "partial"
+    assert set(stock_etf["evidence_availability"]["required_dimensions"]) == {
+        "Structure",
+        "Basket membership",
+        "Breadth",
+        "Cost model",
+        "Educational role",
+    }
+    assert {item["dimension"] for item in stock_etf["key_differences"]} >= {
+        "Structure",
+        "Basket membership",
+        "Breadth",
+        "Cost model",
+        "Educational role",
+    }
+    assert {
+        item["dimension"]: item["evidence_state"]
+        for item in stock_etf["evidence_availability"]["required_evidence_dimensions"]
+    }["Basket membership"] == "partial"
+    assert stock_etf_reverse["left_asset"]["ticker"] == "VOO"
+    assert stock_etf_reverse["right_asset"]["ticker"] == "AAPL"
+    assert stock_etf_reverse["comparison_type"] == "stock_vs_etf"
+    assert stock_etf_reverse["evidence_availability"]["availability_state"] == "available"
+    assert {
+        item["asset_ticker"]
+        for item in stock_etf_reverse["evidence_availability"]["evidence_items"]
+        if item["side_role"] == "left_side_support"
+    } == {"VOO"}
+    assert {
+        item["asset_ticker"]
+        for item in stock_etf_reverse["evidence_availability"]["evidence_items"]
+        if item["side_role"] == "right_side_support"
+    } == {"AAPL"}
+    assert stock_stock["comparison_type"] == "stock_vs_stock"
+    assert stock_stock["state"]["status"] == "supported"
+    assert stock_stock["stock_etf_relationship"] is None
+    assert {group["group_id"] for group in stock_stock["metric_groups"]} >= {
+        "market_value_enterprise_value",
+        "price_performance",
+        "income_statement",
+        "balance_sheet",
+        "cash_flow",
+        "valuation_ratios",
+        "margins_earnings_returns_ownership",
+    }
+    assert stock_stock["metric_groups"][0]["rows"]
+    assert "you should" not in str(stock_stock["metric_groups"]).lower()
+    assert set(stock_stock["evidence_availability"]["required_dimensions"]) == {
+        "Business model",
+        "Revenue trend",
+        "Business quality evidence",
+        "Risk context",
+        "Valuation evidence availability",
+    }
+    assert {
+        item["dimension"]: item["evidence_state"]
+        for item in stock_stock["evidence_availability"]["required_evidence_dimensions"]
+    }["Valuation evidence availability"] == "partial"
+    serialized_stock_stock = str(stock_stock).lower()
+    for forbidden in ["benchmark", "expense ratio", "holdings count", "fund construction", "etf role", " etf"]:
+        assert forbidden not in serialized_stock_stock
+    assert stock_stock_reverse["left_asset"]["ticker"] == "MSFT"
+    assert stock_stock_reverse["right_asset"]["ticker"] == "AAPL"
+    assert stock_stock_reverse["comparison_type"] == "stock_vs_stock"
     assert unsupported["state"]["status"] == "unsupported"
     assert unsupported["comparison_type"] == "unavailable"
     assert unsupported["key_differences"] == []
@@ -945,6 +2364,7 @@ def test_compare_route_uses_fixture_pipeline_in_reverse_order_and_unavailable_st
 
     for body, expected_state in [
         (eligible, "eligible_not_cached"),
+        (issuer_pair_without_pack, "eligible_not_cached"),
         (out_of_scope, "out_of_scope"),
         (no_local_pack, "no_local_pack"),
     ]:
@@ -1003,7 +2423,8 @@ def test_chat_comparison_questions_redirect_to_compare_workflow_with_local_avail
         ("VOO", "How is VOO different from QQQ?", "VOO", "QQQ", "available"),
         ("VOO", "How is QQQ different from VOO?", "QQQ", "VOO", "available"),
         ("QQQ", "Why is this more concentrated than VOO?", "QQQ", "VOO", "available"),
-        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "no_local_pack"),
+        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "available"),
+        ("AAPL", "AAPL vs MSFT", "AAPL", "MSFT", "available"),
         ("VOO", "VOO vs SPY", "VOO", "SPY", "eligible_not_cached"),
         ("VOO", "VOO vs BTC", "VOO", "BTC", "unsupported"),
         ("VOO", "VOO vs GME", "VOO", "GME", "out_of_scope"),
@@ -1132,7 +2553,6 @@ def test_chat_supported_beginner_intents_use_selected_asset_pack():
         ("AAPL", "What does Apple do?", "primary business", "src_aapl_10k_fixture"),
         ("VOO", "What does VOO hold?", "about 500", "src_voo_fact_sheet_fixture"),
         ("QQQ", "What is the biggest risk?", "concentration", "src_qqq_prospectus_fixture"),
-        ("VOO", "What changed recently?", "No high-signal recent development", "src_voo_recent_review"),
         ("AAPL", "Is Apple expensive based on valuation?", "Insufficient evidence", None),
     ]
 
@@ -1153,6 +2573,11 @@ def test_chat_supported_beginner_intents_use_selected_asset_pack():
             assert body["source_documents"]
             assert expected_source in {citation["source_document_id"] for citation in body["citations"]}
             assert expected_source in {source["source_document_id"] for source in body["source_documents"]}
+
+    recent = client.post("/api/assets/VOO/chat", json={"question": "What changed recently?"}).json()
+    assert "Insufficient evidence" in recent["direct_answer"]
+    assert recent["citations"] == []
+    assert recent["source_documents"] == []
 
 
 def test_chat_unsupported_assets_redirect_to_scope_language():

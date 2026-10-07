@@ -1,4 +1,6 @@
 import { normalizeTicker, type CitationContext, type SourceDrawerSourceDocument } from "./fixtures";
+import { runtimeSectionStatesFromPayload, type RuntimeSectionState } from "./runtimeSectionStates";
+import { sanitizeSourceDisplayTitle } from "./sourceDisplay";
 
 type Fetcher = typeof fetch;
 
@@ -28,7 +30,11 @@ export type SourceDrawerListEntry = {
 export type SourceDrawerContractData = {
   drawerState: SourceDrawerState;
   entries: SourceDrawerListEntry[];
+  sectionStates?: RuntimeSectionState[];
 };
+
+export const GOVERNED_GOLDEN_SOURCE_DRAWER_RENDERING_PROOF =
+  "api-backed governed golden source drawer uses source groups, citation bindings, allowed excerpts, and source-use policies";
 
 export function sourceDrawerEntriesByDocumentId(data: SourceDrawerContractData) {
   return new Map(data.entries.map((entry) => [entry.source.source_document_id, entry]));
@@ -112,6 +118,7 @@ type BackendAssetSourceDrawerResponse = {
   citation_bindings: BackendSourceDrawerCitationBinding[];
   related_claims: BackendSourceDrawerRelatedClaim[];
   section_references: BackendSourceDrawerSectionReference[];
+  section_states?: unknown[];
 };
 
 export async function fetchSupportedSourceDrawerResponse(
@@ -182,7 +189,7 @@ function toSourceDrawerContractData(response: BackendAssetSourceDrawerResponse):
       source: {
         sourceDocumentId: group.source_document_id,
         sourceType: group.source_type,
-        title: group.title,
+        title: sanitizeSourceDisplayTitle(group.title, group),
         publisher: group.publisher,
         url: group.url,
         publishedAt: group.published_at ?? "Unknown",
@@ -211,7 +218,7 @@ function toSourceDrawerContractData(response: BackendAssetSourceDrawerResponse):
       claim:
         contexts[0]?.claimContext ??
         relatedClaims[0]?.claim_text ??
-        `${group.title} is included in this backend-aligned deterministic source list.`,
+        `${sanitizeSourceDisplayTitle(group.title, group)} is included in this backend-aligned source list.`,
       contexts,
       drawerState: sourceDrawerStateFromFreshness(group.freshness_state)
     };
@@ -219,7 +226,8 @@ function toSourceDrawerContractData(response: BackendAssetSourceDrawerResponse):
 
   return {
     drawerState: sourceDrawerStateFromContract(response.drawer_state),
-    entries
+    entries,
+    sectionStates: runtimeSectionStatesFromPayload(response)
   };
 }
 

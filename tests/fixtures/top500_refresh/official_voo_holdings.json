@@ -1,0 +1,23 @@
+{
+  "source": {
+    "source_id": "official_voo_holdings_2026_04_fixture",
+    "ticker": "VOO",
+    "source_role": "fallback",
+    "title": "Vanguard S&P 500 ETF mocked official holdings",
+    "publisher": "Vanguard",
+    "source_type": "official_issuer_holdings",
+    "source_identity": "local://fixtures/top500_refresh/official_voo_holdings",
+    "source_snapshot_date": "2026-04-01",
+    "source_checksum": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "retrieved_at": "2026-04-27T00:00:00Z",
+    "freshness_state": "fresh",
+    "is_official": true,
+    "parser_status": "parsed"
+  },
+  "holdings": [
+    {"source_id": "official_voo_holdings_2026_04_fixture", "ticker": "AAPL", "name": "Apple Inc.", "weight": 7.2, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_voo_holdings_2026_04_fixture", "ticker": "MSFT", "name": "Microsoft Corporation", "weight": 6.2, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_voo_holdings_2026_04_fixture", "ticker": "GOOGL", "name": "Alphabet Inc. Class A", "weight": 3.0, "asset_type": "stock", "security_type": "common_stock", "exchange": "NASDAQ"},
+    {"source_id": "official_voo_holdings_2026_04_fixture", "ticker": "UNH", "name": "UnitedHealth Group Incorporated", "weight": 2.1, "asset_type": "stock", "security_type": "common_stock", "exchange": "NYSE"}
+  ]
+}

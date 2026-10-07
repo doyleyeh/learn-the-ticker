@@ -324,10 +324,15 @@ TERM_CATALOG: tuple[GlossaryCatalogEntry, ...] = (
 )
 
 
-def build_glossary_response(ticker: str, *, term: str | None = None) -> GlossaryResponse:
+def build_glossary_response(
+    ticker: str,
+    *,
+    term: str | None = None,
+    persisted_pack_reader: object | None = None,
+) -> GlossaryResponse:
     normalized = ticker.strip().upper()
     filters = _filters(term)
-    pack_result = build_asset_knowledge_pack_result(normalized)
+    pack_result = build_asset_knowledge_pack_result(normalized, persisted_reader=persisted_pack_reader)
 
     if pack_result.build_state is not KnowledgePackBuildState.available:
         response_state = _response_state_for_non_generated_ticker(normalized, pack_result.build_state)
@@ -348,7 +353,7 @@ def build_glossary_response(ticker: str, *, term: str | None = None) -> Glossary
             ),
         )
 
-    pack = build_asset_knowledge_pack(normalized)
+    pack = _asset_knowledge_pack_for_glossary(normalized, persisted_pack_reader=persisted_pack_reader)
     selected_entries = _catalog_entries_for_asset(pack.asset, term_filter=term)
     evidence_references: list[GlossaryEvidenceReference] = []
     citation_bindings: list[GlossaryCitationBinding] = []
@@ -407,6 +412,30 @@ def build_glossary_response(ticker: str, *, term: str | None = None) -> Glossary
             omitted_term_slugs=omitted,
         ),
     )
+
+
+def _asset_knowledge_pack_for_glossary(
+    ticker: str,
+    *,
+    persisted_pack_reader: object | None = None,
+) -> AssetKnowledgePack:
+    if persisted_pack_reader is None:
+        return build_asset_knowledge_pack(ticker)
+
+    from backend.retrieval_repository import read_persisted_knowledge_pack_response
+
+    persisted = read_persisted_knowledge_pack_response(ticker, reader=persisted_pack_reader)
+    if not persisted.found or persisted.records is None or persisted.response is None:
+        return build_asset_knowledge_pack(ticker)
+    if not persisted.response.asset.supported or not persisted.response.generated_output_available:
+        return build_asset_knowledge_pack(ticker)
+
+    try:
+        from backend.overview import _asset_knowledge_pack_from_repository_records
+
+        return _asset_knowledge_pack_from_repository_records(persisted.records)
+    except Exception:
+        return build_asset_knowledge_pack(ticker)
 
 
 def _filters(term: str | None) -> dict[str, str]:

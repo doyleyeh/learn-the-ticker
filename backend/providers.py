@@ -35,6 +35,14 @@ from backend.models import (
     SourceQuality,
     SourceUsePolicy,
 )
+from backend.provider_adapters.sec_stock import (
+    build_sec_stock_provider_response,
+    sec_stock_fixture_for_ticker,
+)
+from backend.provider_adapters.etf_issuer import (
+    build_etf_issuer_provider_response,
+    etf_issuer_fixture_for_ticker,
+)
 
 
 NO_LIVE_EXTERNAL_CALLS = True
@@ -186,84 +194,8 @@ def _build_sec_response(adapter: MockProviderAdapter, request: ProviderRequestMe
     ticker = request.normalized_ticker
     licensing = _official_public_licensing(adapter.provider_name)
 
-    if ticker == "AAPL":
-        asset = _known_asset_identity(ticker)
-        sources = [
-            _source(
-                adapter=adapter,
-                ticker=ticker,
-                data_category=request.data_category,
-                source_document_id="provider_sec_aapl_10k_2026",
-                source_type="sec_filing",
-                title="Apple Inc. Form 10-K deterministic provider fixture",
-                publisher="U.S. SEC",
-                url="https://www.sec.gov/Archives/edgar/data/320193/provider-fixture",
-                published_at="2026-04-01",
-                as_of_date=None,
-                freshness_state=FreshnessState.fresh,
-                is_official=True,
-                usage=ProviderSourceUsage.canonical,
-                source_rank=1,
-                can_support_canonical_facts=True,
-                can_support_recent_developments=False,
-                licensing=licensing,
-            ),
-            _source(
-                adapter=adapter,
-                ticker=ticker,
-                data_category=request.data_category,
-                source_document_id="provider_sec_aapl_xbrl_2026",
-                source_type="sec_xbrl_company_facts",
-                title="Apple Inc. SEC XBRL company facts deterministic provider fixture",
-                publisher="U.S. SEC",
-                url="https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json",
-                published_at=None,
-                as_of_date="2026-04-01",
-                freshness_state=FreshnessState.fresh,
-                is_official=True,
-                usage=ProviderSourceUsage.canonical,
-                source_rank=1,
-                can_support_canonical_facts=True,
-                can_support_recent_developments=False,
-                licensing=licensing,
-            ),
-        ]
-        facts = [
-            _fact(
-                ticker=ticker,
-                data_category=request.data_category,
-                fact_id="provider_fact_aapl_primary_business",
-                field_name="primary_business",
-                value="Designs, manufactures, and markets consumer technology products and services.",
-                source_document_ids=[sources[0].source_document_id],
-                citation_ids=["provider_cite_aapl_primary_business"],
-                fact_layer="canonical",
-            ),
-            _fact(
-                ticker=ticker,
-                data_category=request.data_category,
-                fact_id="provider_fact_aapl_net_sales_trend",
-                field_name="net_sales_trend_available",
-                value=True,
-                unit=None,
-                as_of_date="2026-04-01",
-                source_document_ids=[sources[1].source_document_id],
-                citation_ids=["provider_cite_aapl_xbrl_sales"],
-                fact_layer="canonical",
-            ),
-        ]
-        return _response(
-            adapter=adapter,
-            request=request,
-            state=ProviderResponseState.supported,
-            licensing=licensing,
-            asset=asset,
-            source_attributions=sources,
-            facts=facts,
-            freshness_state=FreshnessState.fresh,
-            as_of_date="2026-04-01",
-            message="Deterministic SEC-like canonical stock facts for AAPL.",
-        )
+    if sec_stock_fixture_for_ticker(ticker) is not None:
+        return build_sec_stock_provider_response(adapter, request, licensing)
 
     if ticker in ELIGIBLE_NOT_CACHED_ASSETS:
         return _eligible_not_cached_response(adapter, request, licensing)
@@ -278,112 +210,8 @@ def _build_etf_issuer_response(adapter: MockProviderAdapter, request: ProviderRe
     ticker = request.normalized_ticker
     licensing = _official_public_licensing(adapter.provider_name)
 
-    etf_fixtures = {
-        "VOO": {
-            "issuer": "Vanguard",
-            "benchmark": "S&P 500 Index",
-            "expense_ratio": 0.03,
-            "holdings_count": 500,
-            "url": "https://investor.vanguard.com/investment-products/etfs/profile/voo",
-        },
-        "QQQ": {
-            "issuer": "Invesco",
-            "benchmark": "Nasdaq-100 Index",
-            "expense_ratio": 0.20,
-            "holdings_count": 100,
-            "url": "https://www.invesco.com/qqq-etf/en/home.html",
-        },
-    }
-    fixture = etf_fixtures.get(ticker)
-    if fixture:
-        sources = [
-            _source(
-                adapter=adapter,
-                ticker=ticker,
-                data_category=request.data_category,
-                source_document_id=f"provider_issuer_{ticker.lower()}_fact_sheet",
-                source_type="issuer_fact_sheet",
-                title=f"{ticker} issuer fact sheet deterministic provider fixture",
-                publisher=str(fixture["issuer"]),
-                url=str(fixture["url"]),
-                published_at=None,
-                as_of_date="2026-04-01",
-                freshness_state=FreshnessState.fresh,
-                is_official=True,
-                usage=ProviderSourceUsage.canonical,
-                source_rank=1,
-                can_support_canonical_facts=True,
-                can_support_recent_developments=False,
-                licensing=licensing,
-            ),
-            _source(
-                adapter=adapter,
-                ticker=ticker,
-                data_category=ProviderDataCategory.etf_holdings_metadata,
-                source_document_id=f"provider_issuer_{ticker.lower()}_holdings",
-                source_type="issuer_holdings_file",
-                title=f"{ticker} issuer holdings metadata deterministic provider fixture",
-                publisher=str(fixture["issuer"]),
-                url=str(fixture["url"]),
-                published_at=None,
-                as_of_date="2026-04-01",
-                freshness_state=FreshnessState.fresh,
-                is_official=True,
-                usage=ProviderSourceUsage.canonical,
-                source_rank=1,
-                can_support_canonical_facts=True,
-                can_support_recent_developments=False,
-                licensing=licensing,
-            ),
-        ]
-        facts = [
-            _fact(
-                ticker=ticker,
-                data_category=ProviderDataCategory.etf_issuer_facts,
-                fact_id=f"provider_fact_{ticker.lower()}_benchmark",
-                field_name="benchmark",
-                value=fixture["benchmark"],
-                source_document_ids=[sources[0].source_document_id],
-                citation_ids=[f"provider_cite_{ticker.lower()}_benchmark"],
-                fact_layer="canonical",
-            ),
-            _fact(
-                ticker=ticker,
-                data_category=ProviderDataCategory.etf_issuer_facts,
-                fact_id=f"provider_fact_{ticker.lower()}_expense_ratio",
-                field_name="expense_ratio",
-                value=fixture["expense_ratio"],
-                unit="%",
-                as_of_date="2026-04-01",
-                source_document_ids=[sources[0].source_document_id],
-                citation_ids=[f"provider_cite_{ticker.lower()}_expense_ratio"],
-                fact_layer="canonical",
-            ),
-            _fact(
-                ticker=ticker,
-                data_category=ProviderDataCategory.etf_holdings_metadata,
-                fact_id=f"provider_fact_{ticker.lower()}_holdings_count",
-                field_name="holdings_count",
-                value=fixture["holdings_count"],
-                unit="approximate holdings",
-                as_of_date="2026-04-01",
-                source_document_ids=[sources[1].source_document_id],
-                citation_ids=[f"provider_cite_{ticker.lower()}_holdings"],
-                fact_layer="canonical",
-            ),
-        ]
-        return _response(
-            adapter=adapter,
-            request=request,
-            state=ProviderResponseState.supported,
-            licensing=licensing,
-            asset=_known_asset_identity(ticker),
-            source_attributions=sources,
-            facts=facts,
-            freshness_state=FreshnessState.fresh,
-            as_of_date="2026-04-01",
-            message=f"Deterministic official ETF issuer facts and holdings metadata for {ticker}.",
-        )
+    if etf_issuer_fixture_for_ticker(ticker, include_lightweight=True) is not None:
+        return build_etf_issuer_provider_response(adapter, request, licensing, include_lightweight=True)
 
     if ticker in ELIGIBLE_NOT_CACHED_ASSETS:
         return _eligible_not_cached_response(adapter, request, licensing)
@@ -582,8 +410,9 @@ def _known_asset_identity(ticker: str) -> AssetIdentity | None:
         return AssetIdentity(
             ticker=ticker,
             name=str(out_of_scope["name"]),
-            asset_type=AssetType.stock,
+            asset_type=AssetType(str(out_of_scope.get("asset_type") or AssetType.stock.value)),
             exchange=str(out_of_scope["exchange"]) if out_of_scope.get("exchange") else None,
+            issuer=str(out_of_scope["issuer"]) if out_of_scope.get("issuer") else None,
             status=AssetStatus.unknown,
             supported=False,
         )
@@ -762,6 +591,19 @@ def _out_of_scope_response(
     licensing: ProviderLicensing,
 ) -> ProviderResponse:
     ticker = request.normalized_ticker
+    asset_type = str(OUT_OF_SCOPE_COMMON_STOCKS[ticker].get("asset_type") or "stock")
+    error_code = (
+        "recognized_common_stock_outside_top500_manifest"
+        if asset_type == "stock"
+        else "recognized_etf_like_product_outside_mvp_scope"
+    )
+    message = (
+        f"{ticker} is a recognized common stock outside the local Top-500 manifest; "
+        "no provider facts or generated outputs were created."
+        if asset_type == "stock"
+        else f"{ticker} is a recognized ETF-like product outside the MVP support scope; "
+        "no provider facts or generated outputs were created."
+    )
     return _response(
         adapter=adapter,
         request=request,
@@ -771,16 +613,13 @@ def _out_of_scope_response(
         freshness_state=FreshnessState.unavailable,
         errors=[
             ProviderError(
-                code="recognized_common_stock_outside_top500_manifest",
+                code=error_code,
                 message=str(OUT_OF_SCOPE_COMMON_STOCKS[ticker]["reason"]),
                 retryable=False,
                 response_state=ProviderResponseState.out_of_scope,
             )
         ],
-        message=(
-            f"{ticker} is a recognized common stock outside the local Top-500 manifest; "
-            "no provider facts or generated outputs were created."
-        ),
+        message=message,
     )
 
 

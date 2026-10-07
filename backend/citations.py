@@ -5,7 +5,17 @@ from typing import Any, Sequence
 
 from pydantic import BaseModel, Field
 
-from backend.models import SourceAllowlistStatus, SourceUsePolicy, FreshnessState
+from backend.models import (
+    FreshnessState,
+    SourceAllowlistStatus,
+    SourceExportRights,
+    SourceParserStatus,
+    SourceQuality,
+    SourceReviewStatus,
+    SourceStorageRights,
+    SourceUsePolicy,
+)
+from backend.source_policy import SourcePolicyAction, validate_source_handoff
 
 
 class CitationValidationStatus(str, Enum):
@@ -44,12 +54,24 @@ class CitationEvidence(BaseModel):
     source_type: str
     evidence_kind: EvidenceKind = EvidenceKind.source_document
     freshness_state: FreshnessState = FreshnessState.fresh
+    retrieved_at: str | None = "2026-04-25T00:00:00Z"
+    as_of_date: str | None = None
+    published_at: str | None = None
     supported_claim_types: list[str] = Field(default_factory=list)
     supporting_text: str | None = None
     supports_claim: bool = True
     is_recent: bool | None = None
     allowlist_status: SourceAllowlistStatus = SourceAllowlistStatus.allowed
     source_use_policy: SourceUsePolicy = SourceUsePolicy.full_text_allowed
+    source_identity: str | None = None
+    is_official: bool | None = False
+    source_quality: SourceQuality = SourceQuality.fixture
+    storage_rights: SourceStorageRights = SourceStorageRights.raw_snapshot_allowed
+    export_rights: SourceExportRights = SourceExportRights.excerpts_allowed
+    review_status: SourceReviewStatus = SourceReviewStatus.approved
+    approval_rationale: str = "Deterministic fixture source passed local source-use policy review."
+    parser_status: SourceParserStatus = SourceParserStatus.parsed
+    parser_failure_diagnostics: str | None = None
 
 
 class CitationValidationContext(BaseModel):
@@ -199,6 +221,19 @@ def evidence_from_sources(
                 is_recent=source.source_type in RECENT_SOURCE_TYPES,
                 allowlist_status=getattr(source, "allowlist_status", SourceAllowlistStatus.allowed),
                 source_use_policy=getattr(source, "source_use_policy", SourceUsePolicy.full_text_allowed),
+                source_identity=getattr(source, "source_identity", None) or getattr(source, "url", None),
+                is_official=getattr(source, "is_official", None),
+                source_quality=getattr(source, "source_quality", SourceQuality.fixture),
+                storage_rights=getattr(source, "storage_rights", SourceStorageRights.raw_snapshot_allowed),
+                export_rights=getattr(source, "export_rights", SourceExportRights.excerpts_allowed),
+                review_status=getattr(source, "review_status", SourceReviewStatus.approved),
+                approval_rationale=getattr(
+                    source,
+                    "approval_rationale",
+                    "Deterministic fixture source passed local source-use policy review.",
+                ),
+                parser_status=getattr(source, "parser_status", SourceParserStatus.parsed),
+                parser_failure_diagnostics=getattr(source, "parser_failure_diagnostics", None),
             )
         )
     return evidence
@@ -294,6 +329,18 @@ def _validate_evidence(
                 citation_id=evidence.citation_id,
                 source_document_id=evidence.source_document_id,
                 message=f"Source-use policy '{evidence.source_use_policy.value}' cannot support generated factual claims.",
+            )
+        )
+
+    handoff = validate_source_handoff(evidence, action=SourcePolicyAction.generated_claim_support)
+    if not handoff.allowed:
+        issues.append(
+            CitationValidationIssue(
+                status=CitationValidationStatus.disallowed_source_policy,
+                claim_id=claim.claim_id,
+                citation_id=evidence.citation_id,
+                source_document_id=evidence.source_document_id,
+                message="Citation evidence failed Golden Asset Source Handoff: " + ", ".join(handoff.reason_codes),
             )
         )
 

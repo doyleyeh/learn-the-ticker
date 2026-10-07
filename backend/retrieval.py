@@ -39,7 +39,7 @@ from backend.models import (
     SourceUsePolicy,
     StateMessage,
 )
-from backend.source_policy import resolve_source_policy, source_can_support_generated_output
+from backend.source_policy import resolve_source_policy, source_can_support_generated_output, source_handoff_fields_from_policy
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -253,7 +253,18 @@ def build_asset_knowledge_pack(ticker: str) -> AssetKnowledgePack:
     )
 
 
-def build_asset_knowledge_pack_result(ticker: str) -> KnowledgePackBuildResponse:
+def build_asset_knowledge_pack_result(
+    ticker: str,
+    *,
+    persisted_reader: Any | None = None,
+) -> KnowledgePackBuildResponse:
+    if persisted_reader is not None:
+        from backend.retrieval_repository import read_persisted_knowledge_pack_response
+
+        persisted = read_persisted_knowledge_pack_response(ticker, reader=persisted_reader)
+        if persisted.found and persisted.response is not None:
+            return persisted.response
+
     dataset = load_retrieval_fixture_dataset()
     normalized = _normalize_ticker(ticker)
     fixture = _asset_fixture(dataset, normalized)
@@ -602,6 +613,11 @@ def _source_metadata(pack: AssetKnowledgePack) -> list[KnowledgePackSourceMetada
             allowlist_status=source.allowlist_status,
             source_use_policy=source.source_use_policy,
             permitted_operations=_policy_decision_for_source(source).permitted_operations,
+            **source_handoff_fields_from_policy(
+                _policy_decision_for_source(source),
+                source_identity=source.url or source.source_document_id,
+                approval_rationale="Deterministic retrieval fixture source passed local source-use policy review.",
+            ),
             citation_ids=sorted(set(citation_ids_by_source.get(source.source_document_id, []))),
             fact_ids=sorted(set(fact_ids_by_source.get(source.source_document_id, []))),
             recent_event_ids=sorted(set(recent_ids_by_source.get(source.source_document_id, []))),

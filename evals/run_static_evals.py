@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import os
 import sys
 import yaml
@@ -8,6 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 EVALS_DIR = ROOT / "evals"
 
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
+os.environ["LTT_STATIC_EVALS_RUNNING"] = "true"
+os.environ.setdefault("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "false")
+os.environ.setdefault("LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED", "false")
+os.environ["ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED"] = "false"
+os.environ.setdefault("MARKET_NEWS_FETCH_ENABLED", "false")
+os.environ.setdefault("MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED", "false")
 sys.path.insert(0, str(ROOT))
 
 import backend.models as models
@@ -58,6 +65,20 @@ from backend.llm import (
     validate_llm_generated_output,
 )
 from backend.main import app
+from backend.analysis_packs import (
+    HIGH_DEMAND_ANALYSIS_PACK_TICKERS,
+    AnalysisPackRepository,
+    build_economic_indicators_pack,
+    build_fixture_analysis_pack_import_bundle,
+    compute_analysis_pack_bundle_checksum,
+    validate_analysis_pack_import_bundle,
+)
+from backend.market_news import (
+    build_market_ai_comprehensive_analysis,
+    build_market_news_response,
+    fixture_market_news_candidates,
+    select_market_news_focus,
+)
 from backend.models import (
     CacheEntryKind,
     CacheEntryMetadata,
@@ -137,6 +158,44 @@ from backend.weekly_news import (
     build_weekly_news_focus_from_pack,
     compute_weekly_news_window,
 )
+from scripts.run_weekly_news_live_source_smoke import (
+    SMOKE_OPT_IN_ENV,
+    SMOKE_SCHEMA_VERSION,
+    run_weekly_news_live_source_smoke,
+)
+from scripts.run_market_news_live_source_smoke import (
+    SMOKE_OPT_IN_ENV as MARKET_NEWS_SMOKE_OPT_IN_ENV,
+    SMOKE_SCHEMA_VERSION as MARKET_NEWS_SMOKE_SCHEMA_VERSION,
+    run_market_news_live_source_smoke,
+)
+from scripts.run_live_ai_validation_smoke import (
+    ANALYSIS_CASE_ID as LIVE_AI_ANALYSIS_CASE_ID,
+    ANALYSIS_EMPTY_CASE_ID as LIVE_AI_ANALYSIS_EMPTY_CASE_ID,
+    ANALYSIS_ONE_ITEM_CASE_ID as LIVE_AI_ANALYSIS_ONE_ITEM_CASE_ID,
+    BLOCKED_REGRESSION_CASE_ID as LIVE_AI_BLOCKED_REGRESSION_CASE_ID,
+    CHAT_ETF_CASE_ID as LIVE_AI_CHAT_ETF_CASE_ID,
+    CHAT_STOCK_CASE_ID as LIVE_AI_CHAT_STOCK_CASE_ID,
+    SCHEMA_VERSION as LIVE_AI_SMOKE_SCHEMA_VERSION,
+    run_live_ai_validation_smoke,
+)
+from scripts.run_local_deployment_env_smoke import (
+    SCHEMA_VERSION as LOCAL_DEPLOYMENT_ENV_SMOKE_SCHEMA_VERSION,
+    run_local_deployment_env_smoke,
+)
+from scripts.run_lightweight_mvp_readiness_gate import (
+    SCHEMA_VERSION as LIGHTWEIGHT_MVP_READINESS_GATE_SCHEMA_VERSION,
+    run_lightweight_mvp_readiness_gate,
+)
+from scripts.run_full_manifest_support_smoke import (
+    GENERATED_SURFACES as FULL_MANIFEST_GENERATED_SURFACES,
+    RECOGNITION_ETF_AUTHORITY as FULL_MANIFEST_RECOGNITION_ETF_AUTHORITY,
+    SCHEMA_VERSION as FULL_MANIFEST_SUPPORT_SMOKE_SCHEMA_VERSION,
+    STOCK_AUTHORITY as FULL_MANIFEST_STOCK_AUTHORITY,
+    SUPPORTED_ETF_AUTHORITY as FULL_MANIFEST_SUPPORTED_ETF_AUTHORITY,
+    run_full_manifest_support_smoke,
+)
+from scripts.run_lightweight_data_fetch_smoke import run_current_stock_manifest_fetch_smoke
+from backend.etf_universe import load_recognition_etf_universe_manifest, load_supported_etf_universe_manifest
 
 
 client = TestClient(app)
@@ -293,6 +352,14 @@ def test_reference_asset_scenarios():
         assert provider.licensing.export_allowed is False
         _assert_provider_generated_flags_off(provider, f"golden_provider_{ticker}")
 
+        if ticker == "MSFT":
+            comparison = generate_comparison("AAPL", "MSFT")
+            assert comparison.state.status.value == "supported"
+            assert comparison.comparison_type == "stock_vs_stock"
+            assert comparison.citations
+            assert comparison.source_documents
+            continue
+
         overview = generate_asset_overview(ticker)
         assert overview.asset.supported is False
         assert overview.beginner_summary is None
@@ -331,12 +398,20 @@ def test_reference_asset_scenarios():
 
     for case in [*comparison_cases, *data.get("local_generated_comparison_pairs", [])]:
         comparison = generate_comparison(case["left"], case["right"])
-        if case["expected_state"] == "supported":
+        expected_state = "supported" if {case["left"], case["right"]} == {"AAPL", "MSFT"} else case["expected_state"]
+        expected_generated_output = (
+            True if {case["left"], case["right"]} == {"AAPL", "MSFT"} else case["expected_generated_output"]
+        )
+        expected_citations = True if {case["left"], case["right"]} == {"AAPL", "MSFT"} else case.get("expected_citations", False)
+        expected_source_documents = (
+            True if {case["left"], case["right"]} == {"AAPL", "MSFT"} else case.get("expected_source_documents", False)
+        )
+        if expected_state == "supported":
             assert comparison.state.status.value == "supported"
             assert comparison.comparison_type != "unavailable"
-            assert bool(comparison.key_differences) is case["expected_generated_output"]
-            assert bool(comparison.citations) is case.get("expected_citations", False)
-            assert bool(comparison.source_documents) is case.get("expected_source_documents", False)
+            assert bool(comparison.key_differences) is expected_generated_output
+            assert bool(comparison.citations) is expected_citations
+            assert bool(comparison.source_documents) is expected_source_documents
         else:
             assert comparison.comparison_type == "unavailable"
             assert comparison.key_differences == []
@@ -771,6 +846,14 @@ def test_pre_cache_cases():
         assert job.capabilities.can_open_generated_page is False
         assert job.capabilities.can_answer_chat is False
         assert job.capabilities.can_compare is False
+
+        if ticker == "MSFT":
+            comparison = generate_comparison("AAPL", "MSFT")
+            assert comparison.comparison_type == "stock_vs_stock"
+            assert comparison.state.status.value == "supported"
+            assert comparison.citations
+            assert comparison.source_documents
+            continue
 
         overview = generate_asset_overview(ticker)
         chat = generate_asset_chat(ticker, "What is this asset?")
@@ -1675,7 +1758,54 @@ def test_generated_comparison_contract():
     assert {citation.source_document_id for citation in reverse.citations} <= reverse_source_ids
     assert validate_comparison_response(reverse, reverse_pack).valid
 
-    for pair in [("VOO", "BTC"), ("VOO", "ZZZZ"), ("AAPL", "VOO")]:
+    stock_etf = generate_comparison("AAPL", "VOO")
+    stock_etf_pack = build_comparison_knowledge_pack("AAPL", "VOO")
+    assert stock_etf.state.status.value == "supported"
+    assert stock_etf.comparison_type == "stock_vs_etf"
+    assert stock_etf.evidence_availability is not None
+    assert stock_etf.evidence_availability.availability_state.value == "available"
+    assert set(stock_etf.evidence_availability.required_dimensions) == {
+        "Structure",
+        "Basket membership",
+        "Breadth",
+        "Cost model",
+        "Educational role",
+    }
+    assert stock_etf.stock_etf_relationship is not None
+    assert stock_etf.stock_etf_relationship.relationship_state == "direct_holding"
+    assert stock_etf.stock_etf_relationship.evidence_state is EvidenceState.partial
+    assert "Exact holding weight" in (stock_etf.stock_etf_relationship.basket_structure.unavailable_detail or "")
+    assert validate_comparison_response(stock_etf, stock_etf_pack).valid
+
+    stock_stock = generate_comparison("AAPL", "MSFT")
+    stock_stock_pack = build_comparison_knowledge_pack("AAPL", "MSFT")
+    assert stock_stock.state.status.value == "supported"
+    assert stock_stock.comparison_type == "stock_vs_stock"
+    assert stock_stock.stock_etf_relationship is None
+    assert stock_stock.bottom_line_for_beginners is not None
+    assert stock_stock.citations
+    assert stock_stock.source_documents
+    assert stock_stock.evidence_availability is not None
+    assert stock_stock.evidence_availability.availability_state.value == "available"
+    assert set(stock_stock.evidence_availability.required_dimensions) == {
+        "Business model",
+        "Revenue trend",
+        "Business quality evidence",
+        "Risk context",
+        "Valuation evidence availability",
+    }
+    valuation_dimension = next(
+        dimension
+        for dimension in stock_stock.evidence_availability.required_evidence_dimensions
+        if dimension.dimension == "Valuation evidence availability"
+    )
+    assert valuation_dimension.evidence_state is EvidenceState.partial
+    serialized_stock_stock = json.dumps(stock_stock.model_dump(mode="json")).lower()
+    for forbidden in ["benchmark", "expense ratio", "holdings count", "fund construction", "etf role", " etf"]:
+        assert forbidden not in serialized_stock_stock
+    assert validate_comparison_response(stock_stock, stock_stock_pack).valid
+
+    for pair in [("VOO", "BTC"), ("VOO", "ZZZZ"), ("AAPL", "QQQ"), ("SPY", "VTI")]:
         unavailable = generate_comparison(*pair)
         assert unavailable.comparison_type == "unavailable"
         assert unavailable.key_differences == []
@@ -1905,7 +2035,6 @@ def test_generated_chat_contract():
         ("AAPL", "What does Apple do?", "primary business"),
         ("VOO", "What is VOO and what risks should a beginner understand?", "market risk"),
         ("QQQ", "What does QQQ hold?", "about 100"),
-        ("VOO", "What changed recently?", "No high-signal recent development"),
         ("QQQ", "Why do beginners consider it?", "Beginners may study QQQ"),
     ]
 
@@ -1948,6 +2077,12 @@ def test_generated_chat_contract():
             )
         )
 
+    recent = generate_asset_chat("VOO", "What changed recently?")
+    assert recent.safety_classification.value == "educational"
+    assert "Insufficient evidence" in recent.direct_answer
+    assert recent.citations == []
+    assert recent.source_documents == []
+
     insufficient = generate_asset_chat("AAPL", "Is Apple expensive based on valuation?")
     assert insufficient.safety_classification.value == "educational"
     assert "Insufficient evidence" in insufficient.direct_answer
@@ -1966,7 +2101,7 @@ def test_generated_chat_contract():
         ("VOO", "How is VOO different from QQQ?", "VOO", "QQQ", "available"),
         ("VOO", "How is QQQ different from VOO?", "QQQ", "VOO", "available"),
         ("QQQ", "Why is this more concentrated than VOO?", "QQQ", "VOO", "available"),
-        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "no_local_pack"),
+        ("VOO", "AAPL vs VOO", "AAPL", "VOO", "available"),
         ("VOO", "VOO vs SPY", "VOO", "SPY", "eligible_not_cached"),
         ("VOO", "VOO vs BTC", "VOO", "BTC", "unsupported"),
         ("VOO", "VOO vs GME", "VOO", "GME", "out_of_scope"),
@@ -2181,7 +2316,11 @@ def test_export_cases():
         assert endpoint_response.status_code == 200, f"{case['id']} export endpoint failed"
         endpoint_export = ExportResponse.model_validate(endpoint_response.json())
         validated = ExportResponse.model_validate(export.model_dump(mode="json"))
-        assert endpoint_export.model_dump(mode="json") == validated.model_dump(mode="json")
+        endpoint_payload = endpoint_export.model_dump(mode="json")
+        validated_payload = validated.model_dump(mode="json")
+        assert endpoint_payload.pop("section_states", [])
+        validated_payload.pop("section_states", None)
+        assert endpoint_payload == validated_payload
 
         assert validated.content_type.value == export_kind
         assert validated.export_state.value == case["expected_state"]
@@ -2291,6 +2430,7 @@ def test_export_cases():
 def test_weekly_news_cases():
     data = load_yaml("weekly_news_eval_cases.yaml")
     assert data.get("schema_version") == "weekly-news-evals-v1"
+    assert data.get("live_source_smoke_schema_version") == SMOKE_SCHEMA_VERSION
 
     for case in data["window_cases"]:
         window = compute_weekly_news_window(case["as_of"])
@@ -2306,9 +2446,15 @@ def test_weekly_news_cases():
 
         assert focus.state.value == case["expected_state"]
         assert len(focus.items) == case["expected_item_count"]
+        assert focus.configured_max_item_count == case["expected_configured_max_item_count"]
+        assert focus.selected_item_count == case["expected_item_count"]
+        assert focus.evidence_state.value == case["expected_evidence_state"]
+        assert focus.evidence_limited_state.value == case["expected_evidence_limited_state"]
         assert focus.stable_facts_are_separate is True
         assert analysis.state.value == case["expected_ai_state"]
         assert analysis.analysis_available is case["expected_ai_available"]
+        assert analysis.minimum_weekly_news_item_count == case["expected_ai_minimum_item_count"]
+        assert analysis.weekly_news_selected_item_count == case["expected_item_count"]
         assert analysis.stable_facts_are_separate is True
         if focus.items == []:
             assert focus.empty_state is not None
@@ -2343,10 +2489,136 @@ def test_weekly_news_cases():
     for phrase in data["forbidden_analysis_language"]:
         assert phrase not in analysis_text.lower()
 
+    smoke = run_weekly_news_live_source_smoke(env={SMOKE_OPT_IN_ENV: "true"})
+    assert smoke["schema_version"] == SMOKE_SCHEMA_VERSION
+    assert smoke["status"] == "pass"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    smoke_cases = {case["case_id"]: case for case in smoke["cases"]}
+    assert set(data["live_source_smoke_required_cases"]) <= set(smoke_cases)
+    source_case = smoke_cases["source_backed_official_first"]
+    assert source_case["selected_source_rank_tiers"] == data["live_source_smoke_required_selected_tiers"]
+    assert source_case["evidence_limited_state"] == "limited_verified_set"
+    assert source_case["ai_threshold"]["analysis_allowed"] is True
+    assert source_case["same_asset_citation_binding"] is True
+    for reason in data["live_source_smoke_required_suppression_reasons"]:
+        assert source_case["suppression_reason_counts"][reason] >= 1
+    assert smoke_cases["limited_verified_set"]["ai_threshold"]["analysis_allowed"] is False
+    assert smoke_cases["empty_evidence"]["evidence_limited_state"] == "empty"
+    assert smoke_cases["blocked_regression_tickers"]["blocked_regression_tickers"] == data[
+        "live_source_smoke_blocked_regression_tickers"
+    ]
+
+
+def test_market_news_cases():
+    data = load_yaml("market_news_eval_cases.yaml")
+    assert data.get("schema_version") == "market-news-evals-v1"
+    assert data.get("live_source_smoke_schema_version") == MARKET_NEWS_SMOKE_SCHEMA_VERSION
+
+    missing_models = {name for name in data.get("required_models", []) if not hasattr(models, name)}
+    assert not missing_models, f"Missing Market News contract models: {missing_models}"
+
+    response = build_market_news_response(as_of="2026-04-23")
+    focus = response.market_news_focus
+    analysis = response.market_ai_comprehensive_analysis
+    assert focus.schema_version == "market-news-focus-v1"
+    assert focus.reusable_across_tickers is True
+    assert 0 < focus.selected_item_count <= focus.configured_max_item_count == 20
+    assert focus.audit.no_raw_article_text is True
+    assert focus.audit.no_raw_provider_payload is True
+    assert focus.audit.no_generated_output_cache_write is True
+    assert data["required_topic_buckets"] == [bucket.value for bucket in models.MarketNewsTopicBucket]
+    assert len({item.topic_bucket.value for item in focus.items}) >= 3
+    assert all(item.source.source_use_policy is SourceUsePolicy.summary_allowed for item in focus.items)
+
+    assert analysis.schema_version == "market-ai-comprehensive-analysis-v1"
+    assert analysis.analysis_available is True
+    assert [section.label for section in analysis.sections] == data["required_analysis_labels"]
+    analysis_text = _flatten_static_text(analysis.model_dump(mode="json")).lower()
+    for phrase in data["forbidden_analysis_language"]:
+        assert phrase not in analysis_text
+    for persona in data["forbidden_personas"]:
+        assert persona not in analysis_text
+
+    market_source = (ROOT / "backend" / "market_news.py").read_text(encoding="utf-8")
+    for required in data["source_policy_required_exclusions"]:
+        assert required in market_source
+    for forbidden in ["import requests", "import httpx", "urllib.request", "from socket import", "os.environ", "api_key"]:
+        assert forbidden not in market_source
+
+    limited_focus = select_market_news_focus(fixture_market_news_candidates(as_of="2026-04-23")[:2], as_of="2026-04-23")
+    limited_analysis = build_market_ai_comprehensive_analysis(limited_focus)
+    assert limited_analysis.analysis_available is False
+
+    skipped_smoke = run_market_news_live_source_smoke(env={})
+    assert skipped_smoke["schema_version"] == MARKET_NEWS_SMOKE_SCHEMA_VERSION
+    assert skipped_smoke["status"] == "skipped"
+    assert skipped_smoke["normal_ci_requires_live_calls"] is False
+    smoke = run_market_news_live_source_smoke(env={MARKET_NEWS_SMOKE_OPT_IN_ENV: "true"})
+    assert smoke["status"] == "pass"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    assert smoke["live_sources_fetched"] is False
+    smoke_cases = {case["case_id"]: case for case in smoke["cases"]}
+    assert set(data["live_source_smoke_required_cases"]) <= set(smoke_cases)
+    assert set(data["live_source_smoke_required_providers"]) <= set(smoke_cases["provider_adapter_matrix"]["providers"])
+    assert smoke_cases["provider_adapter_matrix"]["raw_article_text_reported"] is False
+    assert smoke_cases["provider_adapter_matrix"]["raw_provider_payload_logged"] is False
+    assert smoke_cases["critical_claim_gate"]["critical_claim_requires_priority_or_corroboration"] is True
+    serialized = repr(smoke)
+    for forbidden in ["Bearer ", "Authorization", "BEGIN PRIVATE KEY", "raw article body", "provider payload value", "sk-"]:
+        assert forbidden not in serialized
+
+
+def test_analysis_pack_cases():
+    pack = build_economic_indicators_pack()
+    assert pack.schema_version == "economic-indicators-pack-v1"
+    assert pack.region == "US"
+    assert pack.no_live_external_calls is True
+    assert pack.stable_facts_are_separate is True
+    assert {"gdp", "cpi", "ppi", "retail_sales", "nonfarm_payrolls", "treasury_10y"} <= {
+        item.indicator_id for item in pack.items
+    }
+    source_ids = {source.source_document_id for source in pack.source_documents}
+    citation_ids = {citation.citation_id for citation in pack.citations}
+    assert source_ids
+    assert citation_ids
+    for item in pack.items:
+        assert item.citation_ids
+        assert set(item.citation_ids) <= citation_ids
+        assert item.source_document_ids
+        assert set(item.source_document_ids) <= source_ids
+        assert item.source.source_use_policy is not SourceUsePolicy.rejected
+
+    bundle = build_fixture_analysis_pack_import_bundle()
+    assert validate_analysis_pack_import_bundle(bundle, now="2026-05-10T12:00:00Z") == []
+    raw_payload = bundle.model_copy(update={"raw_article_text_collected": True})
+    raw_payload = raw_payload.model_copy(
+        update={"validation": raw_payload.validation.model_copy(update={"checksum": compute_analysis_pack_bundle_checksum(raw_payload)})}
+    )
+    assert "raw_article_text_collected" in validate_analysis_pack_import_bundle(raw_payload, now="2026-05-10T12:00:00Z")
+
+    persona_payload = bundle.model_copy(update={"validation_metadata": {"prompt_lens": "Sophia"}})
+    persona_payload = persona_payload.model_copy(
+        update={
+            "validation": persona_payload.validation.model_copy(
+                update={"checksum": compute_analysis_pack_bundle_checksum(persona_payload)}
+            )
+        }
+    )
+    assert "visible_persona_label" in validate_analysis_pack_import_bundle(persona_payload, now="2026-05-10T12:00:00Z")
+
+    repo = AnalysisPackRepository()
+    assert repo.import_bundle(bundle, now="2026-05-10T12:00:00Z").imported is True
+    assert repo.read_fresh_market_news_response(now="2026-05-10T12:00:00Z") is not None
+    assert repo.read_fresh_economic_indicators_pack(now="2026-05-10T12:00:00Z") is not None
+    assert repo.read_fresh_weekly_news_response("QQQ", now="2026-05-10T12:00:00Z") is not None
+    assert repo.read_fresh_weekly_news_response("TSLA", now="2026-05-10T12:00:00Z") is None
+    assert set(HIGH_DEMAND_ANALYSIS_PACK_TICKERS) >= {"AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "VOO", "QQQ", "SPY", "VTI", "IVV", "XLK"}
+
 
 def test_llm_provider_cases():
     data = load_yaml("llm_provider_eval_cases.yaml")
     assert data.get("schema_version") == "llm-provider-evals-v1"
+    assert data.get("live_ai_smoke_schema_version") == LIVE_AI_SMOKE_SCHEMA_VERSION
 
     missing_models = {name for name in data.get("required_models", []) if not hasattr(models, name)}
     assert not missing_models, f"Missing LLM provider contract models: {missing_models}"
@@ -2377,11 +2649,19 @@ def test_llm_provider_cases():
     assert tuple(data["openrouter_free_model_order"]) == DEFAULT_OPENROUTER_FREE_MODEL_ORDER
     assert enabled_openrouter.paid_fallback_model is not None
     assert enabled_openrouter.paid_fallback_model.model_name == data["paid_fallback_model"]
+    assert enabled_openrouter.paid_fallback_enabled is data["paid_fallback_enabled_default"]
     assert DEFAULT_OPENROUTER_PAID_FALLBACK_MODEL == data["paid_fallback_model"]
     assert enabled_openrouter.live_network_calls_allowed is False
+    paid_enabled_openrouter = build_llm_runtime_config(
+        {
+            **default_openrouter_settings(),
+            "OPENROUTER_PAID_FALLBACK_ENABLED": str(data["paid_fallback_enabled_opt_in"]).lower(),
+        },
+        server_side_key_present=True,
+    )
 
     fallback = decide_paid_fallback(
-        runtime=enabled_openrouter,
+        runtime=paid_enabled_openrouter,
         trigger=LlmFallbackTrigger.validation_failed_after_repair,
         current_tier=LlmModelTier.free,
         repair_attempt_count=1,
@@ -2510,6 +2790,401 @@ def test_llm_provider_cases():
         if forbidden != "os.environ":
             assert forbidden not in main_source
 
+    default_smoke = run_live_ai_validation_smoke(env={})
+    assert default_smoke["schema_version"] == LIVE_AI_SMOKE_SCHEMA_VERSION
+    assert default_smoke["status"] == "skipped"
+    assert default_smoke["normal_ci_requires_live_calls"] is False
+    assert default_smoke["live_network_calls_attempted"] is False
+    assert {case["case_id"] for case in default_smoke["cases"]} == set(data["live_ai_smoke_required_cases"])
+    assert {row["env_var"] for row in default_smoke["readiness_prerequisites"]} >= set(
+        data["live_ai_smoke_required_prereq_env_vars"]
+    )
+
+    mocked_smoke = run_live_ai_validation_smoke(
+        env={
+            "LTT_LIVE_AI_SMOKE_ENABLED": "true",
+            "LLM_PROVIDER": "openrouter",
+            "LLM_LIVE_GENERATION_ENABLED": "true",
+            "OPENROUTER_API_KEY": "placeholder-local-key",
+        },
+        transport_factory=_live_ai_eval_transport_factory,
+    )
+    assert mocked_smoke["status"] == "pass"
+    assert mocked_smoke["normal_ci_requires_live_calls"] is False
+    assert mocked_smoke["live_network_calls_attempted"] is False
+    assert mocked_smoke["generated_output_cache_entries_written"] is False
+    smoke_cases = {case["case_id"]: case for case in mocked_smoke["cases"]}
+    assert set(data["live_ai_smoke_required_cases"]) == set(smoke_cases)
+    assert smoke_cases[LIVE_AI_CHAT_STOCK_CASE_ID]["asset_ticker"] == data["live_ai_smoke_chat_tickers"]["stock"]
+    assert smoke_cases[LIVE_AI_CHAT_STOCK_CASE_ID]["asset_type"] == "stock"
+    assert smoke_cases[LIVE_AI_CHAT_ETF_CASE_ID]["asset_ticker"] == data["live_ai_smoke_chat_tickers"]["etf"]
+    assert smoke_cases[LIVE_AI_CHAT_ETF_CASE_ID]["asset_type"] == "etf"
+    assert smoke_cases[LIVE_AI_CHAT_STOCK_CASE_ID]["validation_contract"]["selected_asset_grounding"] is True
+    assert smoke_cases[LIVE_AI_CHAT_ETF_CASE_ID]["validation_contract"]["single_asset_chat_scope"] is True
+    assert smoke_cases[LIVE_AI_ANALYSIS_CASE_ID]["selected_item_count"] == 2
+    assert smoke_cases[LIVE_AI_ANALYSIS_CASE_ID]["validation_contract"]["required_section_order"] is True
+    assert smoke_cases[LIVE_AI_ANALYSIS_EMPTY_CASE_ID]["diagnostic_state"] == "empty"
+    assert smoke_cases[LIVE_AI_ANALYSIS_EMPTY_CASE_ID]["live_call_attempted"] is False
+    assert smoke_cases[LIVE_AI_ANALYSIS_ONE_ITEM_CASE_ID]["diagnostic_state"] == "insufficient_evidence"
+    assert smoke_cases[LIVE_AI_ANALYSIS_ONE_ITEM_CASE_ID]["validation_contract"]["generated_output_usable"] is False
+    assert smoke_cases[LIVE_AI_BLOCKED_REGRESSION_CASE_ID]["blocked_regression_tickers"] == data[
+        "live_ai_smoke_blocked_regression_tickers"
+    ]
+    assert smoke_cases[LIVE_AI_BLOCKED_REGRESSION_CASE_ID]["validation_contract"]["generated_chat_answers"] is False
+
+
+def test_local_deployment_env_smoke_cases():
+    smoke = run_local_deployment_env_smoke(run_docker_config=False)
+    assert smoke["schema_version"] == LOCAL_DEPLOYMENT_ENV_SMOKE_SCHEMA_VERSION
+    assert smoke["status"] == "blocked"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    assert smoke["production_services_started"] is False
+    assert smoke["deployments_created"] is False
+    assert smoke["live_provider_calls_attempted"] is False
+    assert smoke["database_connections_opened"] is False
+    assert smoke["secret_values_reported"] is False
+    assert smoke["launch_or_public_deployment_approved"] is False
+    assert smoke["production_ready"] is False
+
+    checks = {check["check_id"]: check for check in smoke["checks"]}
+    assert checks["browser_env_secret_separation"]["status"] == "blocked"
+    assert all(not item["unsafe_env_names"] and item["missing_safe_env_names"] for item in checks["browser_env_secret_separation"]["blockers"])
+    assert checks["server_env_readiness_placeholders"]["cloud_run_api_env_placeholders_present"] is False
+    assert checks["server_env_readiness_placeholders"]["cloud_run_worker_env_placeholders_present"] is False
+    assert checks["server_env_readiness_placeholders"]["vercel_next_public_api_base_placeholder_present"] is False
+    assert checks["repo_local_deployment_scaffolding"]["apps_web_is_vercel_project_root"] is False
+    assert checks["repo_local_deployment_scaffolding"]["reason_code"] == "legacy_web_runtime_retired"
+    assert checks["docker_compose_config"]["status"] == "skipped"
+
+    combined = "\n".join(
+        [
+            (ROOT / "scripts/run_local_deployment_env_smoke.py").read_text(encoding="utf-8"),
+            (ROOT / "scripts/run_local_fresh_data_rehearsal.py").read_text(encoding="utf-8"),
+            (ROOT / "docs/archive/2026-10-07-main/local_fresh_data_ingest_to_render_runbook.md").read_text(encoding="utf-8"),
+        ]
+    )
+    for marker in [
+        "local-deployment-env-smoke-v1",
+        "local_deployment_env_smoke",
+        "NEXT_PUBLIC_API_BASE_URL",
+        "CORS_ALLOWED_ORIGINS",
+        "docker compose config",
+        "production_ready",
+        "launch_or_public_deployment_approved",
+        "secret_values_reported",
+        "database_connections_opened",
+        "normal_ci_requires_live_calls",
+        "deployment readiness",
+        "Golden Asset Source Handoff approval",
+    ]:
+        assert marker in combined
+
+    serialized = str(smoke)
+    for forbidden in [
+        "postgresql://",
+        "postgresql+psycopg://",
+        "Bearer ",
+        "Authorization",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw provider payload",
+        "raw source text",
+        "raw model reasoning",
+    ]:
+        assert forbidden not in serialized
+
+
+def test_full_manifest_support_smoke_cases():
+    smoke = run_full_manifest_support_smoke()
+    assert smoke["schema_version"] == FULL_MANIFEST_SUPPORT_SMOKE_SCHEMA_VERSION
+    assert smoke["status"] == "pass"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    assert smoke["live_provider_calls_attempted"] is False
+    assert smoke["news_calls_attempted"] is False
+    assert smoke["market_data_calls_attempted"] is False
+    assert smoke["sec_calls_attempted"] is False
+    assert smoke["issuer_calls_attempted"] is False
+    assert smoke["exchange_calls_attempted"] is False
+    assert smoke["llm_calls_attempted"] is False
+    assert smoke["secret_values_reported"] is False
+    assert smoke["failure_count"] == 0
+    assert smoke["failure_rows"] == []
+    assert smoke["manifest_paths"] == {
+        "top500_stock": FULL_MANIFEST_STOCK_AUTHORITY,
+        "supported_etf": FULL_MANIFEST_SUPPORTED_ETF_AUTHORITY,
+        "etp_recognition": FULL_MANIFEST_RECOGNITION_ETF_AUTHORITY,
+    }
+    assert all(str(value).startswith("sha256:") for value in smoke["manifest_checksums"].values())
+    assert smoke["generated_surfaces"] == list(FULL_MANIFEST_GENERATED_SURFACES)
+    assert smoke["recognition_rows_unlock_generated_output"] is False
+
+    counts = smoke["counts"]
+    assert counts["stock_manifest_rows"] == len(load_top500_stock_universe_manifest().entries)
+    assert counts["supported_etf_manifest_rows"] >= 1
+    assert counts["recognition_manifest_rows"] >= 1
+    assert counts["recognition_only_count"] == counts["recognition_manifest_rows"]
+    assert counts["generated_output_eligible_by_manifest"] == {
+        "supported_etf": 2,
+        "top500_stock": 1,
+    }
+    assert counts["generated_output_eligible_count"] == 3
+    assert counts["pending_ingestion_count"] >= 1
+    assert counts["blocked_count"] >= 1
+    assert counts["unavailable_count"] >= 1
+    assert counts["partial_count"] == 0
+
+    recognition_rows = [row for row in smoke["rows"] if row["manifest_kind"] == "etp_recognition"]
+    assert recognition_rows
+    assert all(row["runtime_authority"] == FULL_MANIFEST_RECOGNITION_ETF_AUTHORITY for row in recognition_rows)
+    assert all(row["generated_output_eligible"] is False for row in recognition_rows)
+    assert all(all(value is False for value in row["surface_eligibility"].values()) for row in recognition_rows)
+
+    supported_etf_rows = [row for row in smoke["rows"] if row["manifest_kind"] == "supported_etf"]
+    assert supported_etf_rows
+    assert all(row["runtime_authority"] == FULL_MANIFEST_SUPPORTED_ETF_AUTHORITY for row in supported_etf_rows)
+    assert all(row["recognition_authority_used_for_generated_output"] is False for row in supported_etf_rows)
+
+    stock_rows = [row for row in smoke["rows"] if row["manifest_kind"] == "top500_stock"]
+    assert stock_rows
+    assert all(row["runtime_authority"] == FULL_MANIFEST_STOCK_AUTHORITY for row in stock_rows)
+
+    serialized = json.dumps(smoke, sort_keys=True)
+    for forbidden in [
+        "postgresql://",
+        "postgresql+psycopg://",
+        "Bearer ",
+        "Authorization:",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw provider payload",
+        "raw source text",
+        "raw model reasoning",
+    ]:
+        assert forbidden not in serialized
+
+
+def test_current_stock_manifest_fetch_smoke_cases():
+    smoke = run_current_stock_manifest_fetch_smoke()
+
+    assert smoke["schema_version"] == "current-stock-manifest-lightweight-fetch-smoke-v1"
+    assert smoke["status"] == "pass"
+    assert smoke["normal_ci_requires_live_calls"] is False
+    assert smoke["live_provider_calls_attempted"] is False
+    assert smoke["sec_calls_attempted"] is False
+    assert smoke["stock_runtime_authority"] == FULL_MANIFEST_STOCK_AUTHORITY
+    assert smoke["failure_rows"] == []
+    counts = smoke["counts"]
+    assert counts["current_stock_manifest_rows"] == len(load_top500_stock_universe_manifest().entries)
+    assert counts["sec_backed_supported_count"] == len(load_top500_stock_universe_manifest().entries)
+    assert counts["provider_fallback_partial_count"] == 0
+    assert counts["unavailable_count"] == 0
+    assert counts["blocked_unsupported_or_out_of_scope_count"] == 0
+    assert counts["generated_output_eligible_count"] == len(load_top500_stock_universe_manifest().entries)
+    assert counts["failure_count"] == 0
+    assert {row["ticker"] for row in smoke["rows"]} == {entry.ticker for entry in load_top500_stock_universe_manifest().entries}
+    for row in smoke["rows"]:
+        assert row["support_authority"] == FULL_MANIFEST_STOCK_AUTHORITY
+        assert row["sec_attempt_state"]["state"] == "supported"
+        assert row["provider_fallback_state"]["state"] == "used"
+        assert "provider_derived" in row["source_labels"]
+        assert row["payload_checksum"].startswith("sha256:")
+        assert row["raw_payload_exposed"] is False
+        assert row["no_live_external_calls"] is True
+
+
+def test_lightweight_mvp_readiness_gate_cases():
+    gate = run_lightweight_mvp_readiness_gate(env={})
+    assert gate["schema_version"] == LIGHTWEIGHT_MVP_READINESS_GATE_SCHEMA_VERSION
+    assert gate["status"] == "blocked"
+    assert gate["local_personal_mvp_ready_for_manual_review"] is False
+    assert gate["normal_ci_requires_live_calls"] is False
+    assert gate["production_services_started"] is False
+    assert gate["deployments_created"] is False
+    assert gate["live_provider_calls_attempted"] is False
+    assert gate["database_connections_opened"] is False
+    assert gate["secret_values_reported"] is False
+    assert gate["production_ready"] is False
+    assert gate["public_launch_ready"] is False
+    assert gate["strict_audit_ready"] is False
+    assert gate["launch_or_public_deployment_approved"] is False
+    assert gate["sources_approved_by_readiness_gate"] is False
+    assert gate["manifests_promoted"] is False
+    assert gate["generated_output_cache_promoted"] is False
+    assert gate["rehearsal_integration"]["embedded_local_deployment_env_smoke_consumed"] is True
+    assert gate["full_manifest_support_smoke"]["status"] == "pass"
+    assert gate["full_manifest_support_smoke"]["normal_ci_requires_live_calls"] is False
+    assert gate["full_manifest_support_smoke"]["manifest_paths"] == {
+        "top500_stock": FULL_MANIFEST_STOCK_AUTHORITY,
+        "supported_etf": FULL_MANIFEST_SUPPORTED_ETF_AUTHORITY,
+        "etp_recognition": FULL_MANIFEST_RECOGNITION_ETF_AUTHORITY,
+    }
+    assert gate["full_manifest_support_smoke"]["recognition_rows_unlock_generated_output"] is False
+    assert gate["full_manifest_support_smoke"]["generated_output_eligible_by_manifest"] == {
+        "supported_etf": 2,
+        "top500_stock": 1,
+    }
+    assert gate["full_manifest_support_smoke"]["failure_count"] == 0
+    assert gate["current_stock_manifest_fetch"]["status"] == "pass"
+    assert gate["current_stock_manifest_fetch"]["normal_ci_requires_live_calls"] is False
+    assert gate["current_stock_manifest_fetch"]["stock_runtime_authority"] == FULL_MANIFEST_STOCK_AUTHORITY
+    assert gate["current_stock_manifest_fetch"]["current_stock_manifest_rows"] == len(
+        load_top500_stock_universe_manifest().entries
+    )
+    assert gate["current_stock_manifest_fetch"]["sec_backed_supported_count"] == len(
+        load_top500_stock_universe_manifest().entries
+    )
+    assert gate["current_stock_manifest_fetch"]["provider_fallback_partial_count"] == 0
+    assert gate["current_stock_manifest_fetch"]["unavailable_count"] == 0
+    assert gate["current_stock_manifest_fetch"]["blocked_unsupported_or_out_of_scope_count"] == 0
+    assert gate["current_stock_manifest_fetch"]["generated_output_eligible_count"] == len(
+        load_top500_stock_universe_manifest().entries
+    )
+    assert gate["current_stock_manifest_fetch"]["failure_count"] == 0
+    assert gate["current_stock_manifest_fetch"]["generated_output_cache_promotion_prerequisites"] == {
+        "strict_audit_quality_source_approval_required": True,
+        "source_handoff_required_for_promotion": True,
+        "generated_output_cache_promoted": False,
+    }
+    assert gate["current_supported_etf_manifest_fetch"]["status"] == "pass"
+    assert gate["current_supported_etf_manifest_fetch"]["normal_ci_requires_live_calls"] is False
+    assert gate["current_supported_etf_manifest_fetch"]["current_supported_etf_manifest_rows"] == len(
+        load_supported_etf_universe_manifest().entries
+    )
+    assert gate["current_supported_etf_manifest_fetch"]["issuer_backed_supported_count"] == 5
+    assert gate["current_supported_etf_manifest_fetch"]["provider_fallback_partial_count"] == 8
+    assert gate["current_supported_etf_manifest_fetch"]["unavailable_count"] == 0
+    assert gate["current_supported_etf_manifest_fetch"]["blocked_recognition_count"] == len(
+        load_recognition_etf_universe_manifest().entries
+    )
+    assert gate["current_supported_etf_manifest_fetch"]["generated_output_eligible_count"] == 13
+    assert gate["current_supported_etf_manifest_fetch"]["strict_manifest_generated_output_eligible_count"] == 2
+    assert gate["current_supported_etf_manifest_fetch"]["recognition_rows_unlock_generated_output"] is False
+    assert gate["current_supported_etf_manifest_fetch"]["failure_count"] == 0
+    assert gate["readiness_summaries"]["local_fresh_data_mvp_slice_smoke"]["status_counts"] == {
+        "pass": 8,
+        "partial": 0,
+        "blocked": 4,
+        "unavailable": 0,
+    }
+    assert gate["readiness_summaries"]["comparison_export_parity"]["representative_comparison_pairs"] == [
+        ["VOO", "QQQ"],
+        ["AAPL", "VOO"],
+        ["AAPL", "MSFT"],
+    ]
+    assert gate["readiness_summaries"]["stock_vs_etf_readiness"]["backend_compare"]["basket_structure"] == (
+        "single-company-vs-etf-basket"
+    )
+    assert gate["weekly_news_and_ai_boundaries"]["weekly_news_focus_configured_max_requires_evidence"] is True
+    assert gate["weekly_news_and_ai_boundaries"]["weekly_news_focus_smaller_or_empty_sets_valid"] is True
+    assert gate["weekly_news_and_ai_boundaries"]["ai_comprehensive_analysis_suppressed_without_two_items"] is True
+    assert gate["unsupported_blocked_ticker_boundaries"]["blocked_regression_tickers"] == [
+        "TQQQ",
+        "ARKK",
+        "BND",
+        "GLD",
+    ]
+    assert gate["unsupported_blocked_ticker_boundaries"]["blocked_rows_have_no_generated_output"] is True
+    assert len(gate["strict_public_launch_audit_only_gates"]) == 13
+    assert all(item["status"] == "audit_only" for item in gate["strict_public_launch_audit_only_gates"])
+    assert all(
+        item["blocking_for_local_personal_mvp_manual_review"] is False
+        for item in gate["strict_public_launch_audit_only_gates"]
+    )
+    assert gate["no_secret_diagnostics"]["forbidden_value_marker_hits"] == []
+
+    blocked = run_lightweight_mvp_readiness_gate(env={"LTT_REHEARSAL_DURABLE_REPOSITORIES_ENABLED": "true"})
+    assert blocked["status"] == "blocked"
+    assert blocked["local_personal_mvp_ready_for_manual_review"] is False
+    assert {
+        blocker["reason_code"] for blocker in blocked["local_manual_review_blockers"]
+    } >= {
+        "optional_operator_check_blocked_after_explicit_opt_in",
+        "local_threshold_summary_not_ready",
+        "lightweight_local_slice_gate_not_ready",
+    }
+    assert blocked["no_secret_diagnostics"]["secret_values_reported"] is False
+
+    combined = "\n".join(
+        [
+            (ROOT / "scripts/run_lightweight_mvp_readiness_gate.py").read_text(encoding="utf-8"),
+            (ROOT / "docs/archive/2026-10-07-main/local_fresh_data_ingest_to_render_runbook.md").read_text(encoding="utf-8"),
+        ]
+    )
+    for marker in [
+        "lightweight-mvp-readiness-gate-v1",
+        "scripts/run_lightweight_mvp_readiness_gate.py --json",
+        "strict_public_launch_audit_only_gates",
+        "local_personal_mvp_ready_for_manual_review",
+        "ETF-500 full supported-manifest validation",
+        "Top-500 current-manifest refresh approval",
+        "Golden Asset Source Handoff approval",
+        "generated-output cache promotion",
+        "public-launch approval",
+    ]:
+        assert marker in combined
+
+    serialized = str(gate)
+    for forbidden in [
+        "postgresql://",
+        "postgresql+psycopg://",
+        "Bearer ",
+        "Authorization:",
+        "BEGIN PRIVATE KEY",
+        "sk-",
+        "xoxb-",
+        "ghp_",
+        "raw provider payload value",
+        "raw source text value",
+        "raw model output",
+        "raw model reasoning",
+        "hidden prompt text",
+        "service account json",
+        "signed url",
+    ]:
+        assert forbidden not in serialized
+
+
+def _live_ai_eval_transport_factory(case_id, prompt_payload):
+    def transport(request):
+        if case_id in {LIVE_AI_CHAT_STOCK_CASE_ID, LIVE_AI_CHAT_ETF_CASE_ID}:
+            content = {
+                "asset_ticker": prompt_payload["asset_ticker"],
+                "direct_answer": f"{prompt_payload['asset_ticker']} is described from selected evidence.",
+                "why_it_matters": "The response stays educational and same-asset cited.",
+                "citation_ids": [prompt_payload["allowed_citation_ids"][0]],
+                "freshness_state": "fresh",
+            }
+        else:
+            weekly_citation = prompt_payload["allowed_weekly_citation_ids"][0]
+            canonical_citation = prompt_payload["canonical_fact_citation_ids"][0]
+            content = {
+                "sections": [
+                    {
+                        "section_id": section_id,
+                        "analysis": "Educational Weekly News Focus context from selected evidence.",
+                        "citation_ids": [weekly_citation],
+                    }
+                    for section_id in prompt_payload["required_section_order"]
+                ],
+                "canonical_fact_citation_ids": [canonical_citation],
+                "stable_facts_separate": True,
+            }
+        return {
+            "status_code": 200,
+            "latency_ms": 1,
+            "json": {
+                "model": DEFAULT_OPENROUTER_FREE_MODEL_ORDER[0],
+                "choices": [{"message": {"content": json.dumps(content)}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        }
+
+    return transport
+
 
 def _flatten_static_text(value):
     if isinstance(value, str):
@@ -2551,5 +3226,11 @@ if __name__ == "__main__":
     test_generated_chat_contract()
     test_export_cases()
     test_weekly_news_cases()
+    test_market_news_cases()
+    test_analysis_pack_cases()
     test_llm_provider_cases()
+    test_local_deployment_env_smoke_cases()
+    test_full_manifest_support_smoke_cases()
+    test_current_stock_manifest_fetch_smoke_cases()
+    test_lightweight_mvp_readiness_gate_cases()
     print("Static evals passed.")

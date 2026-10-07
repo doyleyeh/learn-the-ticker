@@ -5,11 +5,26 @@ from backend.citations import CitationEvidence, CitationValidationStatus
 from backend.comparison import (
     PlannedComparisonClaim,
     generate_comparison,
+    read_persisted_comparison_response,
     validate_comparison_response,
     validate_generated_comparison_claims,
 )
-from backend.models import AssetStatus, CompareResponse, FreshnessState, SourceDocument
-from backend.retrieval import build_comparison_knowledge_pack
+from backend.cache import (
+    build_cache_key,
+    build_comparison_pack_freshness_input,
+    build_generated_output_freshness_input,
+    cache_entry_metadata_from_generated_output,
+    compute_generated_output_freshness_hash,
+    compute_knowledge_pack_freshness_hash,
+)
+from backend.generated_output_cache_repository import (
+    GeneratedOutputArtifactCategory,
+    InMemoryGeneratedOutputCacheRepository,
+    build_generated_output_cache_records,
+)
+from backend.models import AssetStatus, CacheEntryKind, CacheKeyMetadata, CacheScope, CompareResponse, EvidenceState, FreshnessState, SourceDocument, SourceUsePolicy
+from backend.repositories.knowledge_packs import AssetKnowledgePackRepository
+from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack
 from backend.retrieval import build_asset_knowledge_pack_result
 from backend.safety import find_forbidden_output_phrases
 
@@ -137,6 +152,159 @@ def test_voo_qqq_comparison_supports_reverse_ticker_order():
     assert validate_comparison_response(comparison, pack).valid
 
 
+def test_aapl_voo_stock_etf_comparison_is_schema_valid_source_backed_and_reversible():
+    for left, right in [("AAPL", "VOO"), ("VOO", "AAPL")]:
+        pack = build_comparison_knowledge_pack(left, right)
+        comparison = generate_comparison(left, right)
+        validated = CompareResponse.model_validate(comparison.model_dump(mode="json"))
+
+        assert validated.left_asset.ticker == left
+        assert validated.right_asset.ticker == right
+        assert validated.state.status is AssetStatus.supported
+        assert validated.comparison_type == "stock_vs_etf"
+        assert validated.bottom_line_for_beginners is not None
+        assert validated.citations
+        assert validated.source_documents
+        assert validated.stock_etf_relationship is not None
+        assert validated.stock_etf_relationship.schema_version == "stock-etf-relationship-v1"
+        assert validated.stock_etf_relationship.stock_ticker == "AAPL"
+        assert validated.stock_etf_relationship.etf_ticker == "VOO"
+        assert validated.stock_etf_relationship.relationship_state == "direct_holding"
+        assert validated.stock_etf_relationship.evidence_state is EvidenceState.partial
+        assert "Exact holding weight" in (validated.stock_etf_relationship.basket_structure.unavailable_detail or "")
+
+        dimensions = {difference.dimension for difference in validated.key_differences}
+        assert {"Structure", "Basket membership", "Breadth", "Cost model", "Educational role"} <= dimensions
+        membership = next(item for item in validated.key_differences if item.dimension == "Basket membership")
+        assert "does not verify a precise holding weight" in membership.plain_english_summary
+        assert "full overlap calculation" in membership.plain_english_summary
+        assert "personal decision rule" not in validated.bottom_line_for_beginners.summary
+        assert "partial educational context" in validated.bottom_line_for_beginners.summary
+
+        citation_ids = {citation.citation_id for citation in validated.citations}
+        source_ids = {source.source_document_id for source in validated.source_documents}
+        used_citation_ids = {
+            *{citation_id for item in validated.key_differences for citation_id in item.citation_ids},
+            *validated.bottom_line_for_beginners.citation_ids,
+            *validated.stock_etf_relationship.basket_structure.citation_ids,
+        }
+        assert used_citation_ids <= citation_ids
+        assert {citation.source_document_id for citation in validated.citations} <= source_ids
+        assert {source.source_document_id for source in validated.source_documents} <= {
+            source.source_document_id for source in pack.comparison_sources
+        }
+        assert {citation.source_document_id for citation in validated.citations} <= {
+            source.source_document_id for source in pack.comparison_sources
+        }
+        assert {source.source_document_id for source in validated.source_documents} == {
+            "src_aapl_10k_fixture",
+            "src_voo_fact_sheet_fixture",
+            "src_voo_holdings_fixture",
+        }
+        assert validate_comparison_response(validated, pack).valid
+        assert validated.evidence_availability is not None
+        assert validated.evidence_availability.availability_state.value == "available"
+        assert set(validated.evidence_availability.required_dimensions) == {
+            "Structure",
+            "Basket membership",
+            "Breadth",
+            "Cost model",
+            "Educational role",
+        }
+        basket_dimension = next(
+            dimension
+            for dimension in validated.evidence_availability.required_evidence_dimensions
+            if dimension.dimension == "Basket membership"
+        )
+        assert basket_dimension.evidence_state is EvidenceState.partial
+        assert "exact weight" in (basket_dimension.unavailable_reason or "")
+        assert {
+            item.asset_ticker
+            for item in validated.evidence_availability.evidence_items
+            if item.side_role.value == "left_side_support"
+        } == {left}
+        assert {
+            item.asset_ticker
+            for item in validated.evidence_availability.evidence_items
+            if item.side_role.value == "right_side_support"
+        } == {right}
+        assert {
+            reference.source_document_id for reference in validated.evidence_availability.source_references
+        } <= source_ids
+        assert all(
+            binding.supports_generated_claim is True
+            for binding in validated.evidence_availability.citation_bindings
+        )
+
+
+def test_aapl_msft_stock_stock_comparison_is_schema_valid_source_backed_and_stock_appropriate():
+    for left, right in [("AAPL", "MSFT"), ("MSFT", "AAPL")]:
+        pack = build_comparison_knowledge_pack(left, right)
+        comparison = generate_comparison(left, right)
+        validated = CompareResponse.model_validate(comparison.model_dump(mode="json"))
+
+        assert validated.left_asset.ticker == left
+        assert validated.right_asset.ticker == right
+        assert validated.state.status is AssetStatus.supported
+        assert validated.comparison_type == "stock_vs_stock"
+        assert validated.bottom_line_for_beginners is not None
+        assert validated.citations
+        assert validated.source_documents
+        assert validated.stock_etf_relationship is None
+
+        expected_dimensions = {
+            "Business model",
+            "Revenue trend",
+            "Business quality evidence",
+            "Risk context",
+            "Valuation evidence availability",
+        }
+        assert {difference.dimension for difference in validated.key_differences} == expected_dimensions
+        assert validate_comparison_response(validated, pack).valid
+
+        citation_ids = {citation.citation_id for citation in validated.citations}
+        source_ids = {source.source_document_id for source in validated.source_documents}
+        used_citation_ids = {
+            *{citation_id for item in validated.key_differences for citation_id in item.citation_ids},
+            *validated.bottom_line_for_beginners.citation_ids,
+        }
+        assert used_citation_ids <= citation_ids
+        assert {citation.source_document_id for citation in validated.citations} <= source_ids
+        assert {source.source_document_id for source in validated.source_documents} <= {
+            source.source_document_id for source in pack.comparison_sources
+        }
+
+        assert validated.evidence_availability is not None
+        assert validated.evidence_availability.availability_state.value == "available"
+        assert set(validated.evidence_availability.required_dimensions) == expected_dimensions
+        assert {reference.asset_ticker for reference in validated.evidence_availability.source_references} == {
+            "AAPL",
+            "MSFT",
+        }
+        valuation_dimension = next(
+            dimension
+            for dimension in validated.evidence_availability.required_evidence_dimensions
+            if dimension.dimension == "Valuation evidence availability"
+        )
+        assert valuation_dimension.evidence_state is EvidenceState.partial
+        assert "valuation metrics are unavailable" in (valuation_dimension.unavailable_reason or "")
+        assert {
+            item.asset_ticker
+            for item in validated.evidence_availability.evidence_items
+            if item.side_role.value == "left_side_support"
+        } == {left}
+        assert {
+            item.asset_ticker
+            for item in validated.evidence_availability.evidence_items
+            if item.side_role.value == "right_side_support"
+        } == {right}
+
+        serialized = _flatten_text(validated.model_dump(mode="json")).lower()
+        for forbidden in ["benchmark", "expense ratio", "holdings count", "fund construction", "etf role", " etf"]:
+            assert forbidden not in serialized
+        assert find_forbidden_output_phrases(serialized) == []
+
+
 def test_knowledge_pack_builder_does_not_change_comparison_output():
     before = generate_comparison("VOO", "QQQ").model_dump(mode="json")
     build_result = build_asset_knowledge_pack_result("VOO")
@@ -146,14 +314,221 @@ def test_knowledge_pack_builder_does_not_change_comparison_output():
     assert after == before
 
 
+def test_persisted_comparison_read_prefers_valid_same_pack_records_when_supplied():
+    default = generate_comparison("VOO", "QQQ")
+    pack_records = _persisted_pack_records(["VOO", "QQQ"])
+    cache_records = _comparison_cache_records("VOO", "QQQ")
+
+    read = read_persisted_comparison_response(
+        "VOO",
+        "QQQ",
+        persisted_pack_reader=pack_records,
+        generated_output_cache_reader={("VOO", "QQQ"): cache_records},
+    )
+
+    assert read.found
+    assert read.comparison is not None
+    assert read.comparison.model_dump(mode="json") == default.model_dump(mode="json")
+    assert read.diagnostics == ("comparison:persisted_hit",)
+    assert "prompt" not in " ".join(read.diagnostics).lower()
+    assert "secret" not in " ".join(read.diagnostics).lower()
+
+
+def test_valid_comparison_generation_writes_same_pack_cache_metadata_when_configured():
+    writer = InMemoryGeneratedOutputCacheRepository()
+    default = generate_comparison("VOO", "QQQ")
+    generated = generate_comparison("VOO", "QQQ", generated_output_cache_writer=writer)
+    records = writer.read_comparison_records("VOO", "QQQ")
+
+    assert generated.model_dump(mode="json") == default.model_dump(mode="json")
+    assert records is not None
+    envelope = records.envelopes[0]
+    assert envelope.artifact_category == GeneratedOutputArtifactCategory.comparison_output.value
+    assert envelope.comparison_left_ticker == "VOO"
+    assert envelope.comparison_right_ticker == "QQQ"
+    assert envelope.asset_ticker is None
+    assert envelope.cacheable is True
+    assert set(envelope.citation_ids) <= {citation for row in records.source_checksums for citation in row.citation_ids}
+
+
+def test_default_comparison_path_remains_fixture_backed_without_persisted_readers():
+    expected = generate_comparison("VOO", "QQQ").model_dump(mode="json")
+    read = read_persisted_comparison_response("VOO", "QQQ")
+    actual = generate_comparison("VOO", "QQQ").model_dump(mode="json")
+
+    assert read.status == "not_configured"
+    assert actual == expected
+
+
+def test_invalid_comparison_cache_falls_back_to_fixture_output():
+    expected = generate_comparison("VOO", "QQQ").model_dump(mode="json")
+    cache_records = _comparison_cache_records("VOO", "QQQ")
+    wrong_right = cache_records.envelopes[0].model_copy(update={"comparison_right_ticker": "SPY"})
+    invalid_cache = cache_records.model_copy(update={"envelopes": [wrong_right]})
+
+    read = read_persisted_comparison_response(
+        "VOO",
+        "QQQ",
+        persisted_pack_reader=_persisted_pack_records(["VOO", "QQQ"]),
+        generated_output_cache_reader={("VOO", "QQQ"): invalid_cache},
+    )
+    actual = generate_comparison(
+        "VOO",
+        "QQQ",
+        persisted_pack_reader=_persisted_pack_records(["VOO", "QQQ"]),
+        generated_output_cache_reader={("VOO", "QQQ"): invalid_cache},
+    ).model_dump(mode="json")
+
+    assert read.status == "contract_error"
+    assert actual == expected
+
+
+def test_persisted_comparison_rejects_wrong_left_identity_and_wrong_pack_citations():
+    expected = generate_comparison("VOO", "QQQ").model_dump(mode="json")
+    wrong_pack_reader = {"VOO": _persisted_pack_records(["QQQ"])["QQQ"], "QQQ": _persisted_pack_records(["QQQ"])["QQQ"]}
+
+    wrong_identity = read_persisted_comparison_response(
+        "VOO",
+        "QQQ",
+        persisted_pack_reader=wrong_pack_reader,
+        generated_output_cache_reader={("VOO", "QQQ"): _comparison_cache_records("VOO", "QQQ")},
+    )
+    assert wrong_identity.status == "contract_error"
+
+    cache_records = _comparison_cache_records("VOO", "QQQ")
+    wrong_citation = cache_records.envelopes[0].model_copy(update={"citation_ids": ["c_fact_aapl_primary_business"]})
+    wrong_citation_records = cache_records.model_copy(update={"envelopes": [wrong_citation]})
+    wrong_citation_read = read_persisted_comparison_response(
+        "VOO",
+        "QQQ",
+        persisted_pack_reader=_persisted_pack_records(["VOO", "QQQ"]),
+        generated_output_cache_reader={("VOO", "QQQ"): wrong_citation_records},
+    )
+    fallback = generate_comparison(
+        "VOO",
+        "QQQ",
+        persisted_pack_reader=_persisted_pack_records(["VOO", "QQQ"]),
+        generated_output_cache_reader={("VOO", "QQQ"): wrong_citation_records},
+    ).model_dump(mode="json")
+
+    assert wrong_citation_read.status == "contract_error"
+    assert fallback == expected
+
+
+def test_persisted_comparison_preserves_reverse_order():
+    default = generate_comparison("QQQ", "VOO")
+    read = read_persisted_comparison_response(
+        "QQQ",
+        "VOO",
+        persisted_pack_reader=_persisted_pack_records(["QQQ", "VOO"]),
+        generated_output_cache_reader={("QQQ", "VOO"): _comparison_cache_records("QQQ", "VOO")},
+    )
+
+    assert read.found
+    assert read.comparison is not None
+    assert read.comparison.left_asset.ticker == "QQQ"
+    assert read.comparison.right_asset.ticker == "VOO"
+    assert read.comparison.model_dump(mode="json") == default.model_dump(mode="json")
+
+
+def test_persisted_comparison_does_not_create_no_local_or_blocked_comparisons():
+    available = read_persisted_comparison_response(
+        "AAPL",
+        "VOO",
+        persisted_pack_reader=_persisted_pack_records(["AAPL", "VOO"]),
+        generated_output_cache_reader={("AAPL", "VOO"): _comparison_cache_records("AAPL", "VOO")},
+    )
+    no_local = read_persisted_comparison_response(
+        "AAPL",
+        "QQQ",
+        persisted_pack_reader=_persisted_pack_records(["AAPL", "QQQ"]),
+        generated_output_cache_reader={("AAPL", "QQQ"): _comparison_cache_records("VOO", "QQQ")},
+    )
+    unsupported = generate_comparison(
+        "VOO",
+        "BTC",
+        persisted_pack_reader=_persisted_pack_records(["VOO"]),
+        generated_output_cache_reader={("VOO", "BTC"): _comparison_cache_records("VOO", "QQQ")},
+    )
+
+    assert available.found
+    assert available.comparison is not None
+    assert available.comparison.comparison_type == "stock_vs_etf"
+    assert no_local.status == "blocked_state"
+    assert generate_comparison("AAPL", "VOO").evidence_availability.availability_state.value == "available"
+    assert generate_comparison("AAPL", "QQQ").evidence_availability.availability_state.value == "no_local_pack"
+    assert unsupported.comparison_type == "unavailable"
+    assert unsupported.evidence_availability.availability_state.value == "unsupported"
+
+
+def test_persisted_comparison_rejects_source_use_freshness_and_safety_blocks():
+    expected = generate_comparison("VOO", "QQQ").model_dump(mode="json")
+    pack_records = _persisted_pack_records(["VOO", "QQQ"])
+    voo_records = pack_records["VOO"]
+    blocked_source = voo_records.source_documents[0].model_copy(
+        update={"source_use_policy": SourceUsePolicy.metadata_only.value}
+    )
+    source_use_read = read_persisted_comparison_response(
+        "VOO",
+        "QQQ",
+        persisted_pack_reader={**pack_records, "VOO": voo_records.model_copy(update={"source_documents": [blocked_source, *voo_records.source_documents[1:]]})},
+        generated_output_cache_reader={("VOO", "QQQ"): _comparison_cache_records("VOO", "QQQ")},
+    )
+
+    cache_records = _comparison_cache_records("VOO", "QQQ")
+    stale_source_states = {
+        **cache_records.envelopes[0].source_freshness_states,
+        cache_records.envelopes[0].source_document_ids[0]: "stale",
+    }
+    stale_envelope = cache_records.envelopes[0].model_copy(
+        update={"source_freshness_states": stale_source_states, "section_freshness_labels": {"comparison": "fresh"}}
+    )
+    stale_read = read_persisted_comparison_response(
+        "VOO",
+        "QQQ",
+        persisted_pack_reader=pack_records,
+        generated_output_cache_reader={("VOO", "QQQ"): cache_records.model_copy(update={"envelopes": [stale_envelope]})},
+    )
+
+    unsafe_fact = next(fact for fact in voo_records.normalized_facts if fact.field_name == "beginner_role")
+    unsafe_records = voo_records.model_copy(
+        update={
+            "normalized_facts": [
+                fact.model_copy(update={"value": "you should buy this fund"})
+                if fact.fact_id == unsafe_fact.fact_id
+                else fact
+                for fact in voo_records.normalized_facts
+            ]
+        }
+    )
+    unsafe_read = read_persisted_comparison_response(
+        "VOO",
+        "QQQ",
+        persisted_pack_reader={**pack_records, "VOO": unsafe_records},
+        generated_output_cache_reader={("VOO", "QQQ"): cache_records},
+    )
+    fallback = generate_comparison(
+        "VOO",
+        "QQQ",
+        persisted_pack_reader={**pack_records, "VOO": unsafe_records},
+        generated_output_cache_reader={("VOO", "QQQ"): cache_records},
+    ).model_dump(mode="json")
+
+    assert source_use_read.status == "contract_error"
+    assert stale_read.status == "contract_error"
+    assert unsafe_read.status == "contract_error"
+    assert fallback == expected
+
+
 def test_unavailable_comparisons_do_not_generate_claims_or_citations():
     cases = [
         ("VOO", "BTC", AssetStatus.unsupported, "unsupported"),
         ("VOO", "TQQQ", AssetStatus.unsupported, "unsupported"),
         ("VOO", "GME", AssetStatus.unknown, "out_of_scope"),
         ("VOO", "SPY", AssetStatus.unknown, "eligible_not_cached"),
+        ("SPY", "VTI", AssetStatus.unknown, "eligible_not_cached"),
         ("VOO", "ZZZZ", AssetStatus.unknown, "unknown"),
-        ("AAPL", "VOO", AssetStatus.unknown, "no_local_pack"),
+        ("AAPL", "QQQ", AssetStatus.unknown, "no_local_pack"),
     ]
 
     for left_ticker, right_ticker, expected_status, expected_availability_state in cases:
@@ -305,7 +680,15 @@ def test_comparison_claim_validation_rejects_wrong_stale_unsupported_and_empty_e
 
 
 def test_generated_comparison_copy_avoids_forbidden_advice_phrases():
-    for pair in [("VOO", "QQQ"), ("QQQ", "VOO"), ("VOO", "BTC"), ("AAPL", "VOO")]:
+    for pair in [
+        ("VOO", "QQQ"),
+        ("QQQ", "VOO"),
+        ("VOO", "BTC"),
+        ("AAPL", "VOO"),
+        ("VOO", "AAPL"),
+        ("AAPL", "MSFT"),
+        ("MSFT", "AAPL"),
+    ]:
         comparison = generate_comparison(*pair)
         assert find_forbidden_output_phrases(_flatten_text(comparison.model_dump(mode="json"))) == []
 
@@ -340,4 +723,98 @@ def _aapl_source_document() -> SourceDocument:
         freshness_state=FreshnessState.fresh,
         is_official=True,
         supporting_passage="Apple 10-K fixture evidence.",
+    )
+
+
+def _persisted_pack_records(tickers: list[str]) -> dict[str, Any]:
+    repository = AssetKnowledgePackRepository()
+    return {
+        ticker: repository.serialize(
+            build_asset_knowledge_pack_result(ticker),
+            retrieval_pack=build_asset_knowledge_pack(ticker),
+        )
+        for ticker in tickers
+    }
+
+
+def _comparison_cache_records(left_ticker: str, right_ticker: str) -> Any:
+    comparison_pack = build_comparison_knowledge_pack(left_ticker, right_ticker)
+    comparison = generate_comparison(left_ticker, right_ticker)
+    response_source_ids = {source.source_document_id for source in comparison.source_documents}
+    knowledge_input = build_comparison_pack_freshness_input(comparison_pack)
+    knowledge_input = knowledge_input.model_copy(
+        update={
+            "source_checksums": [
+                checksum for checksum in knowledge_input.source_checksums if checksum.source_document_id in response_source_ids
+            ]
+        }
+    )
+    knowledge_hash = compute_knowledge_pack_freshness_hash(knowledge_input)
+    generated_input = build_generated_output_freshness_input(
+        output_identity=f"comparison:{left_ticker}-to-{right_ticker}",
+        entry_kind=CacheEntryKind.comparison,
+        scope=CacheScope.comparison,
+        schema_version="comparison-v1",
+        prompt_version="comparison-prompt-v1",
+        model_name="deterministic-fixture-model",
+        knowledge_input=knowledge_input,
+    )
+    generated_hash = compute_generated_output_freshness_hash(generated_input)
+    key = build_cache_key(
+        CacheKeyMetadata(
+            entry_kind=CacheEntryKind.comparison,
+            scope=CacheScope.comparison,
+            comparison_left_ticker=left_ticker,
+            comparison_right_ticker=right_ticker,
+            pack_identity=comparison_pack.comparison_pack_id,
+            mode_or_output_type="beginner",
+            schema_version="comparison-v1",
+            source_freshness_state=FreshnessState.fresh,
+            prompt_version="comparison-prompt-v1",
+            model_name="deterministic-fixture-model",
+            input_freshness_hash=generated_hash,
+        )
+    )
+    metadata = cache_entry_metadata_from_generated_output(
+        cache_key=key,
+        freshness_input=generated_input,
+        freshness_hash=generated_hash,
+        citation_ids=[],
+        created_at="2026-04-25T18:33:44Z",
+        expires_at="2026-05-02T18:33:44Z",
+    )
+    records = build_generated_output_cache_records(
+        cache_entry_id=f"generated-output-{left_ticker.lower()}-{right_ticker.lower()}-comparison",
+        output_identity=f"comparison:{left_ticker}-to-{right_ticker}",
+        mode_or_output_type="beginner-comparison",
+        artifact_category=GeneratedOutputArtifactCategory.comparison_output,
+        cache_metadata=metadata,
+        generated_freshness_input=generated_input,
+        knowledge_freshness_input=knowledge_input,
+        knowledge_pack_freshness_hash=knowledge_hash,
+        created_at="2026-04-25T18:33:44Z",
+        ttl_seconds=604800,
+    )
+    citations_by_source: dict[str, list[str]] = {}
+    for citation in comparison.citations:
+        citations_by_source.setdefault(citation.source_document_id, []).append(citation.citation_id)
+    source_rows = [
+        row.model_copy(update={"citation_ids": sorted(citations_by_source.get(row.source_document_id, []))})
+        for row in records.source_checksums
+    ]
+    citation_ids = sorted({citation.citation_id for citation in comparison.citations})
+    return records.model_copy(
+        update={
+            "envelopes": [records.envelopes[0].model_copy(update={"citation_ids": citation_ids})],
+            "artifacts": [records.artifacts[0].model_copy(update={"citation_ids": citation_ids})],
+            "source_checksums": source_rows,
+            "validation_statuses": [
+                records.validation_statuses[0].model_copy(
+                    update={
+                        "important_claim_count": len(citation_ids),
+                        "cited_important_claim_count": len(citation_ids),
+                    }
+                )
+            ],
+        }
     )

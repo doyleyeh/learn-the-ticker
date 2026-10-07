@@ -10,7 +10,7 @@
     "dev": "npm --workspace apps/desktop run dev",
     "build": "npm --workspace apps/desktop run build",
     "start": "npm --workspace apps/desktop run start",
-    "test": "npm --workspace apps/desktop run test",
+    "test": "npm --workspace apps/desktop run test && node tests/frontend/reference_contracts.mjs",
     "test:browser": "npm --workspace apps/desktop run test:browser",
     "lint": "npm --workspace apps/desktop run lint",
     "typecheck": "npm --workspace apps/desktop run typecheck",

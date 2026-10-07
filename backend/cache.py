@@ -24,8 +24,12 @@ from backend.models import (
     KnowledgePackFreshnessInput,
     LlmCacheEligibilityDecision,
     SectionFreshnessInput,
+    SourceAllowlistStatus,
     SourceChecksumInput,
     SourceChecksumRecord,
+    SourceExportRights,
+    SourceStorageRights,
+    SourceUsePolicy,
 )
 
 
@@ -72,6 +76,18 @@ def compute_source_document_checksum(source_input: SourceChecksumInput) -> Sourc
         source_use_policy=normalized_input.source_use_policy,
         source_type=normalized_input.source_type,
         source_rank=normalized_input.source_rank,
+        source_identity=normalized_input.source_identity or normalized_input.url or normalized_input.provider_name,
+        retrieved_at=normalized_input.retrieved_at,
+        as_of_date=normalized_input.as_of_date,
+        published_at=normalized_input.published_at,
+        is_official=normalized_input.is_official,
+        source_quality=normalized_input.source_quality,
+        storage_rights=normalized_input.storage_rights,
+        export_rights=normalized_input.export_rights,
+        review_status=normalized_input.review_status,
+        approval_rationale=normalized_input.approval_rationale,
+        parser_status=normalized_input.parser_status,
+        parser_failure_diagnostics=normalized_input.parser_failure_diagnostics,
         citation_ids=normalized_input.citation_ids,
         fact_bindings=normalized_input.fact_bindings,
         recent_event_bindings=normalized_input.recent_event_bindings,
@@ -252,6 +268,19 @@ def source_checksum_from_retrieval_source(
         export_allowed=bool(_optional_attr(_optional_attr(source, "permitted_operations"), "can_export_metadata", False)),
         allowlist_status=_optional_attr(source, "allowlist_status"),
         source_use_policy=_optional_attr(source, "source_use_policy"),
+        source_identity=_optional_attr(source, "source_identity") or _optional_attr(source, "url"),
+        is_official=_optional_attr(source, "is_official"),
+        source_quality=_optional_attr(source, "source_quality", "fixture"),
+        storage_rights=_source_storage_rights(source),
+        export_rights=_source_export_rights(source),
+        review_status=_optional_attr(source, "review_status", "approved"),
+        approval_rationale=_optional_attr(
+            source,
+            "approval_rationale",
+            "Deterministic fixture source passed local source-use policy review.",
+        ),
+        parser_status=_optional_attr(source, "parser_status", "parsed"),
+        parser_failure_diagnostics=_optional_attr(source, "parser_failure_diagnostics"),
         redistribution_allowed=False,
     )
     return compute_source_document_checksum(source_input)
@@ -285,6 +314,19 @@ def source_checksum_from_provider_attribution(
         export_allowed=bool(_optional_attr(licensing, "export_allowed", False)),
         allowlist_status=_optional_attr(source, "allowlist_status"),
         source_use_policy=_optional_attr(source, "source_use_policy"),
+        source_identity=_optional_attr(source, "source_identity") or _optional_attr(source, "url"),
+        is_official=_optional_attr(source, "is_official"),
+        source_quality=_optional_attr(source, "source_quality", "provider"),
+        storage_rights=_source_storage_rights(source),
+        export_rights=_source_export_rights(source),
+        review_status=_optional_attr(source, "review_status", "approved"),
+        approval_rationale=_optional_attr(
+            source,
+            "approval_rationale",
+            "Deterministic fixture source passed local source-use policy review.",
+        ),
+        parser_status=_optional_attr(source, "parser_status", "parsed"),
+        parser_failure_diagnostics=_optional_attr(source, "parser_failure_diagnostics"),
         redistribution_allowed=bool(_optional_attr(licensing, "redistribution_allowed", False)),
     )
     return compute_source_document_checksum(source_input)
@@ -438,13 +480,64 @@ def cache_entry_metadata_from_generated_output(
         unavailable_states=[
             gap.gap_id for gap in freshness_input.evidence_gaps if gap.freshness_state is FreshnessState.unavailable
         ],
-        cache_allowed=cache_allowed and all(checksum.cache_allowed for checksum in freshness_input.source_checksums),
+        cache_allowed=cache_allowed
+        and all(_checksum_can_feed_generated_output_cache(checksum) for checksum in freshness_input.source_checksums),
         export_allowed=export_allowed,
         created_at=created_at,
         expires_at=expires_at,
         prompt_version=freshness_input.prompt_version,
         model_name=freshness_input.model_name,
     )
+
+
+def _checksum_can_feed_generated_output_cache(checksum: SourceChecksumRecord) -> bool:
+    return (
+        checksum.cache_allowed
+        and checksum.allowlist_status is SourceAllowlistStatus.allowed
+        and checksum.source_use_policy in {SourceUsePolicy.summary_allowed, SourceUsePolicy.full_text_allowed}
+    )
+
+
+def _source_storage_rights(source: Any) -> SourceStorageRights:
+    explicit = _optional_attr(source, "storage_rights")
+    policy = _source_use_policy(source)
+    if explicit is not None and not _default_raw_storage_for_limited_policy(explicit, policy):
+        return explicit if isinstance(explicit, SourceStorageRights) else SourceStorageRights(str(explicit))
+    if policy is SourceUsePolicy.summary_allowed:
+        return SourceStorageRights.summary_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceStorageRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceStorageRights.link_only
+    if policy is SourceUsePolicy.rejected:
+        return SourceStorageRights.rejected
+    return SourceStorageRights.raw_snapshot_allowed
+
+
+def _source_export_rights(source: Any) -> SourceExportRights:
+    explicit = _optional_attr(source, "export_rights")
+    policy = _source_use_policy(source)
+    if explicit is not None:
+        return explicit if isinstance(explicit, SourceExportRights) else SourceExportRights(str(explicit))
+    if policy in {SourceUsePolicy.full_text_allowed, SourceUsePolicy.summary_allowed}:
+        return SourceExportRights.excerpts_allowed
+    if policy is SourceUsePolicy.metadata_only:
+        return SourceExportRights.metadata_only
+    if policy is SourceUsePolicy.link_only:
+        return SourceExportRights.link_only
+    return SourceExportRights.rejected
+
+
+def _source_use_policy(source: Any) -> SourceUsePolicy:
+    policy = _optional_attr(source, "source_use_policy", SourceUsePolicy.rejected)
+    return policy if isinstance(policy, SourceUsePolicy) else SourceUsePolicy(str(policy))
+
+
+def _default_raw_storage_for_limited_policy(value: Any, policy: SourceUsePolicy) -> bool:
+    if policy not in {SourceUsePolicy.summary_allowed, SourceUsePolicy.metadata_only, SourceUsePolicy.link_only}:
+        return False
+    normalized = value if isinstance(value, SourceStorageRights) else SourceStorageRights(str(value))
+    return normalized is SourceStorageRights.raw_snapshot_allowed
 
 
 def cache_entry_metadata_from_llm_generation(

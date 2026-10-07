@@ -11,6 +11,7 @@ node_modules/
 dist/
 build/
 .agent-runs/
+*:Zone.Identifier
 .codex/*
 !.codex/skills/
 .codex/skills/*

@@ -3,9 +3,14 @@ import {
   type AssetFixture,
   type AssetType,
   type Citation,
+  type EvidenceState,
   type FreshnessState,
-  type SourceDocument
+  type SourceDocument,
+  type StockOverviewSection,
+  type StockSectionType
 } from "./fixtures";
+import { runtimeSectionStatesFromPayload } from "./runtimeSectionStates";
+import { sanitizeSourceDisplayTitle } from "./sourceDisplay";
 
 type Fetcher = typeof fetch;
 
@@ -23,7 +28,7 @@ type BackendFreshness = {
   page_last_updated_at: string;
   facts_as_of: string;
   holdings_as_of: string | null;
-  recent_events_as_of: string;
+  recent_events_as_of: string | null;
   freshness_state: string;
 };
 
@@ -31,6 +36,17 @@ type BackendBeginnerSummary = {
   what_it_is: string;
   why_people_consider_it: string;
   main_catch: string;
+};
+
+type BackendGenerationDiagnostics = {
+  attempted_live: boolean;
+  used_fallback: boolean;
+  fallback_reason_codes: string[];
+  model_name: string | null;
+  attempt_count?: number;
+  attempted_model_batches?: string[][];
+  attempted_models?: string[];
+  skipped_model_cooldowns?: string[];
 };
 
 type BackendRiskItem = {
@@ -81,6 +97,110 @@ type BackendSourceDocument = {
   permitted_operations: BackendPermittedOperations;
 };
 
+type BackendOverviewSectionItem = {
+  item_id: string;
+  title: string;
+  summary: string;
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  event_date: string | null;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  limitations: string | null;
+};
+
+type BackendOverviewMetric = {
+  metric_id: string;
+  label: string;
+  value: string | number | null;
+  unit: string | null;
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  limitations: string | null;
+};
+
+type BackendOverviewTableColumn = {
+  column_id: string;
+  label: string;
+  value_type: "text" | "number" | "percent" | "currency";
+  align: "left" | "right" | "center";
+};
+
+type BackendOverviewTableRow = {
+  row_id: string;
+  label: string | null;
+  values: Record<string, string | number | null>;
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  limitations: string | null;
+};
+
+type BackendOverviewTable = {
+  table_id: string;
+  title: string;
+  columns: BackendOverviewTableColumn[];
+  rows: BackendOverviewTableRow[];
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  limitations: string | null;
+};
+
+type BackendOverviewChartPoint = {
+  timestamp: string;
+  close: number;
+  volume: number | null;
+};
+
+type BackendOverviewChart = {
+  chart_id: string;
+  title: string;
+  range: string;
+  interval: string;
+  points: BackendOverviewChartPoint[];
+  currency: string | null;
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  delayed_or_best_effort_label: string | null;
+  limitations: string | null;
+};
+
+type BackendOverviewSection = {
+  section_id: string;
+  title: string;
+  section_type: string;
+  applies_to: string[];
+  beginner_summary: string | null;
+  items: BackendOverviewSectionItem[];
+  metrics: BackendOverviewMetric[];
+  table: BackendOverviewTable | null;
+  chart: BackendOverviewChart | null;
+  citation_ids: string[];
+  source_document_ids: string[];
+  freshness_state: string;
+  evidence_state: string;
+  as_of_date: string | null;
+  retrieved_at: string | null;
+  limitations: string | null;
+};
+
 type BackendOverviewResponse = {
   asset: BackendAssetIdentity;
   state: {
@@ -94,11 +214,14 @@ type BackendOverviewResponse = {
   claims: BackendClaim[];
   citations: BackendCitation[];
   source_documents: BackendSourceDocument[];
+  sections: BackendOverviewSection[];
+  section_states?: unknown[];
+  generation_diagnostics?: Record<string, BackendGenerationDiagnostics>;
 };
 
 export async function fetchSupportedAssetOverview(
   ticker: string,
-  fallbackAsset: AssetFixture,
+  fallbackAsset?: AssetFixture,
   fetcher: Fetcher = fetch
 ): Promise<AssetFixture> {
   const normalizedTicker = normalizeTicker(ticker);
@@ -117,12 +240,17 @@ export async function fetchSupportedAssetOverview(
   return mergeAssetFixtureWithOverview(fallbackAsset, payload);
 }
 
+export const GOVERNED_GOLDEN_OVERVIEW_RENDERING_PROOF =
+  "api-backed governed golden overview uses persisted knowledge-pack records plus generated-output cache validation";
+
 function assetOverviewEndpoint(ticker: string) {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim();
   if (!apiBaseUrl) {
     throw new Error("No API base URL is configured for supported asset overview fetches.");
   }
-  return new URL(`/api/assets/${encodeURIComponent(ticker)}/overview`, apiBaseUrl).toString();
+  const endpoint = new URL(`/api/assets/${encodeURIComponent(ticker)}/overview`, apiBaseUrl);
+  endpoint.searchParams.set("mode", "asset_page_stable");
+  return endpoint.toString();
 }
 
 function isSupportedAssetOverviewResponse(value: unknown, requestedTicker: string): value is BackendOverviewResponse {
@@ -144,7 +272,8 @@ function isSupportedAssetOverviewResponse(value: unknown, requestedTicker: strin
     typeof candidate.freshness === "object" &&
     typeof candidate.freshness.page_last_updated_at === "string" &&
     typeof candidate.freshness.facts_as_of === "string" &&
-    typeof candidate.freshness.recent_events_as_of === "string" &&
+    (typeof candidate.freshness.recent_events_as_of === "string" ||
+      candidate.freshness.recent_events_as_of === null) &&
     !!candidate.beginner_summary &&
     typeof candidate.beginner_summary === "object" &&
     typeof candidate.beginner_summary.what_it_is === "string" &&
@@ -162,23 +291,51 @@ function isSupportedAssetOverviewResponse(value: unknown, requestedTicker: strin
     Array.isArray(candidate.citations) &&
     candidate.citations.length > 0 &&
     Array.isArray(candidate.source_documents) &&
-    candidate.source_documents.length > 0
+    candidate.source_documents.length > 0 &&
+    Array.isArray(candidate.sections)
   );
 }
 
-function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture, overview: BackendOverviewResponse): AssetFixture {
+function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture | undefined, overview: BackendOverviewResponse): AssetFixture {
+  const assetType = toAssetType(overview.asset.asset_type);
+  const backendSections = overview.sections
+    .filter((section) => section.applies_to.includes(assetType))
+    .map(toOverviewSection);
+  const backendSectionFields =
+    backendSections.length > 0
+      ? assetType === "stock"
+        ? { stockSections: backendSections, etfSections: undefined }
+        : { etfSections: backendSections, stockSections: undefined }
+      : {};
+  const fallbackCitations = fallbackAsset?.citations ?? [];
+  const fallbackSources = fallbackAsset?.sourceDocuments ?? [];
+  const sourceDocuments = mergeUniqueBy(
+    overview.source_documents.map(toSourceDocument),
+    fallbackSources,
+    (source) => source.sourceDocumentId
+  );
+  const sourceDocumentById = new Map(sourceDocuments.map((source) => [source.sourceDocumentId, source]));
+  const citations = mergeUniqueBy(
+    overview.citations.map((citation) => toCitation(citation, sourceDocumentById.get(citation.source_document_id))),
+    fallbackCitations,
+    (citation) => citation.citationId
+  );
+
   return {
-    ...fallbackAsset,
+    ...(fallbackAsset ?? {}),
     ticker: overview.asset.ticker,
     name: overview.asset.name,
-    assetType: toAssetType(overview.asset.asset_type),
-    exchange: overview.asset.exchange ?? fallbackAsset.exchange,
-    issuer: overview.asset.issuer ?? fallbackAsset.issuer,
+    assetType,
+    exchange: overview.asset.exchange ?? fallbackAsset?.exchange ?? "Unknown",
+    issuer: overview.asset.issuer ?? fallbackAsset?.issuer,
     freshness: {
       pageLastUpdatedAt: overview.freshness.page_last_updated_at,
       factsAsOf: overview.freshness.facts_as_of,
-      holdingsAsOf: overview.freshness.holdings_as_of ?? fallbackAsset.freshness.holdingsAsOf,
-      recentEventsAsOf: overview.freshness.recent_events_as_of
+      holdingsAsOf: overview.freshness.holdings_as_of ?? fallbackAsset?.freshness.holdingsAsOf,
+      recentEventsAsOf:
+        overview.freshness.recent_events_as_of ??
+        fallbackAsset?.freshness.recentEventsAsOf ??
+        overview.freshness.page_last_updated_at
     },
     beginnerSummary: {
       whatItIs: overview.beginner_summary.what_it_is,
@@ -195,21 +352,19 @@ function mergeAssetFixtureWithOverview(fallbackAsset: AssetFixture, overview: Ba
       plainEnglishExplanation: risk.plain_english_explanation,
       citationIds: risk.citation_ids
     })),
+    facts: fallbackAsset?.facts ?? factsFromOverviewSections(backendSections),
+    recentDevelopments: fallbackAsset?.recentDevelopments ?? [],
     suitabilitySummary: {
       mayFit: overview.suitability_summary.may_fit,
       mayNotFit: overview.suitability_summary.may_not_fit,
       learnNext: overview.suitability_summary.learn_next
     },
-    citations: mergeUniqueBy(
-      overview.citations.map(toCitation),
-      fallbackAsset.citations,
-      (citation) => citation.citationId
-    ),
-    sourceDocuments: mergeUniqueBy(
-      overview.source_documents.map(toSourceDocument),
-      fallbackAsset.sourceDocuments,
-      (source) => source.sourceDocumentId
-    )
+    citations,
+    sourceDocuments,
+    citationContexts: fallbackAsset?.citationContexts ?? citationContextsFromOverview(backendSections, citations, sourceDocuments),
+    sectionStates: runtimeSectionStatesFromPayload(overview),
+    generationDiagnostics: generationDiagnosticsFromOverview(overview.generation_diagnostics),
+    ...backendSectionFields
   };
 }
 
@@ -217,11 +372,11 @@ function toAssetType(value: string): AssetType {
   return value === "stock" ? "stock" : "etf";
 }
 
-function toCitation(citation: BackendCitation): Citation {
+function toCitation(citation: BackendCitation, source?: SourceDocument): Citation {
   return {
     citationId: citation.citation_id,
     sourceDocumentId: citation.source_document_id,
-    title: citation.title,
+    title: sanitizeSourceDisplayTitle(citation.title, source),
     publisher: citation.publisher,
     freshnessState: toFreshnessState(citation.freshness_state)
   };
@@ -231,7 +386,7 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
   return {
     sourceDocumentId: source.source_document_id,
     sourceType: source.source_type,
-    title: source.title,
+    title: sanitizeSourceDisplayTitle(source.title, source),
     publisher: source.publisher,
     url: source.url,
     publishedAt: source.published_at ?? source.as_of_date ?? "Unknown",
@@ -249,6 +404,219 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
     permitted_operations: {
       can_export_full_text: source.permitted_operations.can_export_full_text
     }
+  };
+}
+
+function factsFromOverviewSections(sections: StockOverviewSection[]): AssetFixture["facts"] {
+  const facts: AssetFixture["facts"] = [];
+  const seen = new Set<string>();
+
+  for (const section of sections) {
+    for (const metric of section.metrics ?? []) {
+      if (seen.has(metric.label)) {
+        continue;
+      }
+      seen.add(metric.label);
+      facts.push({
+        label: metric.label,
+        value: formatSectionMetricValue(metric.value, metric.unit),
+        citationId: metric.citationIds[0]
+      });
+    }
+
+    for (const item of section.items) {
+      if (facts.length >= 6 || seen.has(item.title)) {
+        continue;
+      }
+      seen.add(item.title);
+      facts.push({
+        label: item.title,
+        value: item.summary,
+        citationId: item.citationIds[0]
+      });
+    }
+  }
+
+  return facts.slice(0, 6);
+}
+
+function generationDiagnosticsFromOverview(
+  diagnostics: BackendOverviewResponse["generation_diagnostics"]
+): AssetFixture["generationDiagnostics"] {
+  if (!diagnostics) {
+    return undefined;
+  }
+  return Object.fromEntries(
+    Object.entries(diagnostics).map(([key, value]) => [
+      key,
+      {
+        attemptedLive: Boolean(value.attempted_live),
+        usedFallback: Boolean(value.used_fallback),
+        fallbackReasonCodes: Array.isArray(value.fallback_reason_codes) ? value.fallback_reason_codes : [],
+        modelName: value.model_name ?? null,
+        attemptCount: typeof value.attempt_count === "number" ? value.attempt_count : 0,
+        attemptedModelBatches: Array.isArray(value.attempted_model_batches) ? value.attempted_model_batches : [],
+        attemptedModels: Array.isArray(value.attempted_models) ? value.attempted_models : [],
+        skippedModelCooldowns: Array.isArray(value.skipped_model_cooldowns) ? value.skipped_model_cooldowns : []
+      }
+    ])
+  );
+}
+
+function citationContextsFromOverview(
+  sections: StockOverviewSection[],
+  citations: Citation[],
+  sourceDocuments: SourceDocument[]
+): AssetFixture["citationContexts"] {
+  const citationSourceIds = new Map(citations.map((citation) => [citation.citationId, citation.sourceDocumentId]));
+  const sourcePassages = new Map(sourceDocuments.map((source) => [source.sourceDocumentId, source.supportingPassage]));
+  const contexts: NonNullable<AssetFixture["citationContexts"]> = [];
+  const seen = new Set<string>();
+
+  for (const section of sections) {
+    const subjects = [
+      ...section.items.map((item) => ({
+        id: item.itemId,
+        title: item.title,
+        summary: item.summary,
+        citationIds: item.citationIds
+      })),
+      ...(section.metrics ?? []).map((metric) => ({
+        id: metric.metricId,
+        title: metric.label,
+        summary: formatSectionMetricValue(metric.value, metric.unit),
+        citationIds: metric.citationIds
+      }))
+    ];
+
+    for (const subject of subjects) {
+      for (const citationId of subject.citationIds) {
+        const sourceDocumentId = citationSourceIds.get(citationId);
+        if (!sourceDocumentId) {
+          continue;
+        }
+        const key = `${section.sectionId}:${subject.id}:${citationId}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        contexts.push({
+          citationId,
+          sourceDocumentId,
+          sectionId: section.sectionId,
+          sectionTitle: section.title,
+          claimContext: `${subject.title}: ${subject.summary}`,
+          supportingPassage: sourcePassages.get(sourceDocumentId) ?? ""
+        });
+      }
+    }
+  }
+
+  return contexts;
+}
+
+function formatSectionMetricValue(value: string | number | null, unit: string | null | undefined) {
+  if (value === null || value === undefined) {
+    return "Unavailable";
+  }
+  return unit ? `${value}${unit}` : String(value);
+}
+
+function toOverviewSection(section: BackendOverviewSection): StockOverviewSection {
+  return {
+    sectionId: section.section_id,
+    title: section.title,
+    sectionType: toStockSectionType(section.section_type),
+    beginnerSummary:
+      section.beginner_summary ??
+      section.limitations ??
+      "This section is unavailable because the backend overview contract did not provide a source-backed summary.",
+    items: section.items.map((item) => ({
+      itemId: item.item_id,
+      title: item.title,
+      summary: item.summary,
+      citationIds: item.citation_ids,
+      sourceDocumentIds: item.source_document_ids,
+      freshnessState: toFreshnessState(item.freshness_state),
+      evidenceState: toEvidenceState(item.evidence_state),
+      eventDate: item.event_date,
+      asOfDate: item.as_of_date,
+      retrievedAt: item.retrieved_at,
+      limitations: item.limitations
+    })),
+    metrics: section.metrics.map((metric) => ({
+      metricId: metric.metric_id,
+      label: metric.label,
+      value: metric.value,
+      unit: metric.unit,
+      citationIds: metric.citation_ids,
+      sourceDocumentIds: metric.source_document_ids,
+      freshnessState: toFreshnessState(metric.freshness_state),
+      evidenceState: toEvidenceState(metric.evidence_state),
+      asOfDate: metric.as_of_date,
+      retrievedAt: metric.retrieved_at,
+      limitations: metric.limitations
+    })),
+    table: section.table
+      ? {
+          tableId: section.table.table_id,
+          title: section.table.title,
+          columns: section.table.columns.map((column) => ({
+            columnId: column.column_id,
+            label: column.label,
+            valueType: column.value_type,
+            align: column.align
+          })),
+          rows: section.table.rows.map((row) => ({
+            rowId: row.row_id,
+            label: row.label,
+            values: row.values,
+            citationIds: row.citation_ids,
+            sourceDocumentIds: row.source_document_ids,
+            freshnessState: toFreshnessState(row.freshness_state),
+            evidenceState: toEvidenceState(row.evidence_state),
+            asOfDate: row.as_of_date,
+            retrievedAt: row.retrieved_at,
+            limitations: row.limitations
+          })),
+          citationIds: section.table.citation_ids,
+          sourceDocumentIds: section.table.source_document_ids,
+          freshnessState: toFreshnessState(section.table.freshness_state),
+          evidenceState: toEvidenceState(section.table.evidence_state),
+          asOfDate: section.table.as_of_date,
+          retrievedAt: section.table.retrieved_at,
+          limitations: section.table.limitations
+        }
+      : null,
+    chart: section.chart
+      ? {
+          chartId: section.chart.chart_id,
+          title: section.chart.title,
+          range: section.chart.range,
+          interval: section.chart.interval,
+          points: section.chart.points.map((point) => ({
+            timestamp: point.timestamp,
+            close: point.close,
+            volume: point.volume
+          })),
+          currency: section.chart.currency,
+          citationIds: section.chart.citation_ids,
+          sourceDocumentIds: section.chart.source_document_ids,
+          freshnessState: toFreshnessState(section.chart.freshness_state),
+          evidenceState: toEvidenceState(section.chart.evidence_state),
+          asOfDate: section.chart.as_of_date,
+          retrievedAt: section.chart.retrieved_at,
+          delayedOrBestEffortLabel: section.chart.delayed_or_best_effort_label,
+          limitations: section.chart.limitations
+        }
+      : null,
+    citationIds: section.citation_ids,
+    sourceDocumentIds: section.source_document_ids,
+    freshnessState: toFreshnessState(section.freshness_state),
+    evidenceState: toEvidenceState(section.evidence_state),
+    asOfDate: section.as_of_date,
+    retrievedAt: section.retrieved_at,
+    limitations: section.limitations
   };
 }
 
@@ -282,6 +650,37 @@ function toFreshnessState(value: string): FreshnessState {
     return value;
   }
   return "unknown";
+}
+
+function toEvidenceState(value: string): EvidenceState {
+  if (
+    value === "supported" ||
+    value === "partial" ||
+    value === "mixed" ||
+    value === "unknown" ||
+    value === "unavailable" ||
+    value === "stale" ||
+    value === "insufficient_evidence" ||
+    value === "no_high_signal" ||
+    value === "no_major_recent_development" ||
+    value === "unsupported"
+  ) {
+    return value;
+  }
+  return "unknown";
+}
+
+function toStockSectionType(value: string): StockSectionType {
+  if (
+    value === "stable_facts" ||
+    value === "evidence_gap" ||
+    value === "risk" ||
+    value === "recent_developments" ||
+    value === "educational_suitability"
+  ) {
+    return value;
+  }
+  return "evidence_gap";
 }
 
 function toSourceQuality(value: string): SourceDocument["sourceQuality"] {

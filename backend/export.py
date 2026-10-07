@@ -2,12 +2,20 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.cache import build_comparison_pack_freshness_input, build_knowledge_pack_freshness_input
 from backend.chat import generate_asset_chat
-from backend.chat_sessions import chat_session_export_payload
+from backend.chat_sessions import PersistedChatSessionReader, chat_session_export_payload
 from backend.comparison import generate_comparison
+from backend.generated_output_cache_repository import (
+    GeneratedOutputArtifactCategory,
+    build_deterministic_generated_output_cache_records,
+    persist_generated_output_cache_records,
+)
 from backend.models import (
     AssetIdentity,
     AssetStatus,
+    CacheEntryKind,
+    CacheScope,
     ChatSourceDocument,
     ChatSessionLifecycleState,
     ChatSessionPublicMetadata,
@@ -41,12 +49,26 @@ from backend.models import (
     OverviewSectionType,
     SafetyClassification,
     SearchSupportClassification,
+    SectionFreshnessInput,
+    SourceAllowlistStatus,
     SourceDocument,
+    SourcePolicyDecisionState,
+    SourceUsePolicy,
     StateMessage,
 )
+from backend.lightweight_page import build_lightweight_overview_response_if_enabled
 from backend.overview import generate_asset_overview
+from backend.retrieval import build_asset_knowledge_pack, build_comparison_knowledge_pack
 from backend.search import search_assets
-from backend.source_policy import excerpt_text_for_policy, resolve_source_policy, source_can_export_excerpt
+from backend.source_policy import (
+    SourcePolicyAction,
+    excerpt_text_for_policy,
+    resolve_source_policy,
+    source_can_export_excerpt,
+    source_can_export_source_metadata,
+    source_can_support_markdown_json_export,
+    validate_source_handoff,
+)
 
 
 EXPORT_LICENSING_NOTE = ExportNote(
@@ -60,17 +82,56 @@ EXPORT_LICENSING_NOTE = ExportNote(
 )
 
 
-def export_asset_page(ticker: str, export_format: ExportFormat | str = ExportFormat.markdown) -> ExportResponse:
+def export_asset_page(
+    ticker: str,
+    export_format: ExportFormat | str = ExportFormat.markdown,
+    *,
+    persisted_pack_reader: Any | None = None,
+    generated_output_cache_reader: Any | None = None,
+    source_snapshot_reader: Any | None = None,
+    generated_output_cache_writer: Any | None = None,
+    persisted_weekly_news_reader: Any | None = None,
+) -> ExportResponse:
     """Shape an existing deterministic asset overview into an accountless export payload."""
+
+    lightweight_overview = build_lightweight_overview_response_if_enabled(ticker)
+    if lightweight_overview is not None:
+        return _asset_page_export_from_overview(
+            lightweight_overview,
+            export_format,
+            metadata_source="lightweight_fresh_data_overview",
+            generated_output_cache_writer=None,
+        )
 
     blocked = _blocked_asset_response(ticker, ExportContentType.asset_page, export_format)
     if blocked is not None:
         return blocked
 
-    overview = generate_asset_overview(ticker)
+    overview = generate_asset_overview(
+        ticker,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+        source_snapshot_reader=source_snapshot_reader,
+        persisted_weekly_news_reader=persisted_weekly_news_reader,
+    )
     if not overview.asset.supported:
         return _unavailable_asset_response(overview.asset, overview.state, ExportContentType.asset_page, export_format)
 
+    return _asset_page_export_from_overview(
+        overview,
+        export_format,
+        metadata_source="local_fixture_overview",
+        generated_output_cache_writer=generated_output_cache_writer,
+    )
+
+
+def _asset_page_export_from_overview(
+    overview: OverviewResponse,
+    export_format: ExportFormat | str,
+    *,
+    metadata_source: str,
+    generated_output_cache_writer: Any | None,
+) -> ExportResponse:
     sections = _asset_page_sections(overview)
     citations = _export_citations_from_overview(overview)
     sources = _export_sources(overview.source_documents)
@@ -94,20 +155,47 @@ def export_asset_page(ticker: str, export_format: ExportFormat | str = ExportFor
         metadata={
             "top_risk_count": len(overview.top_risks),
             "recent_developments_separate": True,
-            "source": "local_fixture_overview",
+            "source": metadata_source,
+            **_lightweight_export_metadata(overview),
         },
     )
-    return response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
+    response = response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
+    _maybe_write_asset_export_cache(response, generated_output_cache_writer)
+    return response
 
 
-def export_asset_source_list(ticker: str, export_format: ExportFormat | str = ExportFormat.markdown) -> ExportResponse:
+def export_asset_source_list(
+    ticker: str,
+    export_format: ExportFormat | str = ExportFormat.markdown,
+    *,
+    persisted_pack_reader: Any | None = None,
+    generated_output_cache_reader: Any | None = None,
+    source_snapshot_reader: Any | None = None,
+    generated_output_cache_writer: Any | None = None,
+    persisted_weekly_news_reader: Any | None = None,
+) -> ExportResponse:
     """Export source metadata for an asset without adding new source material."""
+
+    lightweight_overview = build_lightweight_overview_response_if_enabled(ticker)
+    if lightweight_overview is not None:
+        return _asset_source_list_export_from_overview(
+            lightweight_overview,
+            export_format,
+            metadata_source="lightweight_fresh_data_overview",
+            generated_output_cache_writer=None,
+        )
 
     blocked = _blocked_asset_response(ticker, ExportContentType.asset_source_list, export_format)
     if blocked is not None:
         return blocked
 
-    overview = generate_asset_overview(ticker)
+    overview = generate_asset_overview(
+        ticker,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+        source_snapshot_reader=source_snapshot_reader,
+        persisted_weekly_news_reader=persisted_weekly_news_reader,
+    )
     if not overview.asset.supported:
         return _unavailable_asset_response(
             overview.asset,
@@ -116,6 +204,21 @@ def export_asset_source_list(ticker: str, export_format: ExportFormat | str = Ex
             export_format,
         )
 
+    return _asset_source_list_export_from_overview(
+        overview,
+        export_format,
+        metadata_source="local_fixture_overview",
+        generated_output_cache_writer=generated_output_cache_writer,
+    )
+
+
+def _asset_source_list_export_from_overview(
+    overview: OverviewResponse,
+    export_format: ExportFormat | str,
+    *,
+    metadata_source: str,
+    generated_output_cache_writer: Any | None,
+) -> ExportResponse:
     source_items = [
         ExportedItem(
             item_id=source.source_document_id,
@@ -169,15 +272,32 @@ def export_asset_source_list(ticker: str, export_format: ExportFormat | str = Ex
         disclaimer=EDUCATIONAL_DISCLAIMER,
         licensing_note=EXPORT_LICENSING_NOTE,
         rendered_markdown=markdown,
-        metadata={"source_count": len(overview.source_documents), "source": "local_fixture_overview"},
+        metadata={
+            "source_count": len(overview.source_documents),
+            "source": metadata_source,
+            **_lightweight_export_metadata(overview),
+        },
     )
-    return response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
+    response = response.model_copy(update={"export_validation": _build_asset_export_validation(response, overview)})
+    _maybe_write_asset_source_list_cache(response, generated_output_cache_writer)
+    return response
 
 
-def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
+def export_comparison(
+    request: ComparisonExportRequest,
+    *,
+    persisted_pack_reader: Any | None = None,
+    generated_output_cache_reader: Any | None = None,
+    generated_output_cache_writer: Any | None = None,
+) -> ExportResponse:
     """Shape an existing deterministic comparison into an export payload."""
 
-    comparison = generate_comparison(request.left_ticker, request.right_ticker)
+    comparison = generate_comparison(
+        request.left_ticker,
+        request.right_ticker,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+    )
     export_format = _coerce_format(request.export_format)
     title = f"{comparison.left_asset.ticker} vs {comparison.right_asset.ticker} comparison export"
 
@@ -273,6 +393,35 @@ def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
             evidence_state=EvidenceState.supported,
         ),
     ]
+    relationship = getattr(comparison, "stock_etf_relationship", None)
+    if relationship is not None:
+        relationship_citation_ids = sorted(set(relationship.basket_structure.citation_ids))
+        sections.insert(
+            2,
+            ExportedSection(
+                section_id="stock_etf_relationship_context",
+                title="Stock-vs-ETF Relationship Context",
+                section_type=ExportContentType.comparison,
+                text=_with_citations(relationship.basket_structure.relationship_summary, relationship_citation_ids),
+                items=[
+                    ExportedItem(
+                        item_id=f"relationship_badge_{_slug(badge.marker)}",
+                        title=badge.label,
+                        text=_with_citations(badge.value, badge.citation_ids),
+                        citation_ids=badge.citation_ids,
+                        source_document_ids=_source_ids_for_citation_ids(badge.citation_ids, comparison.citations),
+                        freshness_state=_freshness_for_citation_ids(badge.citation_ids, comparison.citations),
+                        evidence_state=badge.evidence_state,
+                    )
+                    for badge in relationship.badges
+                ],
+                citation_ids=relationship_citation_ids,
+                source_document_ids=_source_ids_for_citation_ids(relationship_citation_ids, comparison.citations),
+                freshness_state=_freshness_for_citation_ids(relationship_citation_ids, comparison.citations),
+                evidence_state=relationship.evidence_state,
+                limitations=relationship.basket_structure.unavailable_detail,
+            ),
+        )
     markdown = _render_markdown(title, sections, comparison.source_documents, None)
 
     response = ExportResponse(
@@ -291,14 +440,28 @@ def export_comparison(request: ComparisonExportRequest) -> ExportResponse:
         rendered_markdown=markdown,
         metadata={"comparison_type": comparison.comparison_type, "source": "local_fixture_comparison"},
     )
-    return response.model_copy(update={"export_validation": _build_comparison_export_validation(response, comparison)})
+    response = response.model_copy(update={"export_validation": _build_comparison_export_validation(response, comparison)})
+    _maybe_write_comparison_export_cache(response, generated_output_cache_writer)
+    return response
 
 
-def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) -> ExportResponse:
+def export_chat_transcript(
+    ticker: str,
+    request: ChatTranscriptExportRequest,
+    *,
+    persisted_session_reader: PersistedChatSessionReader | Any | None = None,
+    persisted_pack_reader: Any | None = None,
+    generated_output_cache_reader: Any | None = None,
+    generated_output_cache_writer: Any | None = None,
+) -> ExportResponse:
     """Export a single deterministic chat turn for a selected cached asset."""
 
     if request.conversation_id:
-        session_export = _maybe_export_existing_chat_session(request.conversation_id, request.export_format)
+        session_export = _maybe_export_existing_chat_session(
+            request.conversation_id,
+            request.export_format,
+            persisted_session_reader=persisted_session_reader,
+        )
         if session_export is not None:
             return session_export
 
@@ -308,7 +471,12 @@ def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) ->
         blocked.metadata["generated_chat_answer"] = False
         return blocked
 
-    chat = generate_asset_chat(ticker, request.question)
+    chat = generate_asset_chat(
+        ticker,
+        request.question,
+        persisted_pack_reader=persisted_pack_reader,
+        generated_output_cache_reader=generated_output_cache_reader,
+    )
     export_format = _coerce_format(request.export_format)
     title = f"{chat.asset.ticker} chat transcript export"
     sections = [
@@ -436,27 +604,270 @@ def export_chat_transcript(ticker: str, request: ChatTranscriptExportRequest) ->
             "source": "local_fixture_chat",
         },
     )
-    return response.model_copy(
+    response = response.model_copy(
         update={"export_validation": _build_chat_export_validation(response, asset_ticker=chat.asset.ticker)}
     )
+    _maybe_write_chat_export_cache(response, generated_output_cache_writer)
+    return response
 
 
 def export_chat_session_transcript(
     conversation_id: str,
     export_format: ExportFormat | str = ExportFormat.markdown,
+    *,
+    persisted_session_reader: PersistedChatSessionReader | Any | None = None,
 ) -> ExportResponse:
-    metadata, turns = chat_session_export_payload(conversation_id)
+    metadata, turns = chat_session_export_payload(conversation_id, persisted_reader=persisted_session_reader)
     return _export_chat_session_payload(metadata, turns, export_format)
 
 
 def _maybe_export_existing_chat_session(
     conversation_id: str,
     export_format: ExportFormat | str,
+    *,
+    persisted_session_reader: PersistedChatSessionReader | Any | None = None,
 ) -> ExportResponse | None:
-    metadata, turns = chat_session_export_payload(conversation_id)
+    metadata, turns = chat_session_export_payload(conversation_id, persisted_reader=persisted_session_reader)
     if metadata.lifecycle_state is ChatSessionLifecycleState.unavailable and metadata.selected_asset is None:
         return None
     return _export_chat_session_payload(metadata, turns, export_format)
+
+
+def _maybe_write_asset_export_cache(response: ExportResponse, writer: Any | None) -> None:
+    if writer is None or response.asset is None or response.export_state is not ExportState.available or not response.citations:
+        return
+    try:
+        pack = build_asset_knowledge_pack(response.asset.ticker)
+        source_ids = {source.source_document_id for source in response.source_documents}
+        citations_by_source = _citations_by_source(response)
+        section_labels = [
+            *_section_freshness_inputs_from_export(response),
+            *[
+                SectionFreshnessInput(
+                    section_id=f"source_list_{source.source_document_id}",
+                    freshness_state=source.freshness_state,
+                    evidence_state=EvidenceState.supported.value,
+                    as_of_date=source.as_of_date,
+                    retrieved_at=source.retrieved_at,
+                )
+                for source in response.source_documents
+            ],
+        ]
+        knowledge_input = build_knowledge_pack_freshness_input(
+            pack,
+            section_freshness_labels=section_labels,
+        )
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=f"generated-output-{response.asset.ticker.lower()}-asset-export",
+            output_identity=f"asset:{response.asset.ticker}:export:asset_page",
+            mode_or_output_type="asset-page-export-metadata",
+            artifact_category=GeneratedOutputArtifactCategory.export_payload_metadata,
+            entry_kind=CacheEntryKind.export_payload,
+            scope=CacheScope.asset,
+            schema_version="export-payload-v1",
+            prompt_version="export-payload-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in response.citations],
+            created_at=response.freshness.page_last_updated_at if response.freshness else "2026-04-25T18:33:44Z",
+            ttl_seconds=604800,
+            asset_ticker=response.asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
+
+
+def _maybe_write_asset_source_list_cache(response: ExportResponse, writer: Any | None) -> None:
+    if writer is None or response.asset is None or response.export_state is not ExportState.available:
+        return
+    try:
+        pack = build_asset_knowledge_pack(response.asset.ticker)
+        source_ids = {source.source_document_id for source in response.source_documents}
+        citations_by_source = _citations_by_source(response)
+        section_labels = [
+            *_section_freshness_inputs_from_export(response),
+            *[
+                SectionFreshnessInput(
+                    section_id=f"source_list_{source.source_document_id}",
+                    freshness_state=source.freshness_state,
+                    evidence_state=EvidenceState.supported.value,
+                    as_of_date=source.as_of_date,
+                    retrieved_at=source.retrieved_at,
+                )
+                for source in response.source_documents
+            ],
+        ]
+        knowledge_input = build_knowledge_pack_freshness_input(
+            pack,
+            section_freshness_labels=section_labels,
+        )
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=f"generated-output-{response.asset.ticker.lower()}-source-list",
+            output_identity=f"asset:{response.asset.ticker}:source-list-metadata",
+            mode_or_output_type="source-list-export-metadata",
+            artifact_category=GeneratedOutputArtifactCategory.source_list_export_metadata,
+            entry_kind=CacheEntryKind.source_list,
+            scope=CacheScope.asset,
+            schema_version="source-list-v1",
+            prompt_version="source-list-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in response.citations],
+            created_at=response.freshness.page_last_updated_at if response.freshness else "2026-04-25T18:33:44Z",
+            ttl_seconds=604800,
+            asset_ticker=response.asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
+
+
+def _maybe_write_comparison_export_cache(response: ExportResponse, writer: Any | None) -> None:
+    if (
+        writer is None
+        or response.left_asset is None
+        or response.right_asset is None
+        or response.export_state is not ExportState.available
+        or not response.citations
+    ):
+        return
+    try:
+        pack = build_comparison_knowledge_pack(response.left_asset.ticker, response.right_asset.ticker)
+        source_ids = {source.source_document_id for source in response.source_documents}
+        citations_by_source = _citations_by_source(response)
+        knowledge_input = build_comparison_pack_freshness_input(
+            pack,
+            section_freshness_labels=_section_freshness_inputs_from_export(response),
+        )
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=(
+                f"generated-output-{response.left_asset.ticker.lower()}-"
+                f"{response.right_asset.ticker.lower()}-comparison-export"
+            ),
+            output_identity=f"comparison:{response.left_asset.ticker}-to-{response.right_asset.ticker}:export",
+            mode_or_output_type="comparison-export-metadata",
+            artifact_category=GeneratedOutputArtifactCategory.export_payload_metadata,
+            entry_kind=CacheEntryKind.export_payload,
+            scope=CacheScope.comparison,
+            schema_version="export-payload-v1",
+            prompt_version="export-payload-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in response.citations],
+            created_at="2026-04-25T18:33:44Z",
+            ttl_seconds=604800,
+            comparison_id=pack.comparison_pack_id,
+            comparison_left_ticker=response.left_asset.ticker,
+            comparison_right_ticker=response.right_asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
+
+
+def _maybe_write_chat_export_cache(response: ExportResponse, writer: Any | None) -> None:
+    if (
+        writer is None
+        or response.asset is None
+        or response.export_state is not ExportState.available
+        or response.metadata.get("safety_classification") != SafetyClassification.educational.value
+        or not response.citations
+    ):
+        return
+    try:
+        pack = build_asset_knowledge_pack(response.asset.ticker)
+        source_ids = {source.source_document_id for source in response.source_documents}
+        citations_by_source = _citations_by_source(response)
+        knowledge_input = build_knowledge_pack_freshness_input(
+            pack,
+            section_freshness_labels=_section_freshness_inputs_from_export(response),
+        )
+        knowledge_input = knowledge_input.model_copy(
+            update={
+                "source_checksums": [
+                    checksum.model_copy(
+                        update={"citation_ids": sorted(citations_by_source.get(checksum.source_document_id, []))}
+                    )
+                    for checksum in knowledge_input.source_checksums
+                    if checksum.source_document_id in source_ids
+                ]
+            }
+        )
+        records = build_deterministic_generated_output_cache_records(
+            cache_entry_id=f"generated-output-{response.asset.ticker.lower()}-chat-export",
+            output_identity=f"asset:{response.asset.ticker}:chat-export-metadata",
+            mode_or_output_type="chat-transcript-export-metadata",
+            artifact_category=GeneratedOutputArtifactCategory.export_payload_metadata,
+            entry_kind=CacheEntryKind.export_payload,
+            scope=CacheScope.chat,
+            schema_version="export-payload-v1",
+            prompt_version="export-payload-prompt-v1",
+            knowledge_input=knowledge_input,
+            citation_ids=[citation.citation_id for citation in response.citations],
+            created_at="2026-04-25T18:33:44Z",
+            ttl_seconds=604800,
+            asset_ticker=response.asset.ticker,
+        )
+        persist_generated_output_cache_records(writer, records)
+    except Exception:
+        return
+
+
+def _section_freshness_inputs_from_export(response: ExportResponse) -> list[SectionFreshnessInput]:
+    return [
+        SectionFreshnessInput(
+            section_id=section.section_id,
+            freshness_state=section.freshness_state or FreshnessState.fresh,
+            evidence_state=section.evidence_state.value if section.evidence_state else EvidenceState.supported.value,
+            as_of_date=section.as_of_date,
+            retrieved_at=section.retrieved_at,
+        )
+        for section in response.sections
+    ] or [
+        SectionFreshnessInput(
+            section_id="export_metadata",
+            freshness_state=FreshnessState.fresh,
+            evidence_state=EvidenceState.supported.value,
+        )
+    ]
+
+
+def _citations_by_source(response: ExportResponse) -> dict[str, list[str]]:
+    citations_by_source: dict[str, list[str]] = {}
+    for citation in response.citations:
+        citations_by_source.setdefault(citation.source_document_id, []).append(citation.citation_id)
+    return citations_by_source
 
 
 def _export_chat_session_payload(
@@ -674,6 +1085,18 @@ def _chat_session_export_metadata(
     }
 
 
+def _lightweight_export_metadata(overview: OverviewResponse) -> dict[str, Any]:
+    diagnostics = overview.fallback_diagnostics
+    if diagnostics is None:
+        return {}
+    return {
+        "lightweight_fresh_data_export": True,
+        "strict_audit_quality_source_approval_granted": False,
+        "generated_output_cache_promoted": False,
+        "fallback_diagnostics": diagnostics.model_dump(mode="json"),
+    }
+
+
 def _asset_page_sections(overview: OverviewResponse) -> list[ExportedSection]:
     sections: list[ExportedSection] = [
         ExportedSection(
@@ -864,7 +1287,7 @@ def _asset_page_sections(overview: OverviewResponse) -> list[ExportedSection]:
             title="AI Comprehensive Analysis",
             section_type=OverviewSectionType.ai_comprehensive_analysis,
             text=(
-                "AI Comprehensive Analysis is suppressed unless at least two high-signal Weekly News Focus items exist."
+                "AI Comprehensive Analysis is suppressed unless at least two approved Weekly News Focus items exist."
                 if overview.ai_comprehensive_analysis and not overview.ai_comprehensive_analysis.analysis_available
                 else "AI Comprehensive Analysis is exported as cited timely context separate from stable facts."
             ),
@@ -1189,11 +1612,17 @@ def _export_sources(sources: list[Any]) -> list[ExportSourceMetadata]:
         seen.add(key)
         chunk_id = getattr(source, "chunk_id", None)
         supporting_passage = getattr(source, "supporting_passage", "")
-        decision = resolve_source_policy(
-            url=source.url,
-            source_identifier=source.url if str(source.url).startswith("local://") else None,
-        )
-        excerpt_text = excerpt_text_for_policy(supporting_passage, decision)
+        decision = _decision_from_source_like(source)
+        if decision.decision is not SourcePolicyDecisionState.allowed:
+            continue
+        source_like = _source_like_with_policy(source, decision)
+        handoff = validate_source_handoff(source_like, action=SourcePolicyAction.diagnostics)
+        if not handoff.allowed:
+            continue
+        excerpt_handoff = validate_source_handoff(source_like, action=SourcePolicyAction.allowed_excerpt_export)
+        excerpt_allowed = source_can_export_excerpt(decision) and excerpt_handoff.allowed
+        excerpt_text = excerpt_text_for_policy(supporting_passage, decision) if excerpt_allowed else None
+        excerpt_decision = decision if excerpt_allowed else _resolved_decision_from_source_like(source)
         exported.append(
             ExportSourceMetadata(
                 source_document_id=source.source_document_id,
@@ -1210,16 +1639,27 @@ def _export_sources(sources: list[Any]) -> list[ExportSourceMetadata]:
                 allowlist_status=getattr(source, "allowlist_status", decision.allowlist_status),
                 source_use_policy=getattr(source, "source_use_policy", decision.source_use_policy),
                 permitted_operations=decision.permitted_operations,
+                source_identity=getattr(source, "source_identity", None) or getattr(source, "url", None),
+                storage_rights=getattr(source, "storage_rights", "raw_snapshot_allowed"),
+                export_rights=getattr(source, "export_rights", "excerpts_allowed"),
+                review_status=getattr(source, "review_status", "approved"),
+                approval_rationale=getattr(
+                    source,
+                    "approval_rationale",
+                    "Deterministic fixture source passed local source-use policy review.",
+                ),
+                parser_status=getattr(source, "parser_status", "parsed"),
+                parser_failure_diagnostics=getattr(source, "parser_failure_diagnostics", None),
                 allowed_excerpt=ExportExcerpt(
                     excerpt_id=f"excerpt_{citation_id or source.source_document_id}",
-                    kind="supporting_passage" if source_can_export_excerpt(decision) else "excerpt_metadata",
+                    kind="supporting_passage" if excerpt_allowed else "excerpt_metadata",
                     text=excerpt_text,
                     citation_id=citation_id,
                     chunk_id=chunk_id,
-                    redistribution_allowed=decision.permitted_operations.can_export_excerpt,
-                    source_use_policy=decision.source_use_policy,
-                    allowlist_status=decision.allowlist_status,
-                    note=decision.allowed_excerpt.note,
+                    redistribution_allowed=decision.permitted_operations.can_export_excerpt and excerpt_allowed,
+                    source_use_policy=excerpt_decision.source_use_policy,
+                    allowlist_status=excerpt_decision.allowlist_status,
+                    note=excerpt_decision.allowed_excerpt.note,
                 ),
             )
         )
@@ -1693,8 +2133,12 @@ def _build_export_source_bindings(
             else None
         )
         omitted_message = None
+        if not source_can_export_source_metadata(
+            _decision_from_export_source(source)
+        ):
+            omitted_message = "Source metadata is restricted to policy-safe attribution fields only."
         if excerpt is not None and excerpt.kind == "excerpt_metadata":
-            omitted_message = "Only metadata or bounded excerpt metadata is exportable for this source."
+            omitted_message = omitted_message or "Only metadata or bounded excerpt metadata is exportable for this source."
         bindings.append(
             ExportValidationSourceBinding(
                 binding_id=binding_id,
@@ -1762,8 +2206,8 @@ def _build_export_citation_bindings(
                 scope=binding_scope,
                 supports_exported_content=bool(
                     source is not None
-                    and source.permitted_operations.can_support_citations
-                    and source.permitted_operations.can_export_metadata
+                    and source_can_support_markdown_json_export(_decision_from_export_source(source))
+                    and validate_source_handoff(source, action=SourcePolicyAction.markdown_json_section_export).allowed
                 ),
             )
         )
@@ -1778,6 +2222,89 @@ def _source_lookup_for_citations(sources: list[ExportSourceMetadata]) -> dict[st
         if source.allowed_excerpt and source.allowed_excerpt.citation_id:
             lookup[source.allowed_excerpt.citation_id] = source
     return lookup
+
+
+def _decision_from_source_like(source: Any) -> Any:
+    resolved = _resolved_decision_from_source_like(source)
+    allowlist_status = getattr(source, "allowlist_status", None)
+    source_use_policy = getattr(source, "source_use_policy", None)
+    permitted_operations = getattr(source, "permitted_operations", None)
+    if allowlist_status is None or source_use_policy is None or permitted_operations is None:
+        return resolved
+
+    normalized_allowlist = (
+        allowlist_status
+        if isinstance(allowlist_status, SourceAllowlistStatus)
+        else SourceAllowlistStatus(str(allowlist_status))
+    )
+    normalized_policy = (
+        source_use_policy if isinstance(source_use_policy, SourceUsePolicy) else SourceUsePolicy(str(source_use_policy))
+    )
+    decision_state = (
+        SourcePolicyDecisionState.allowed
+        if normalized_allowlist is SourceAllowlistStatus.allowed
+        else SourcePolicyDecisionState.rejected
+        if normalized_allowlist is SourceAllowlistStatus.rejected
+        else SourcePolicyDecisionState.pending_review
+    )
+    return resolved.model_copy(
+        update={
+            "decision": decision_state,
+            "source_quality": getattr(source, "source_quality", resolved.source_quality),
+            "allowlist_status": normalized_allowlist,
+            "source_use_policy": normalized_policy,
+            "permitted_operations": permitted_operations,
+        }
+    )
+
+
+def _source_like_with_policy(source: Any, decision: Any) -> dict[str, Any]:
+    return {
+        "source_document_id": getattr(source, "source_document_id", None),
+        "source_identity": getattr(source, "source_identity", None) or getattr(source, "url", None) or getattr(source, "source_document_id", None),
+        "url": getattr(source, "url", None),
+        "source_type": getattr(source, "source_type", None),
+        "is_official": getattr(source, "is_official", False),
+        "source_quality": getattr(source, "source_quality", decision.source_quality),
+        "allowlist_status": getattr(source, "allowlist_status", decision.allowlist_status),
+        "source_use_policy": getattr(source, "source_use_policy", decision.source_use_policy),
+        "permitted_operations": getattr(source, "permitted_operations", decision.permitted_operations),
+        "storage_rights": getattr(source, "storage_rights", "raw_snapshot_allowed"),
+        "export_rights": getattr(source, "export_rights", "excerpts_allowed"),
+        "review_status": getattr(source, "review_status", "approved"),
+        "approval_rationale": getattr(source, "approval_rationale", decision.reason),
+        "parser_status": getattr(source, "parser_status", "parsed"),
+        "parser_failure_diagnostics": getattr(source, "parser_failure_diagnostics", None),
+        "freshness_state": getattr(source, "freshness_state", FreshnessState.fresh),
+        "as_of_date": getattr(source, "as_of_date", None),
+        "published_at": getattr(source, "published_at", None),
+        "retrieved_at": getattr(source, "retrieved_at", None),
+        "cache_allowed": getattr(source, "cache_allowed", True),
+        "export_allowed": getattr(source, "export_allowed", True),
+    }
+
+
+def _resolved_decision_from_source_like(source: Any) -> Any:
+    return resolve_source_policy(
+        url=getattr(source, "url", None),
+        source_identifier=(
+            getattr(source, "url", None)
+            if str(getattr(source, "url", "")).startswith("local://")
+            else None
+        ),
+        provider_name=getattr(source, "provider_name", None),
+    )
+
+
+def _decision_from_export_source(source: ExportSourceMetadata) -> Any:
+    return _decision_from_source_like(source).model_copy(
+        update={
+            "source_quality": source.source_quality,
+            "allowlist_status": source.allowlist_status,
+            "source_use_policy": source.source_use_policy,
+            "permitted_operations": source.permitted_operations,
+        }
+    )
 
 
 def _build_export_section_validation(

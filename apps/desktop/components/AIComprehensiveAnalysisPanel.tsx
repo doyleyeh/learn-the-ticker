@@ -1,12 +1,13 @@
 import type { Citation, AIComprehensiveAnalysisFixture } from "../lib/fixtures";
-import { CitationChip } from "./CitationChip";
-import { FreshnessLabel } from "./FreshnessLabel";
+import { CompactCitationSources, resolveCitationList } from "./CompactCitationSources";
+import { GenerationStateNote } from "./GenerationStateNote";
 
 type FreshnessState = "fresh" | "stale" | "unknown" | "unavailable" | "partial" | "insufficient_evidence";
 
 type AIComprehensiveAnalysisPanelProps = {
   analysis: AIComprehensiveAnalysisFixture;
   citations: Citation[];
+  assetTicker?: string;
 };
 
 function stateToFreshness(state: AIComprehensiveAnalysisFixture["state"]): FreshnessState {
@@ -22,7 +23,7 @@ function stateToFreshness(state: AIComprehensiveAnalysisFixture["state"]): Fresh
   return "unknown";
 }
 
-export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehensiveAnalysisPanelProps) {
+export function AIComprehensiveAnalysisPanel({ analysis, citations, assetTicker }: AIComprehensiveAnalysisPanelProps) {
   const requiredSectionOrder = [
     "What Changed This Week",
     "Market Context",
@@ -42,6 +43,8 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
       : "suppressed";
   const freshnessState = stateToFreshness(analysis.state);
   const shouldRenderSections = analysis.analysisAvailable && analysis.sections.length > 0;
+  const sectionTitle = assetTicker ? `AI Comprehensive Analysis: ${assetTicker}` : "AI Comprehensive Analysis";
+  const sectionState = analysis.sectionStates?.find((state) => state.sectionId === "ai_comprehensive_analysis") ?? null;
 
   return (
     <section
@@ -50,29 +53,49 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
       data-beginner-stable-recent-separation="recent"
       data-beginner-ai-comprehensive-analysis
       data-timely-context-layer="ai-comprehensive-analysis"
+      data-ai-analysis-scope="ticker"
       data-ai-analysis-state={analysis.state}
       data-ai-analysis-available={analysis.analysisAvailable ? "true" : "false"}
+      data-ai-analysis-minimum-weekly-news-items={analysis.minimumWeeklyNewsItemCount}
+      data-ai-analysis-weekly-news-selected-count={analysis.weeklyNewsSelectedItemCount}
+      data-ai-analysis-validation-reason-codes={analysis.validationReasonCodes.join(",") || "none"}
+      data-ai-analysis-threshold-state={
+        analysis.weeklyNewsSelectedItemCount >= analysis.minimumWeeklyNewsItemCount ? "threshold_met" : "threshold_not_met"
+      }
     >
-      <div className="section-heading">
-        <p className="eyebrow">Timely context</p>
-        <h2 id="beginner-ai-comprehensive-analysis">AI Comprehensive Analysis</h2>
+      <div className="section-heading-row">
+        <div className="section-heading">
+          <p className="eyebrow">Ticker-specific context</p>
+          <h2 id="beginner-ai-comprehensive-analysis">{sectionTitle}</h2>
+        </div>
+        <div className="state-row">
+          <span className="state-pill" data-evidence-state={analysis.analysisAvailable ? "supported" : "insufficient_evidence"}>
+            State: {analysis.state.replaceAll("_", " ")}
+          </span>
+          <span className="state-pill compact-state" data-ai-analysis-evidence-threshold>
+            {analysis.weeklyNewsSelectedItemCount} of {analysis.minimumWeeklyNewsItemCount} high-signal items
+          </span>
+          <CompactCitationSources
+            citations={analysis.citations}
+            label="Ticker AI evidence details"
+            metadataRows={[
+              {
+                label: "Analysis availability",
+                value: analysis.analysisAvailable ? "Available in current evidence" : "Suppressed in current evidence",
+                state: freshnessState
+              },
+              { label: "Evidence state", value: analysis.state, state: freshnessState }
+            ]}
+            dashboardSourceIcon
+          />
+        </div>
       </div>
-
-      <div className="state-row">
-        <FreshnessLabel
-          label="Analysis availability"
-          value={analysis.analysisAvailable ? "Available in deterministic fixture" : "Suppressed in deterministic fixture"}
-          state={freshnessState}
-        />
-        <FreshnessLabel
-          label="Evidence state"
-          value={analysis.state}
-          state={freshnessState}
-        />
-        <span className="state-pill" data-evidence-state={analysis.analysisAvailable ? "supported" : "insufficient_evidence"}>
-          State: {analysis.state.replaceAll("_", " ")}
-        </span>
-      </div>
+      <GenerationStateNote
+        label="Ticker AI generation"
+        diagnostics={analysis.generationDiagnostics}
+        sectionState={sectionState}
+        analysisAvailable={analysis.analysisAvailable}
+      />
 
       {shouldRenderSections ? (
         <div
@@ -101,12 +124,12 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
                   <p className="source-gap-note">Uncertainty: {section.uncertainty.join(" ")}</p>
                 </div>
               ) : null}
-              <span className="chip-row">
-                {section.citationIds.map((citationId) => {
-                  const citation = citations.find((entry) => entry.citationId === citationId);
-                  return citation ? <CitationChip key={`${section.sectionId}-${citationId}`} citation={citation} /> : null;
-                })}
-              </span>
+              <div className="compact-source-row">
+                <CompactCitationSources
+                  citations={resolveCitationList(citations, section.citationIds)}
+                  label={`${section.label} sources`}
+                />
+              </div>
             </article>
           ))}
         </div>
@@ -117,9 +140,21 @@ export function AIComprehensiveAnalysisPanel({ analysis, citations }: AIComprehe
               "Insufficient evidence is shown instead of fabricated analysis when the local Weekly News Focus layer is too thin."}
           </p>
           <p className="source-gap-note">
-            Beginner-readable state handling is shown here instead of generating unsupported analysis.
+            Analysis requires at least {analysis.minimumWeeklyNewsItemCount} high-signal Weekly News Focus items.
           </p>
-          <FreshnessLabel label="Canonical evidence" value={analysis.canonicalFactCitationIds.join(", ")} state={freshnessState} />
+          <div className="compact-source-row">
+            <CompactCitationSources
+              citations={resolveCitationList(citations, analysis.canonicalFactCitationIds)}
+              label="Canonical evidence sources"
+              metadataRows={[
+                {
+                  label: "Canonical evidence",
+                  value: `${analysis.canonicalFactCitationIds.length} source${analysis.canonicalFactCitationIds.length === 1 ? "" : "s"} available`,
+                  state: freshnessState
+                }
+              ]}
+            />
+          </div>
         </div>
       )}
     </section>

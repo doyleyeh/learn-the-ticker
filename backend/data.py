@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from backend.etf_universe import blocked_etf_entries, legacy_eligible_not_cached_etf_metadata
 from backend.models import (
     AssetIdentity,
     AssetStatus,
@@ -214,17 +215,25 @@ ASSETS: dict[str, dict[str, Any]] = {
         "risks": [
             RiskItem(
                 title="Market risk",
-                plain_english_explanation="The fund can lose value when large U.S. stocks fall.",
+                plain_english_explanation=(
+                    "VOO owns a basket of stocks, so it can lose value when the market or the index segment it tracks declines."
+                ),
                 citation_ids=["c_voo_profile"],
             ),
             RiskItem(
-                title="Large-company focus",
-                plain_english_explanation="The fund does not cover every public company or every asset class.",
+                title="Concentration risk",
+                plain_english_explanation=(
+                    "VOO may hold many stocks, but large companies and larger index weights can still have an outsized "
+                    "effect on what investors experience."
+                ),
                 citation_ids=["c_voo_profile"],
             ),
             RiskItem(
-                title="Index tracking limits",
-                plain_english_explanation="The fund aims to follow an index rather than avoid weaker areas of the market.",
+                title="Tracking risk",
+                plain_english_explanation=(
+                    "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can "
+                    "make fund results differ from the index."
+                ),
                 citation_ids=["c_voo_profile"],
             ),
         ],
@@ -288,17 +297,25 @@ ASSETS: dict[str, dict[str, Any]] = {
         "risks": [
             RiskItem(
                 title="Concentration risk",
-                plain_english_explanation="A smaller group of large holdings can have an outsized impact on results.",
-                citation_ids=["c_qqq_profile"],
-            ),
-            RiskItem(
-                title="Sector tilt",
-                plain_english_explanation="The fund can lean heavily toward growth-oriented technology and communication companies.",
+                plain_english_explanation=(
+                    "QQQ tracks a narrower or more specialized index segment, so a smaller set of companies or sectors "
+                    "can drive more of the fund's results."
+                ),
                 citation_ids=["c_qqq_profile"],
             ),
             RiskItem(
                 title="Market risk",
-                plain_english_explanation="The fund can fall when the stocks in its index decline.",
+                plain_english_explanation=(
+                    "QQQ owns a basket of stocks, so it can lose value when the market or the index segment it tracks declines."
+                ),
+                citation_ids=["c_qqq_profile"],
+            ),
+            RiskItem(
+                title="Tracking risk",
+                plain_english_explanation=(
+                    "An index ETF tries to follow its benchmark, but fees, trading, cash, and implementation details can "
+                    "make fund results differ from the index."
+                ),
                 citation_ids=["c_qqq_profile"],
             ),
         ],
@@ -360,18 +377,26 @@ ASSETS: dict[str, dict[str, Any]] = {
         ],
         "risks": [
             RiskItem(
-                title="Product concentration",
-                plain_english_explanation="A large business line can matter a lot to overall results.",
+                title="Single-company risk",
+                plain_english_explanation=(
+                    "AAPL represents one company, so company-specific results, filings, competition, and execution can matter a lot."
+                ),
                 citation_ids=["c_aapl_profile"],
             ),
             RiskItem(
-                title="Competition",
-                plain_english_explanation="Consumer technology markets can change quickly as competitors release new products.",
+                title="Business and competition risk",
+                plain_english_explanation=(
+                    "A company's products, services, customer demand, competitors, and execution can change, so source-backed "
+                    "business facts should be read as a starting point for understanding the company."
+                ),
                 citation_ids=["c_aapl_profile"],
             ),
             RiskItem(
-                title="Supply chain and regulation",
-                plain_english_explanation="Global operations can be affected by manufacturing, legal, or regulatory issues.",
+                title="Financial and valuation risk",
+                plain_english_explanation=(
+                    "Reported financial results and valuation context can change over time, and market expectations can move "
+                    "faster than the latest filing or provider snapshot."
+                ),
                 citation_ids=["c_aapl_profile"],
             ),
         ],
@@ -397,15 +422,13 @@ ASSETS: dict[str, dict[str, Any]] = {
 }
 
 
-UNSUPPORTED_ASSETS: dict[str, str] = {
+_STATIC_UNSUPPORTED_ASSETS: dict[str, str] = {
     "BTC": "Crypto assets are outside the current U.S. stock and plain-vanilla ETF scope.",
     "ETH": "Crypto assets are outside the current U.S. stock and plain-vanilla ETF scope.",
-    "TQQQ": "Leveraged ETFs are outside the current plain-vanilla ETF scope.",
-    "SQQQ": "Inverse ETFs are outside the current plain-vanilla ETF scope.",
 }
 
 
-UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] = {
+_STATIC_UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] = {
     "BTC": {
         "name": "Bitcoin",
         "category": "crypto",
@@ -416,109 +439,64 @@ UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] 
         "category": "crypto",
         "aliases": ["ethereum", "ether", "crypto"],
     },
-    "TQQQ": {
-        "name": "ProShares UltraPro QQQ",
-        "category": "leveraged_etf",
-        "aliases": ["leveraged qqq", "ultrapro qqq", "leveraged etf"],
-    },
-    "SQQQ": {
-        "name": "ProShares UltraPro Short QQQ",
-        "category": "inverse_etf",
-        "aliases": ["inverse qqq", "short qqq", "inverse etf"],
-    },
 }
 
 
-_ELIGIBLE_NOT_CACHED_ETF_ASSETS: dict[str, dict[str, str | list[str] | None]] = {
-    "SPY": {
-        "name": "SPDR S&P 500 ETF Trust",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "State Street Global Advisors",
-        "aliases": ["s&p 500 etf", "spdr s&p 500 etf", "plain vanilla etf"],
-        "launch_group": "broad_etf",
-    },
-    "VTI": {
-        "name": "Vanguard Total Stock Market ETF",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "Vanguard",
-        "aliases": ["total market etf", "vanguard total stock market etf", "plain vanilla etf"],
-        "launch_group": "broad_etf",
-    },
-    "IVV": {
-        "name": "iShares Core S&P 500 ETF",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "iShares",
-        "aliases": ["s&p 500 etf", "ishares core s&p 500 etf", "plain vanilla etf"],
-        "launch_group": "broad_etf",
-    },
-    "IWM": {
-        "name": "iShares Russell 2000 ETF",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "iShares",
-        "aliases": ["russell 2000 etf", "small-cap etf", "plain vanilla etf"],
-        "launch_group": "broad_etf",
-    },
-    "DIA": {
-        "name": "SPDR Dow Jones Industrial Average ETF Trust",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "State Street Global Advisors",
-        "aliases": ["dow jones etf", "dia etf", "plain vanilla etf"],
-        "launch_group": "broad_etf",
-    },
-    "VGT": {
-        "name": "Vanguard Information Technology ETF",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "Vanguard",
-        "aliases": ["technology etf", "vanguard technology etf", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-    "XLK": {
-        "name": "Technology Select Sector SPDR Fund",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "State Street Global Advisors",
-        "aliases": ["technology sector etf", "select sector technology", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-    "SOXX": {
-        "name": "iShares Semiconductor ETF",
-        "asset_type": "etf",
-        "exchange": "NASDAQ",
-        "issuer": "iShares",
-        "aliases": ["semiconductor etf", "ishares semiconductor etf", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-    "SMH": {
-        "name": "VanEck Semiconductor ETF",
-        "asset_type": "etf",
-        "exchange": "NASDAQ",
-        "issuer": "VanEck",
-        "aliases": ["semiconductor etf", "vaneck semiconductor etf", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-    "XLF": {
-        "name": "Financial Select Sector SPDR Fund",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "State Street Global Advisors",
-        "aliases": ["financial sector etf", "select sector financial", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
-    "XLV": {
-        "name": "Health Care Select Sector SPDR Fund",
-        "asset_type": "etf",
-        "exchange": "NYSE Arca",
-        "issuer": "State Street Global Advisors",
-        "aliases": ["health care sector etf", "select sector health care", "plain vanilla etf"],
-        "launch_group": "sector_theme_etf",
-    },
+def _blocked_etf_asset_message(category: str) -> str:
+    labels = {
+        "leveraged_etf": "Leveraged ETFs",
+        "inverse_etf": "Inverse ETFs",
+        "active_etf": "Active ETFs",
+        "fixed_income_etf": "Fixed-income ETFs",
+        "commodity_etf": "Commodity ETFs",
+        "multi_asset_etf": "Multi-asset ETFs",
+        "etn": "ETNs",
+        "other_unsupported": "Unsupported ETF-like products",
+    }
+    label = labels.get(category, "This ETF-like product")
+    return f"{label} are outside the current non-leveraged U.S. equity ETF scope."
+
+
+def _unsupported_etf_assets_from_manifest() -> dict[str, str]:
+    return {
+        ticker: _blocked_etf_asset_message(entry.etf_category.value)
+        for ticker, entry in blocked_etf_entries().items()
+        if entry.support_state.value == "recognized_unsupported"
+    }
+
+
+def _unsupported_etf_search_metadata_from_manifest() -> dict[str, dict[str, str | list[str] | None]]:
+    return {
+        ticker: {
+            "name": entry.fund_name,
+            "category": entry.etf_category.value,
+            "aliases": entry.aliases,
+            "issuer": entry.issuer,
+            "exchange": entry.exchange,
+            "support_state": entry.support_state.value,
+            "source_provenance": entry.source_provenance,
+            "snapshot_date": entry.snapshot_date,
+        }
+        for ticker, entry in blocked_etf_entries().items()
+        if entry.support_state.value == "recognized_unsupported"
+    }
+
+
+UNSUPPORTED_ASSETS: dict[str, str] = {
+    **_STATIC_UNSUPPORTED_ASSETS,
+    **_unsupported_etf_assets_from_manifest(),
 }
+
+
+UNSUPPORTED_ASSET_SEARCH_METADATA: dict[str, dict[str, str | list[str] | None]] = {
+    **_STATIC_UNSUPPORTED_ASSET_SEARCH_METADATA,
+    **_unsupported_etf_search_metadata_from_manifest(),
+}
+
+
+_ELIGIBLE_NOT_CACHED_ETF_ASSETS: dict[str, dict[str, str | list[str] | None]] = (
+    legacy_eligible_not_cached_etf_metadata()
+)
 
 
 def _eligible_not_cached_stock_assets_from_manifest() -> dict[str, dict[str, str | list[str] | None]]:
@@ -549,6 +527,26 @@ ELIGIBLE_NOT_CACHED_ASSETS: dict[str, dict[str, str | list[str] | None]] = {
 }
 
 
+def _out_of_scope_etf_assets_from_manifest() -> dict[str, dict[str, str | list[str] | None]]:
+    out_of_scope: dict[str, dict[str, str | list[str] | None]] = {}
+    for ticker, entry in blocked_etf_entries().items():
+        if entry.support_state.value != "out_of_scope":
+            continue
+        out_of_scope[ticker] = {
+            "name": entry.fund_name,
+            "asset_type": entry.asset_type,
+            "exchange": entry.exchange,
+            "issuer": entry.issuer,
+            "aliases": entry.aliases,
+            "reason": _blocked_etf_asset_message(entry.etf_category.value),
+            "etf_category": entry.etf_category.value,
+            "support_state": entry.support_state.value,
+            "source_provenance": entry.source_provenance,
+            "snapshot_date": entry.snapshot_date,
+        }
+    return out_of_scope
+
+
 OUT_OF_SCOPE_COMMON_STOCKS: dict[str, dict[str, str | list[str] | None]] = {
     "GME": {
         "name": "GameStop Corp.",
@@ -560,7 +558,8 @@ OUT_OF_SCOPE_COMMON_STOCKS: dict[str, dict[str, str | list[str] | None]] = {
             "Recognized U.S.-listed common stock outside the local Top-500 manifest; out of scope for "
             "generated outputs unless explicitly approved for on-demand ingestion later."
         ),
-    }
+    },
+    **_out_of_scope_etf_assets_from_manifest(),
 }
 
 

@@ -1,12 +1,21 @@
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from backend.export import (
+    _build_export_source_bindings,
+    _export_sources,
     export_asset_page,
     export_asset_source_list,
     export_chat_transcript,
     export_comparison,
 )
+from backend.generated_output_cache_repository import (
+    GeneratedOutputArtifactCategory,
+    InMemoryGeneratedOutputCacheRepository,
+)
+from backend.lightweight_data_fetch import fetch_lightweight_asset_data
+from backend.lightweight_page import build_lightweight_overview_response
 from backend.models import (
     ChatTranscriptExportRequest,
     ComparisonExportRequest,
@@ -16,8 +25,11 @@ from backend.models import (
     ExportState,
     ExportValidationBindingScope,
     ExportValidationOutcome,
+    FreshnessState,
 )
 from backend.safety import find_forbidden_output_phrases
+from backend.settings import build_lightweight_data_settings
+from scripts.run_local_fresh_data_slice_smoke import LocalFreshDataSliceFakeFetcher, RETRIEVED_AT
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -164,6 +176,130 @@ def test_asset_source_list_export_contains_source_metadata_and_allowed_excerpts(
     assert "full paid-news articles" in export.licensing_note.text
 
 
+def test_exports_write_metadata_only_cache_records_when_configured():
+    writer = InMemoryGeneratedOutputCacheRepository()
+
+    export_asset_page("AAPL", generated_output_cache_writer=writer)
+    export_asset_source_list("VOO", generated_output_cache_writer=writer)
+    export_comparison(ComparisonExportRequest(left_ticker="VOO", right_ticker="QQQ"), generated_output_cache_writer=writer)
+    export_chat_transcript(
+        "QQQ",
+        ChatTranscriptExportRequest(question="What is this fund?"),
+        generated_output_cache_writer=writer,
+    )
+    export_chat_transcript(
+        "VOO",
+        ChatTranscriptExportRequest(question="Should I buy VOO today?"),
+        generated_output_cache_writer=writer,
+    )
+
+    categories = {records.envelopes[0].artifact_category for records in writer.records_by_entry_id.values()}
+    assert GeneratedOutputArtifactCategory.export_payload_metadata.value in categories
+    assert GeneratedOutputArtifactCategory.source_list_export_metadata.value in categories
+    assert writer.read_source_list_records("VOO") is not None
+    assert len(writer.records_by_entry_id) == 4
+    assert all(records.artifacts[0].stores_payload_text is False for records in writer.records_by_entry_id.values())
+    assert "submitted_question" not in str([records.artifacts[0].payload_metadata for records in writer.records_by_entry_id.values()])
+
+
+def test_lightweight_fresh_data_asset_and_source_exports_use_rendered_evidence_without_cache_promotion(monkeypatch):
+    overview = _lightweight_overview("SPY")
+    writer = InMemoryGeneratedOutputCacheRepository()
+    monkeypatch.setattr(
+        "backend.export.build_lightweight_overview_response_if_enabled",
+        lambda ticker: overview if ticker.upper() == "SPY" else None,
+    )
+
+    asset_export = ExportResponse.model_validate(
+        export_asset_page("SPY", export_format="json", generated_output_cache_writer=writer).model_dump(mode="json")
+    )
+    source_export = ExportResponse.model_validate(
+        export_asset_source_list("SPY", export_format="json", generated_output_cache_writer=writer).model_dump(mode="json")
+    )
+
+    for export in (asset_export, source_export):
+        assert export.export_state is ExportState.available
+        assert export.asset is not None
+        assert export.asset.ticker == "SPY"
+        assert export.metadata["source"] == "lightweight_fresh_data_overview"
+        assert export.metadata["lightweight_fresh_data_export"] is True
+        assert export.metadata["strict_audit_quality_source_approval_granted"] is False
+        assert export.metadata["generated_output_cache_promoted"] is False
+        assert export.metadata["fallback_diagnostics"]["source_path"] == "issuer_backed_etf_provider_fallback"
+        assert export.export_validation is not None
+        assert export.export_validation.binding_scope is ExportValidationBindingScope.same_asset
+        assert export.export_validation.diagnostics.same_asset_citation_bindings_only is True
+        assert export.export_validation.diagnostics.same_asset_source_bindings_only is True
+        assert export.citations
+        assert export.source_documents
+        assert {citation.source_document_id for citation in export.citations} <= {
+            source.source_document_id for source in export.source_documents
+        }
+        assert any(source.is_official for source in export.source_documents)
+        assert any(source.source_use_policy.value == "metadata_only" for source in export.source_documents)
+        assert all(source.retrieved_at for source in export.source_documents)
+        assert all(source.allowed_excerpt is not None for source in export.source_documents)
+        assert all(source.permitted_operations.can_export_full_text is False for source in export.source_documents)
+        assert "raw_payload" not in _flatten_text(export.rendered_markdown)
+        assert not find_forbidden_output_phrases(_flatten_text(export.model_dump(mode="json")))
+
+    assert source_export.content_type is ExportContentType.asset_source_list
+    assert _section(source_export, "asset_source_list").items
+    assert writer.records_by_entry_id == {}
+
+
+def test_export_source_metadata_limits_restricted_tiers_and_suppresses_rejected_sources():
+    metadata_only_source = _source_fixture(
+        source_document_id="provider_market_aapl_reference",
+        url="",
+        provider_name="Mock Market Reference",
+        supporting_passage="Restricted provider payload text must not be exported.",
+    )
+    link_only_source = _source_fixture(
+        source_document_id="link_only_news_reference",
+        url="https://link-only.example/story",
+        publisher="Link Only Example",
+        supporting_passage="Link-only article text must not be exported.",
+    )
+    rejected_source = _source_fixture(
+        source_document_id="rejected_news_reference",
+        url="https://unlicensed.example/story",
+        publisher="Unlicensed Example",
+        supporting_passage="Rejected article text must not be exported.",
+    )
+
+    exported = _export_sources([metadata_only_source, link_only_source, rejected_source])
+    exported_by_id = {source.source_document_id: source for source in exported}
+
+    assert set(exported_by_id) == {"provider_market_aapl_reference", "link_only_news_reference"}
+    metadata = exported_by_id["provider_market_aapl_reference"]
+    assert metadata.source_use_policy.value == "metadata_only"
+    assert metadata.allowed_excerpt is not None
+    assert metadata.allowed_excerpt.kind == "excerpt_metadata"
+    assert metadata.allowed_excerpt.text is None
+    assert metadata.permitted_operations.can_export_metadata is False
+
+    link_only = exported_by_id["link_only_news_reference"]
+    assert link_only.source_use_policy.value == "link_only"
+    assert link_only.allowed_excerpt is not None
+    assert link_only.allowed_excerpt.kind == "excerpt_metadata"
+    assert link_only.allowed_excerpt.text is None
+    assert link_only.permitted_operations.can_export_metadata is True
+
+    bindings, _ = _build_export_source_bindings(
+        exported,
+        {
+            "provider_market_aapl_reference": {"asset_source_list"},
+            "link_only_news_reference": {"asset_source_list"},
+        },
+        binding_scope=ExportValidationBindingScope.same_asset,
+        asset_ticker="AAPL",
+    )
+    assert all(binding.excerpt_exported is False for binding in bindings)
+    assert all(binding.excerpt_metadata_only is True for binding in bindings)
+    assert any("policy-safe attribution" in (binding.omitted_content_message or "") for binding in bindings)
+
+
 def test_comparison_exports_preserve_pack_citations_sources_and_reverse_order():
     for left, right in [("VOO", "QQQ"), ("QQQ", "VOO")]:
         export = export_comparison(ComparisonExportRequest(left_ticker=left, right_ticker=right))
@@ -197,6 +333,39 @@ def test_comparison_exports_preserve_pack_citations_sources_and_reverse_order():
         assert all(source.allowed_excerpt is not None for source in export.source_documents)
         assert all(source.allowlist_status.value == "allowed" for source in export.source_documents)
         assert all(source.source_use_policy.value in {"full_text_allowed", "summary_allowed"} for source in export.source_documents)
+        assert not find_forbidden_output_phrases(_flatten_text(export.model_dump(mode="json")))
+
+
+def test_stock_etf_comparison_export_preserves_relationship_context_and_sources():
+    for left, right in [("AAPL", "VOO"), ("VOO", "AAPL")]:
+        export = export_comparison(ComparisonExportRequest(left_ticker=left, right_ticker=right))
+        section_ids = [section.section_id for section in export.sections]
+
+        assert export.content_type is ExportContentType.comparison
+        assert export.export_state is ExportState.available
+        assert export.left_asset is not None
+        assert export.right_asset is not None
+        assert export.left_asset.ticker == left
+        assert export.right_asset.ticker == right
+        assert export.metadata["comparison_type"] == "stock_vs_etf"
+        assert "stock_etf_relationship_context" in section_ids
+        assert _section(export, "stock_etf_relationship_context").evidence_state.value == "partial"
+        assert "exact holding weight" in (_section(export, "stock_etf_relationship_context").limitations or "").lower()
+        assert _section(export, "key_differences").items
+        assert _section(export, "beginner_bottom_line").citation_ids
+        assert export.citations
+        assert export.source_documents
+        assert {source.source_document_id for source in export.source_documents} == {
+            "src_aapl_10k_fixture",
+            "src_voo_fact_sheet_fixture",
+            "src_voo_holdings_fixture",
+        }
+        assert export.export_validation is not None
+        assert export.export_validation.binding_scope is ExportValidationBindingScope.same_comparison_pack
+        assert export.export_validation.diagnostics.same_comparison_pack_citation_bindings_only is True
+        assert export.export_validation.diagnostics.same_comparison_pack_source_bindings_only is True
+        assert _validation_section(export, "stock_etf_relationship_context").validation_outcome is ExportValidationOutcome.validated_with_limitations
+        assert "Educational Disclaimer" in export.rendered_markdown
         assert not find_forbidden_output_phrases(_flatten_text(export.model_dump(mode="json")))
 
 
@@ -256,7 +425,7 @@ def test_unsupported_unknown_unavailable_and_eligible_not_cached_exports_do_not_
         export_asset_page("SPY"),
         export_asset_source_list("TQQQ"),
         export_comparison(ComparisonExportRequest(left_ticker="VOO", right_ticker="BTC")),
-        export_comparison(ComparisonExportRequest(left_ticker="AAPL", right_ticker="VOO")),
+        export_comparison(ComparisonExportRequest(left_ticker="AAPL", right_ticker="QQQ")),
         export_chat_transcript("BTC", ChatTranscriptExportRequest(question="What is this?")),
         export_chat_transcript("SPY", ChatTranscriptExportRequest(question="What is this?")),
     ]
@@ -305,6 +474,24 @@ def _used_citation_ids(export: ExportResponse) -> set[str]:
     }
 
 
+def _lightweight_overview(ticker: str):
+    settings = build_lightweight_data_settings(
+        {
+            "DATA_POLICY_MODE": "lightweight",
+            "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "true",
+            "LIGHTWEIGHT_PROVIDER_FALLBACK_ENABLED": "true",
+            "SEC_EDGAR_USER_AGENT": "learn-the-ticker-tests/0.1 test@example.com",
+        }
+    )
+    response = fetch_lightweight_asset_data(
+        ticker,
+        settings=settings,
+        fetcher=LocalFreshDataSliceFakeFetcher(),
+        retrieved_at=RETRIEVED_AT,
+    )
+    return build_lightweight_overview_response(response)
+
+
 def _flatten_text(value: Any) -> str:
     if isinstance(value, str):
         return value
@@ -313,3 +500,27 @@ def _flatten_text(value: Any) -> str:
     if isinstance(value, dict):
         return " ".join(_flatten_text(item) for item in value.values())
     return ""
+
+
+def _source_fixture(
+    *,
+    source_document_id: str,
+    url: str,
+    publisher: str = "Mock Market Reference",
+    provider_name: str | None = None,
+    supporting_passage: str,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        source_document_id=source_document_id,
+        title=f"{source_document_id} title",
+        source_type="provider_fixture",
+        publisher=publisher,
+        url=url,
+        published_at=None,
+        as_of_date="2026-04-01",
+        retrieved_at="2026-04-25T18:04:25Z",
+        freshness_state=FreshnessState.fresh,
+        is_official=False,
+        supporting_passage=supporting_passage,
+        provider_name=provider_name,
+    )

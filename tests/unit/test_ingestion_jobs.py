@@ -1,12 +1,25 @@
 from backend.data import ASSETS, ELIGIBLE_NOT_CACHED_ASSETS
 from backend.ingestion import (
+    build_local_ingestion_priority_plan,
+    execute_ingestion_job_through_ledger,
     get_ingestion_job_status,
     get_pre_cache_job_status,
     request_ingestion,
     request_launch_universe_pre_cache,
     request_pre_cache_for_asset,
 )
+from backend.ingestion_worker import InMemoryIngestionWorkerLedger
 from backend.models import IngestionJobResponse, PreCacheBatchResponse, PreCacheJobResponse
+from backend.repositories.ingestion_jobs import IngestionJobLedgerRecords, serialize_ingestion_job_response
+from backend.top500_candidate_manifest import build_top500_sec_source_pack_batch_plan
+
+
+class FailingLedger:
+    def get(self, job_id: str) -> IngestionJobLedgerRecords | None:
+        raise RuntimeError("configured ledger unavailable")
+
+    def save(self, records: IngestionJobLedgerRecords) -> None:
+        raise RuntimeError("configured ledger unavailable")
 
 
 def test_eligible_not_cached_asset_requests_deterministic_on_demand_job():
@@ -28,6 +41,70 @@ def test_eligible_not_cached_asset_requests_deterministic_on_demand_job():
     assert validated.capabilities.can_open_generated_page is False
     assert validated.capabilities.can_answer_chat is False
     assert validated.capabilities.can_compare is False
+
+
+def test_configured_ledger_backs_on_demand_creation_status_and_worker_execution():
+    ledger = InMemoryIngestionWorkerLedger()
+
+    created = request_ingestion("SPY", ingestion_job_ledger=ledger)
+    queued_status = get_ingestion_job_status("ingest-on-demand-spy", ingestion_job_ledger=ledger)
+    execution = execute_ingestion_job_through_ledger("ingest-on-demand-spy", ingestion_job_ledger=ledger)
+    completed_status = get_ingestion_job_status("ingest-on-demand-spy", ingestion_job_ledger=ledger)
+
+    assert created.job_id == "ingest-on-demand-spy"
+    assert queued_status.job_state.value == "pending"
+    assert execution.summary.transitions == ["pending", "running", "succeeded"]
+    assert completed_status.job_state.value == "succeeded"
+    assert completed_status.generated_route is None
+    assert completed_status.capabilities.can_open_generated_page is False
+    assert completed_status.capabilities.can_answer_chat is False
+    assert completed_status.capabilities.can_compare is False
+
+
+def test_configured_ledger_backs_pre_cache_creation_status_and_worker_execution():
+    ledger = InMemoryIngestionWorkerLedger()
+
+    created = request_pre_cache_for_asset("SPY", ingestion_job_ledger=ledger)
+    queued_status = get_pre_cache_job_status("pre-cache-launch-spy", ingestion_job_ledger=ledger)
+    execution = execute_ingestion_job_through_ledger("pre-cache-launch-spy", ingestion_job_ledger=ledger)
+    completed_status = get_pre_cache_job_status("pre-cache-launch-spy", ingestion_job_ledger=ledger)
+
+    assert created.job_id == "pre-cache-launch-spy"
+    assert queued_status.job_state.value == "queued"
+    assert queued_status.generated_route is None
+    assert queued_status.generated_output_available is False
+    assert execution.summary.transitions == ["queued", "running", "succeeded"]
+    assert completed_status.job_state.value == "succeeded"
+    assert completed_status.generated_route is None
+    assert completed_status.generated_output_available is False
+    assert completed_status.capabilities.can_open_generated_page is False
+    assert completed_status.capabilities.can_answer_chat is False
+    assert completed_status.capabilities.can_compare is False
+
+
+def test_configured_ledger_failure_falls_back_to_fixture_status():
+    failing = FailingLedger()
+
+    created = request_ingestion("SPY", ingestion_job_ledger=failing)
+    status = get_ingestion_job_status("ingest-on-demand-spy", ingestion_job_ledger=failing)
+    pre_cache = request_pre_cache_for_asset("SPY", ingestion_job_ledger=failing)
+    pre_cache_status = get_pre_cache_job_status("pre-cache-launch-spy", ingestion_job_ledger=failing)
+
+    assert created.job_state.value == "pending"
+    assert status.job_state.value == "pending"
+    assert pre_cache.job_state.value == "pending"
+    assert pre_cache_status.job_state.value == "pending"
+
+
+def test_invalid_configured_ledger_record_falls_back_to_matching_fixture():
+    valid = serialize_ingestion_job_response(request_ingestion("SPY"))
+    wrong_ticker = valid.model_copy(update={"ledger": valid.ledger.model_copy(update={"ticker": "QQQ"})})
+    ledger = InMemoryIngestionWorkerLedger(records_by_job_id={"ingest-on-demand-spy": wrong_ticker})
+
+    status = get_ingestion_job_status("ingest-on-demand-spy", ingestion_job_ledger=ledger)
+
+    assert status.ticker == "SPY"
+    assert status.job_state.value == "pending"
 
 
 def test_all_launch_universe_eligible_not_cached_assets_get_stable_non_generated_jobs():
@@ -69,7 +146,15 @@ def test_cached_supported_asset_returns_no_ingestion_needed_with_existing_capabi
 
 
 def test_unsupported_assets_do_not_create_jobs_or_generated_outputs():
-    for ticker, expected_state in [("BTC", "unsupported"), ("TQQQ", "unsupported"), ("SQQQ", "unsupported")]:
+    for ticker, expected_state in [
+        ("BTC", "unsupported"),
+        ("TQQQ", "unsupported"),
+        ("SQQQ", "unsupported"),
+        ("ARKK", "unsupported"),
+        ("BND", "unsupported"),
+        ("GLD", "unsupported"),
+        ("AOR", "unsupported"),
+    ]:
         response = request_ingestion(ticker)
 
         assert response.ticker == ticker
@@ -100,10 +185,13 @@ def test_unknown_asset_returns_unknown_without_invented_facts_or_job():
     assert "no asset facts are invented" in response.message.lower()
 
 
-def test_common_stock_outside_manifest_does_not_create_ingestion_or_pre_cache_output():
+def test_out_of_scope_assets_do_not_create_ingestion_or_pre_cache_output():
     ingestion = request_ingestion("GME")
     pre_cache = request_pre_cache_for_asset("GME")
     pre_cache_status = get_pre_cache_job_status("pre-cache-out-of-scope-gme")
+    etn_ingestion = request_ingestion("VXX")
+    etn_pre_cache = request_pre_cache_for_asset("VXX")
+    etn_pre_cache_status = get_pre_cache_job_status("pre-cache-out-of-scope-vxx")
 
     assert ingestion.ticker == "GME"
     assert ingestion.asset_type.value == "stock"
@@ -129,6 +217,30 @@ def test_common_stock_outside_manifest_does_not_create_ingestion_or_pre_cache_ou
     assert pre_cache.capabilities.can_answer_chat is False
     assert pre_cache.capabilities.can_compare is False
     assert pre_cache.capabilities.can_request_ingestion is False
+
+    assert etn_ingestion.ticker == "VXX"
+    assert etn_ingestion.asset_type.value == "etf"
+    assert etn_ingestion.job_id is None
+    assert etn_ingestion.job_type is None
+    assert etn_ingestion.job_state.value == "out_of_scope"
+    assert etn_ingestion.generated_route is None
+    assert etn_ingestion.capabilities.can_open_generated_page is False
+    assert etn_ingestion.capabilities.can_answer_chat is False
+    assert etn_ingestion.capabilities.can_compare is False
+    assert etn_ingestion.capabilities.can_request_ingestion is False
+
+    assert etn_pre_cache == etn_pre_cache_status
+    assert etn_pre_cache.ticker == "VXX"
+    assert etn_pre_cache.asset_type.value == "etf"
+    assert etn_pre_cache.job_state.value == "out_of_scope"
+    assert etn_pre_cache.generated_route is None
+    assert etn_pre_cache.generated_output_available is False
+    assert etn_pre_cache.citation_ids == []
+    assert etn_pre_cache.source_document_ids == []
+    assert etn_pre_cache.capabilities.can_open_generated_page is False
+    assert etn_pre_cache.capabilities.can_answer_chat is False
+    assert etn_pre_cache.capabilities.can_compare is False
+    assert etn_pre_cache.capabilities.can_request_ingestion is False
 
 
 def test_status_lookup_covers_running_succeeded_refresh_needed_failed_and_unavailable_states():
@@ -191,6 +303,118 @@ def test_launch_universe_pre_cache_batch_is_deterministic_and_covers_control_set
         assert job.launch_group
 
 
+def test_launch_pre_cache_with_configured_ledger_queues_durable_jobs_without_static_outputs():
+    ledger = InMemoryIngestionWorkerLedger()
+
+    batch = request_launch_universe_pre_cache(ingestion_job_ledger=ledger)
+    jobs_by_ticker = {job.ticker: job for job in batch.jobs}
+
+    assert "durable launch-universe pre-cache queued ledger jobs" in batch.message.lower()
+    for ticker in ["AAPL", "VOO", "QQQ", "SPY", "NVDA"]:
+        job = jobs_by_ticker[ticker]
+        persisted = ledger.get(job.job_id)
+        assert job.job_state.value == "queued"
+        assert job.worker_status.value == "queued"
+        assert job.generated_route is None
+        assert job.generated_output_available is False
+        assert job.capabilities.can_open_generated_page is False
+        assert job.capabilities.can_answer_chat is False
+        assert job.capabilities.can_compare is False
+        assert persisted is not None
+        assert persisted.ledger.job_state == "queued"
+        assert persisted.ledger.generated_output_available is False
+
+
+def test_local_ingestion_priority_plan_is_review_only_batchable_and_manifest_ordered():
+    first = build_local_ingestion_priority_plan(batch_size=5)
+    second = build_local_ingestion_priority_plan(batch_size=5)
+
+    assert first == second
+    assert first["schema_version"] == "local-ingestion-priority-plan-v1"
+    assert first["boundary"] == "local-ingestion-priority-planner-review-only-v1"
+    assert first["review_only"] is True
+    assert first["deterministic"] is True
+    assert first["batchable"] is True
+    assert first["resumable"] is True
+    assert first["no_live_external_calls"] is True
+    assert first["planner_started_ingestion"] is False
+    assert first["sources_approved_by_planner"] is False
+    assert first["manifests_promoted"] is False
+    assert first["generated_output_cache_entries_written"] is False
+    assert first["generated_output_unlocked_for_blocked_assets"] is False
+    assert first["supported_etf_runtime_authority"] == "data/universes/us_equity_etfs_supported.current.json"
+    assert first["recognition_manifest_used_for_priority_order"] is False
+    assert first["recognition_rows_unlock_generated_output"] is False
+    assert first["top500_runtime_authority"] == "data/universes/us_common_stocks_top500.current.json"
+
+    planned_tickers = [row["ticker"] for batch in first["batches"] for row in batch["items"]]
+    assert planned_tickers[:3] == ["AAPL", "VOO", "QQQ"]
+    assert planned_tickers[3:8] == ["SPY", "VGT", "SOXX", "VTI", "IVV"]
+    assert planned_tickers[-9:] == ["MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK.B", "JPM", "UNH"]
+    assert "TQQQ" not in planned_tickers
+
+    assert first["summary"] == {
+        "planned_asset_count": 23,
+        "batch_count": 6,
+        "ready_to_inspect_count": 3,
+        "blocked_or_not_ready_count": 20,
+        "high_demand_pre_cache_count": 3,
+        "supported_etf_manifest_count": 11,
+        "top500_stock_manifest_count": 9,
+        "blocked_diagnostic_count": 4,
+    }
+    ready_tickers = [row["ticker"] for row in first["ready_to_inspect"]]
+    assert ready_tickers == ["AAPL", "VOO", "QQQ"]
+    assert all(row["generated_output_unlocked_by_planner"] is False for row in first["blocked_or_not_ready"])
+    assert all(batch["review_only"] is True and batch["can_start_ingestion"] is False for batch in first["batches"])
+    assert {row["state"] for row in first["blocked_diagnostic_rows"]} == {
+        "unsupported",
+        "out_of_scope",
+        "unknown",
+        "unavailable",
+    }
+    state_counts = first["state_diagnostics"]["states"]
+    for state in [
+        "pending",
+        "running",
+        "succeeded",
+        "failed",
+        "unsupported",
+        "out_of_scope",
+        "unknown",
+        "unavailable",
+        "partial",
+        "stale",
+        "insufficient_evidence",
+    ]:
+        assert state in state_counts
+    assert state_counts["stale"] == 0
+    assert state_counts["insufficient_evidence"] == 20
+
+
+def test_top500_sec_batch_plan_uses_local_ingestion_priority_metadata_without_starting_jobs():
+    ingestion_plan = build_local_ingestion_priority_plan(batch_size=5)
+    top500_plan = build_top500_sec_source_pack_batch_plan(local_ingestion_priority_plan=ingestion_plan)
+
+    assert top500_plan["local_ingestion_priority_schema_version"] == "local-ingestion-priority-plan-v1"
+    assert top500_plan["local_ingestion_priority_boundary"] == "local-ingestion-priority-planner-review-only-v1"
+    assert top500_plan["planner_started_ingestion"] is False
+    assert top500_plan["generated_output_unlocked_by_plan"] is False
+    assert top500_plan["top500_manifest_promoted"] is False
+
+    aapl = next(row for row in top500_plan["planned_rows"] if row["ticker"] == "AAPL")
+    assert aapl["local_ingestion_priority_rank"] == 1
+    assert aapl["local_ingestion_priority_band"] == "high_demand_pre_cache"
+    assert aapl["local_ingestion_state"] == "succeeded"
+    assert aapl["local_ingestion_ready_to_inspect"] is True
+
+    msft = next(row for row in top500_plan["planned_rows"] if row["ticker"] == "MSFT")
+    assert msft["local_ingestion_priority_band"] == "top500_stock_manifest"
+    assert msft["local_ingestion_priority_rank"] > aapl["local_ingestion_priority_rank"]
+    assert msft["local_ingestion_ready_to_inspect"] is False
+    assert msft["generated_output_unlocked_by_plan"] is False
+
+
 def test_pre_cache_cached_assets_preserve_existing_generated_capabilities_only():
     batch = request_launch_universe_pre_cache()
 
@@ -234,6 +458,8 @@ def test_pre_cache_status_lookup_covers_required_deterministic_states():
         "pre-cache-launch-msft": ("MSFT", "stock", "running", "running", None, False),
         "pre-cache-launch-amzn": ("AMZN", "stock", "failed", "failed", None, False),
         "pre-cache-unsupported-tqqq": ("TQQQ", "unsupported", "unsupported", None, None, False),
+        "pre-cache-unsupported-arkk": ("ARKK", "unsupported", "unsupported", None, None, False),
+        "pre-cache-out-of-scope-vxx": ("VXX", "etf", "out_of_scope", None, None, False),
         "pre-cache-unknown-zzzz": ("ZZZZ", "unknown", "unknown", None, None, False),
         "missing-pre-cache-job": ("UNKNOWN", "unknown", "unavailable", None, None, False),
     }
@@ -258,9 +484,11 @@ def test_pre_cache_status_lookup_covers_required_deterministic_states():
     assert failed.error_metadata.retryable is True
 
 
-def test_pre_cache_asset_helper_returns_unsupported_or_unknown_without_generated_output():
+def test_pre_cache_asset_helper_returns_unsupported_out_of_scope_or_unknown_without_generated_output():
     for ticker, expected_type, expected_state in [
         ("TQQQ", "unsupported", "unsupported"),
+        ("ARKK", "unsupported", "unsupported"),
+        ("VXX", "etf", "out_of_scope"),
         ("BTC", "unsupported", "unsupported"),
         ("ZZZZ", "unknown", "unknown"),
     ]:

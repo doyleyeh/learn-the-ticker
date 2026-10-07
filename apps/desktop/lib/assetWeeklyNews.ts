@@ -4,11 +4,15 @@ import {
   type AssetType,
   type Citation,
   type FreshnessState,
+  type GenerationDiagnostics,
   type SourceDocument,
   type WeeklyNewsContractState,
   type WeeklyNewsEmptyState,
+  type WeeklyNewsEvidenceLimitedState,
   type WeeklyNewsFocusFixture
 } from "./fixtures";
+import { runtimeSectionStatesFromPayload, type RuntimeSectionState } from "./runtimeSectionStates";
+import { sanitizeSourceDisplayTitle } from "./sourceDisplay";
 
 type Fetcher = typeof fetch;
 
@@ -36,6 +40,7 @@ type BackendSourceDocument = {
   source_type: string;
   title: string;
   publisher: string;
+  provider_name?: string | null;
   url: string;
   published_at: string | null;
   as_of_date: string | null;
@@ -67,6 +72,11 @@ type BackendWeeklyNewsFocus = {
     news_window_end: string;
     includes_current_week_to_date: boolean;
   };
+  configured_max_item_count: number;
+  selected_item_count: number;
+  suppressed_candidate_count: number;
+  evidence_state: string;
+  evidence_limited_state: WeeklyNewsEvidenceLimitedState;
   items: Array<{
     event_id: string;
     asset_ticker: string;
@@ -98,7 +108,10 @@ type BackendAIComprehensiveAnalysis = {
   schema_version: "ai-comprehensive-analysis-v1";
   state: WeeklyNewsContractState;
   analysis_available: boolean;
+  minimum_weekly_news_item_count: number;
+  weekly_news_selected_item_count: number;
   suppression_reason: string | null;
+  validation_reason_codes?: string[];
   sections: Array<{
     section_id: "what_changed_this_week" | "market_context" | "business_or_fund_context" | "risk_context";
     label: "What Changed This Week" | "Market Context" | "Business/Fund Context" | "Risk Context";
@@ -113,6 +126,18 @@ type BackendAIComprehensiveAnalysis = {
   canonical_fact_citation_ids: string[];
   no_live_external_calls: boolean;
   stable_facts_are_separate: boolean;
+  generation_diagnostics?: BackendGenerationDiagnostics;
+};
+
+type BackendGenerationDiagnostics = {
+  attempted_live: boolean;
+  used_fallback: boolean;
+  fallback_reason_codes: string[];
+  model_name: string | null;
+  attempt_count?: number;
+  attempted_model_batches?: string[][];
+  attempted_models?: string[];
+  skipped_model_cooldowns?: string[];
 };
 
 type BackendWeeklyNewsResponse = {
@@ -122,11 +147,13 @@ type BackendWeeklyNewsResponse = {
   };
   weekly_news_focus: BackendWeeklyNewsFocus;
   ai_comprehensive_analysis: BackendAIComprehensiveAnalysis;
+  section_states?: unknown[];
 };
 
 type SupportedWeeklyNewsResponse = {
   weeklyNewsFocus: WeeklyNewsFocusFixture;
   aiComprehensiveAnalysis: AIComprehensiveAnalysisFixture;
+  sectionStates?: RuntimeSectionState[];
 };
 
 export async function fetchSupportedAssetWeeklyNews(
@@ -149,13 +176,19 @@ export async function fetchSupportedAssetWeeklyNews(
     throw new Error("Asset weekly-news response did not match the expected backend response contract.");
   }
 
+  const sectionStates = runtimeSectionStatesFromPayload(payload);
+
   return {
     weeklyNewsFocus: toWeeklyNewsFocus(payload.weekly_news_focus, fallbackWeeklyNewsFocus),
-    aiComprehensiveAnalysis: toAIComprehensiveAnalysis(
-      payload.ai_comprehensive_analysis,
-      payload.weekly_news_focus,
-      fallbackAnalysis
-    )
+    aiComprehensiveAnalysis: {
+      ...toAIComprehensiveAnalysis(
+        payload.ai_comprehensive_analysis,
+        payload.weekly_news_focus,
+        fallbackAnalysis
+      ),
+      sectionStates: sectionStates.filter((state) => state.sectionId === "ai_comprehensive_analysis")
+    },
+    sectionStates
   };
 }
 
@@ -190,9 +223,16 @@ function isSupportedWeeklyNewsResponse(
     !!candidate.weekly_news_focus &&
     typeof candidate.weekly_news_focus === "object" &&
     candidate.weekly_news_focus.schema_version === "weekly-news-focus-v1" &&
+    typeof candidate.weekly_news_focus.configured_max_item_count === "number" &&
+    typeof candidate.weekly_news_focus.selected_item_count === "number" &&
+    typeof candidate.weekly_news_focus.suppressed_candidate_count === "number" &&
+    typeof candidate.weekly_news_focus.evidence_state === "string" &&
+    typeof candidate.weekly_news_focus.evidence_limited_state === "string" &&
     !!candidate.ai_comprehensive_analysis &&
     typeof candidate.ai_comprehensive_analysis === "object" &&
     candidate.ai_comprehensive_analysis.schema_version === "ai-comprehensive-analysis-v1" &&
+    typeof candidate.ai_comprehensive_analysis.minimum_weekly_news_item_count === "number" &&
+    typeof candidate.ai_comprehensive_analysis.weekly_news_selected_item_count === "number" &&
     Array.isArray(candidate.weekly_news_focus.items) &&
     Array.isArray(candidate.weekly_news_focus.citations) &&
     Array.isArray(candidate.weekly_news_focus.source_documents) &&
@@ -218,6 +258,11 @@ function toWeeklyNewsFocus(
       newsWindowEnd: focus.window.news_window_end,
       includesCurrentWeekToDate: focus.window.includes_current_week_to_date
     },
+    configuredMaxItemCount: focus.configured_max_item_count,
+    selectedItemCount: focus.selected_item_count,
+    suppressedCandidateCount: focus.suppressed_candidate_count,
+    evidenceState: toEvidenceState(focus.evidence_state),
+    evidenceLimitedState: toEvidenceLimitedState(focus.evidence_limited_state),
     items: focus.items.map((item) => ({
       eventId: item.event_id,
       assetTicker: item.asset_ticker,
@@ -243,7 +288,7 @@ function toWeeklyNewsFocus(
       fallbackFocus.sourceDocuments,
       (source) => source.sourceDocumentId
     ),
-    noLiveExternalCalls: true,
+    noLiveExternalCalls: focus.no_live_external_calls,
     stableFactsAreSeparate: true
   };
 }
@@ -257,7 +302,10 @@ function toAIComprehensiveAnalysis(
     schemaVersion: "ai-comprehensive-analysis-v1",
     state: analysis.state,
     analysisAvailable: analysis.analysis_available,
+    minimumWeeklyNewsItemCount: analysis.minimum_weekly_news_item_count,
+    weeklyNewsSelectedItemCount: analysis.weekly_news_selected_item_count,
     suppressionReason: analysis.suppression_reason,
+    validationReasonCodes: analysis.validation_reason_codes ?? [],
     sections: analysis.sections.map((section) => ({
       sectionId: section.section_id,
       label: section.label,
@@ -280,7 +328,8 @@ function toAIComprehensiveAnalysis(
       fallbackAnalysis.sourceDocuments,
       (source) => source.sourceDocumentId
     ),
-    noLiveExternalCalls: true,
+    generationDiagnostics: toGenerationDiagnostics(analysis.generation_diagnostics),
+    noLiveExternalCalls: analysis.no_live_external_calls,
     stableFactsAreSeparate: true
   };
 }
@@ -289,8 +338,9 @@ function toWeeklyNewsSource(source: BackendSourceDocument): WeeklyNewsFocusFixtu
   return {
     sourceDocumentId: source.source_document_id,
     sourceType: source.source_type,
-    title: source.title,
+    title: sanitizeSourceDisplayTitle(source.title, source),
     publisher: source.publisher,
+    providerName: source.provider_name ?? null,
     url: source.url,
     publishedAt: source.published_at ?? null,
     asOfDate: source.as_of_date ?? null,
@@ -324,7 +374,10 @@ function toCitation(citation: BackendCitation): Citation {
   return {
     citationId: citation.citation_id,
     sourceDocumentId: citation.source_document_id,
-    title: citation.title,
+    title: sanitizeSourceDisplayTitle(citation.title, {
+      source_type: citation.source_document_id,
+      source_quality: citation.source_document_id.includes("provider_issuer") ? "issuer" : undefined
+    }),
     publisher: citation.publisher,
     freshnessState: toFreshnessState(citation.freshness_state)
   };
@@ -334,8 +387,9 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
   return {
     sourceDocumentId: source.source_document_id,
     sourceType: source.source_type,
-    title: source.title,
+    title: sanitizeSourceDisplayTitle(source.title, source),
     publisher: source.publisher,
+    providerName: source.provider_name ?? null,
     url: source.url,
     publishedAt: source.published_at ?? source.as_of_date ?? "Unknown",
     asOfDate: source.as_of_date ?? undefined,
@@ -352,6 +406,28 @@ function toSourceDocument(source: BackendSourceDocument): SourceDocument {
     permitted_operations: {
       can_export_full_text: source.permitted_operations?.can_export_full_text
     }
+  };
+}
+
+function toGenerationDiagnostics(
+  diagnostics: BackendGenerationDiagnostics | undefined
+): GenerationDiagnostics | null {
+  if (!diagnostics) {
+    return null;
+  }
+  return {
+    attemptedLive: Boolean(diagnostics.attempted_live),
+    usedFallback: Boolean(diagnostics.used_fallback),
+    fallbackReasonCodes: Array.isArray(diagnostics.fallback_reason_codes) ? diagnostics.fallback_reason_codes : [],
+    modelName: diagnostics.model_name ?? null,
+    attemptCount: typeof diagnostics.attempt_count === "number" ? diagnostics.attempt_count : 0,
+    attemptedModelBatches: Array.isArray(diagnostics.attempted_model_batches)
+      ? diagnostics.attempted_model_batches
+      : [],
+    attemptedModels: Array.isArray(diagnostics.attempted_models) ? diagnostics.attempted_models : [],
+    skippedModelCooldowns: Array.isArray(diagnostics.skipped_model_cooldowns)
+      ? diagnostics.skipped_model_cooldowns
+      : []
   };
 }
 
@@ -390,17 +466,32 @@ function toFreshnessState(value: string): FreshnessState {
 function toEvidenceState(value: string): WeeklyNewsEmptyState["evidenceState"] {
   if (
     value === "supported" ||
+    value === "partial" ||
     value === "mixed" ||
     value === "unknown" ||
     value === "unavailable" ||
     value === "stale" ||
     value === "insufficient_evidence" ||
     value === "no_high_signal" ||
-    value === "no_major_recent_development"
+    value === "no_major_recent_development" ||
+    value === "unsupported"
   ) {
     return value;
   }
   return "unknown";
+}
+
+function toEvidenceLimitedState(value: string): WeeklyNewsEvidenceLimitedState {
+  if (
+    value === "full" ||
+    value === "limited_verified_set" ||
+    value === "empty" ||
+    value === "unavailable" ||
+    value === "insufficient_evidence"
+  ) {
+    return value;
+  }
+  return "unavailable";
 }
 
 function toSourceQuality(value: string): WeeklyNewsFocusFixture["items"][number]["source"]["sourceQuality"] {

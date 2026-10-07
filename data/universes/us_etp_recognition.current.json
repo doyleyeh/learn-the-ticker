@@ -1,0 +1,313 @@
+{
+  "schema_version": "us-equity-etf-universe-v1",
+  "manifest_id": "us-equity-etfs-2026-04-fixture-contract",
+  "universe_name": "Eligible U.S.-listed equity ETF metadata universe",
+  "local_path": "data/universes/us_etp_recognition.current.json",
+  "production_mirror_env_var": "EQUITY_ETF_UNIVERSE_MANIFEST_URI",
+  "coverage_purpose": "Operational metadata for deterministic MVP ETF support scope, excluded ETF-like products, and future search classification tests.",
+  "policy_note": "Manifest membership is operational coverage metadata only, not investment merit, not an endorsement, not a recommendation, not a model portfolio, and not personalized suitability.",
+  "snapshot_date": "2026-04-01",
+  "generated_at": "2026-04-25T20:14:09Z",
+  "approved_at": "2026-04-25T20:14:09Z",
+  "source_provenance": "Local deterministic MVP fixture derived from project launch-universe planning; no live provider, issuer, market-data, news, database, cache, or LLM call is used at runtime.",
+  "checksum_input": "us-equity-etf-universe-v1|us-equity-etfs-2026-04-fixture-contract|2026-04-01|TQQQ|SQQQ|ARKK|BND|GLD|AOR|VXX|LTTU|LTTX",
+  "generated_checksum": "sha256:6c16f943c4111a5f9f46b2279c7599696a620a9ee7f0da9665c6af4a1d9a4e87",
+  "entries": [
+    {
+      "ticker": "TQQQ",
+      "fund_name": "ProShares UltraPro QQQ",
+      "issuer": "ProShares",
+      "asset_type": "etf",
+      "exchange": "NASDAQ",
+      "listing_country": "US",
+      "etf_category": "leveraged_etf",
+      "support_state": "recognized_unsupported",
+      "launch_cache_state": "blocked",
+      "aliases": [
+        "leveraged qqq",
+        "ultrapro qqq",
+        "leveraged etf"
+      ],
+      "exclusion_flags": {
+        "leveraged": true
+      },
+      "evidence": {
+        "evidence_state": "unsupported",
+        "freshness_state": "unknown",
+        "evidence_as_of": "2026-04-01",
+        "retrieved_at": "2026-04-20T00:00:00Z",
+        "source_use_policy": "metadata_only",
+        "source_quality": "fixture"
+      },
+      "source_provenance": "Local ETF universe fixture used only for blocked classification metadata.",
+      "entry_provenance": "Leveraged ETF category is outside MVP generated-output scope.",
+      "snapshot_date": "2026-04-01",
+      "checksum_input": "TQQQ|ProShares UltraPro QQQ|ProShares|NASDAQ|leveraged_etf|recognized_unsupported|blocked|2026-04-01",
+      "generated_checksum": "sha256:4ce0d67ed517a2ff43602c66d55b76b7c8817f84371471612f4478b80bd3c4ec",
+      "approval_timestamp": "2026-04-25T20:14:09Z",
+      "non_advice_framing": "Blocked classification only; no generated page, chat answer, comparison, risk summary, export, or cacheable output is allowed."
+    },
+    {
+      "ticker": "SQQQ",
+      "fund_name": "ProShares UltraPro Short QQQ",
+      "issuer": "ProShares",
+      "asset_type": "etf",
+      "exchange": "NASDAQ",
+      "listing_country": "US",
+      "etf_category": "inverse_etf",
+      "support_state": "recognized_unsupported",
+      "launch_cache_state": "blocked",
+      "aliases": [
+        "inverse qqq",
+        "short qqq",
+        "inverse etf"
+      ],
+      "exclusion_flags": {
+        "inverse": true
+      },
+      "evidence": {
+        "evidence_state": "unsupported",
+        "freshness_state": "unknown",
+        "evidence_as_of": "2026-04-01",
+        "retrieved_at": "2026-04-20T00:00:00Z",
+        "source_use_policy": "metadata_only",
+        "source_quality": "fixture"
+      },
+      "source_provenance": "Local ETF universe fixture used only for blocked classification metadata.",
+      "entry_provenance": "Inverse ETF category is outside MVP generated-output scope.",
+      "snapshot_date": "2026-04-01",
+      "checksum_input": "SQQQ|ProShares UltraPro Short QQQ|ProShares|NASDAQ|inverse_etf|recognized_unsupported|blocked|2026-04-01",
+      "generated_checksum": "sha256:7a29cbf8171f1d84c76262be005d5a6c814ac03ecc287b5a932ed89d951327ee",
+      "approval_timestamp": "2026-04-25T20:14:09Z",
+      "non_advice_framing": "Blocked classification only; no generated page, chat answer, comparison, risk summary, export, or cacheable output is allowed."
+    },
+    {
+      "ticker": "ARKK",
+      "fund_name": "ARK Innovation ETF",
+      "issuer": "ARK Invest",
+      "asset_type": "etf",
+      "exchange": "NYSE Arca",
+      "listing_country": "US",
+      "etf_category": "active_etf",
+      "support_state": "recognized_unsupported",
+      "launch_cache_state": "blocked",
+      "aliases": [
+        "active etf",
+        "ark innovation"
+      ],
+      "exclusion_flags": {
+        "active": true
+      },
+      "evidence": {
+        "evidence_state": "unsupported",
+        "freshness_state": "unknown",
+        "evidence_as_of": "2026-04-01",
+        "retrieved_at": "2026-04-20T00:00:00Z",
+        "source_use_policy": "metadata_only",
+        "source_quality": "fixture"
+      },
+      "source_provenance": "Local ETF universe fixture used only for blocked classification metadata.",
+      "entry_provenance": "Active ETF category is outside MVP generated-output scope.",
+      "snapshot_date": "2026-04-01",
+      "checksum_input": "ARKK|ARK Innovation ETF|ARK Invest|NYSE Arca|active_etf|recognized_unsupported|blocked|2026-04-01",
+      "generated_checksum": "sha256:fbfc672347277252cbe351e7a2e839bc529053cc337d9c0175892bbf32bc6513",
+      "approval_timestamp": "2026-04-25T20:14:09Z",
+      "non_advice_framing": "Blocked classification only; no generated page, chat answer, comparison, risk summary, export, or cacheable output is allowed."
+    },
+    {
+      "ticker": "BND",
+      "fund_name": "Vanguard Total Bond Market ETF",
+      "issuer": "Vanguard",
+      "asset_type": "etf",
+      "exchange": "NASDAQ",
+      "listing_country": "US",
+      "etf_category": "fixed_income_etf",
+      "support_state": "recognized_unsupported",
+      "launch_cache_state": "blocked",
+      "aliases": [
+        "bond etf",
+        "fixed income etf"
+      ],
+      "exclusion_flags": {
+        "fixed_income": true
+      },
+      "evidence": {
+        "evidence_state": "unsupported",
+        "freshness_state": "unknown",
+        "evidence_as_of": "2026-04-01",
+        "retrieved_at": "2026-04-20T00:00:00Z",
+        "source_use_policy": "metadata_only",
+        "source_quality": "fixture"
+      },
+      "source_provenance": "Local ETF universe fixture used only for blocked classification metadata.",
+      "entry_provenance": "Fixed-income ETF category is outside MVP generated-output scope.",
+      "snapshot_date": "2026-04-01",
+      "checksum_input": "BND|Vanguard Total Bond Market ETF|Vanguard|NASDAQ|fixed_income_etf|recognized_unsupported|blocked|2026-04-01",
+      "generated_checksum": "sha256:c7d9bdd5fdaef800207e39c2a93028a600b27a8d1f297049bc1af4be44fed06b",
+      "approval_timestamp": "2026-04-25T20:14:09Z",
+      "non_advice_framing": "Blocked classification only; no generated page, chat answer, comparison, risk summary, export, or cacheable output is allowed."
+    },
+    {
+      "ticker": "GLD",
+      "fund_name": "SPDR Gold Shares",
+      "issuer": "World Gold Council",
+      "asset_type": "etf",
+      "exchange": "NYSE Arca",
+      "listing_country": "US",
+      "etf_category": "commodity_etf",
+      "support_state": "recognized_unsupported",
+      "launch_cache_state": "blocked",
+      "aliases": [
+        "gold etf",
+        "commodity etf"
+      ],
+      "exclusion_flags": {
+        "commodity": true
+      },
+      "evidence": {
+        "evidence_state": "unsupported",
+        "freshness_state": "unknown",
+        "evidence_as_of": "2026-04-01",
+        "retrieved_at": "2026-04-20T00:00:00Z",
+        "source_use_policy": "metadata_only",
+        "source_quality": "fixture"
+      },
+      "source_provenance": "Local ETF universe fixture used only for blocked classification metadata.",
+      "entry_provenance": "Commodity ETF category is outside MVP generated-output scope.",
+      "snapshot_date": "2026-04-01",
+      "checksum_input": "GLD|SPDR Gold Shares|World Gold Council|NYSE Arca|commodity_etf|recognized_unsupported|blocked|2026-04-01",
+      "generated_checksum": "sha256:f35907f4bcaaadec21499ea047fa7039951621da779f1b663496382b0507a15e",
+      "approval_timestamp": "2026-04-25T20:14:09Z",
+      "non_advice_framing": "Blocked classification only; no generated page, chat answer, comparison, risk summary, export, or cacheable output is allowed."
+    },
+    {
+      "ticker": "AOR",
+      "fund_name": "iShares Core Growth Allocation ETF",
+      "issuer": "iShares",
+      "asset_type": "etf",
+      "exchange": "NYSE Arca",
+      "listing_country": "US",
+      "etf_category": "multi_asset_etf",
+      "support_state": "recognized_unsupported",
+      "launch_cache_state": "blocked",
+      "aliases": [
+        "allocation etf",
+        "multi asset etf"
+      ],
+      "exclusion_flags": {
+        "multi_asset": true
+      },
+      "evidence": {
+        "evidence_state": "unsupported",
+        "freshness_state": "unknown",
+        "evidence_as_of": "2026-04-01",
+        "retrieved_at": "2026-04-20T00:00:00Z",
+        "source_use_policy": "metadata_only",
+        "source_quality": "fixture"
+      },
+      "source_provenance": "Local ETF universe fixture used only for blocked classification metadata.",
+      "entry_provenance": "Multi-asset ETF category is outside MVP generated-output scope.",
+      "snapshot_date": "2026-04-01",
+      "checksum_input": "AOR|iShares Core Growth Allocation ETF|iShares|NYSE Arca|multi_asset_etf|recognized_unsupported|blocked|2026-04-01",
+      "generated_checksum": "sha256:1c60c9b40e3d43b5560d6546ddfc4b2331dcaa12a114ed433bdbc06f7379ee19",
+      "approval_timestamp": "2026-04-25T20:14:09Z",
+      "non_advice_framing": "Blocked classification only; no generated page, chat answer, comparison, risk summary, export, or cacheable output is allowed."
+    },
+    {
+      "ticker": "VXX",
+      "fund_name": "iPath Series B S&P 500 VIX Short-Term Futures ETN",
+      "issuer": "Barclays",
+      "asset_type": "etf",
+      "exchange": "Cboe BZX",
+      "listing_country": "US",
+      "etf_category": "etn",
+      "support_state": "out_of_scope",
+      "launch_cache_state": "blocked",
+      "aliases": [
+        "vix etn",
+        "volatility etn",
+        "etn"
+      ],
+      "exclusion_flags": {
+        "etn": true,
+        "other_unsupported": true
+      },
+      "evidence": {
+        "evidence_state": "unsupported",
+        "freshness_state": "unknown",
+        "evidence_as_of": "2026-04-01",
+        "retrieved_at": "2026-04-20T00:00:00Z",
+        "source_use_policy": "metadata_only",
+        "source_quality": "fixture"
+      },
+      "source_provenance": "Local ETF-like product fixture used only for blocked classification metadata.",
+      "entry_provenance": "ETN is an ETF-like product outside MVP generated-output scope.",
+      "snapshot_date": "2026-04-01",
+      "checksum_input": "VXX|iPath Series B S&P 500 VIX Short-Term Futures ETN|Barclays|Cboe BZX|etn|out_of_scope|blocked|2026-04-01",
+      "generated_checksum": "sha256:f55a2e9ddcfa42c84561bd6541940ee883b36bc85ca6923b10bcf92ed1a1eaf9",
+      "approval_timestamp": "2026-04-25T20:14:09Z",
+      "non_advice_framing": "Blocked classification only; no generated page, chat answer, comparison, risk summary, export, or cacheable output is allowed."
+    },
+    {
+      "ticker": "LTTU",
+      "fund_name": "Unknown ETF metadata fixture",
+      "issuer": null,
+      "asset_type": "etf",
+      "exchange": null,
+      "listing_country": "US",
+      "etf_category": "unknown",
+      "support_state": "unknown",
+      "launch_cache_state": "unknown",
+      "aliases": [
+        "unknown etf metadata state"
+      ],
+      "exclusion_flags": {},
+      "evidence": {
+        "evidence_state": "unknown",
+        "freshness_state": "unknown",
+        "evidence_as_of": null,
+        "retrieved_at": null,
+        "source_use_policy": "metadata_only",
+        "source_quality": "fixture"
+      },
+      "source_provenance": "Local negative-control fixture for unknown ETF metadata state; not consumed by public search in this task.",
+      "entry_provenance": "Unknown state fixture for contract validation only.",
+      "snapshot_date": "2026-04-01",
+      "checksum_input": "LTTU|Unknown ETF metadata fixture|unknown|unknown|unknown|unknown|unknown|2026-04-01",
+      "generated_checksum": "sha256:33827977535e73085be32bc0fd8a86117039a50deda8bd36ebd833e4a9abf538",
+      "approval_timestamp": "2026-04-25T20:14:09Z",
+      "non_advice_framing": "Unknown metadata produces no generated output and no invented facts."
+    },
+    {
+      "ticker": "LTTX",
+      "fund_name": "Unavailable ETF metadata fixture",
+      "issuer": null,
+      "asset_type": "etf",
+      "exchange": null,
+      "listing_country": "US",
+      "etf_category": "unavailable",
+      "support_state": "unavailable",
+      "launch_cache_state": "unavailable",
+      "aliases": [
+        "unavailable etf metadata state"
+      ],
+      "exclusion_flags": {},
+      "evidence": {
+        "evidence_state": "unavailable",
+        "freshness_state": "unavailable",
+        "evidence_as_of": null,
+        "retrieved_at": null,
+        "source_use_policy": "metadata_only",
+        "source_quality": "fixture",
+        "unavailable_reason": "Required ETF classification metadata is unavailable in the deterministic fixture."
+      },
+      "source_provenance": "Local negative-control fixture for unavailable ETF metadata state; not consumed by public search in this task.",
+      "entry_provenance": "Unavailable state fixture for contract validation only.",
+      "snapshot_date": "2026-04-01",
+      "checksum_input": "LTTX|Unavailable ETF metadata fixture|unavailable|unavailable|unavailable|unavailable|unavailable|2026-04-01",
+      "generated_checksum": "sha256:beaed2f89cfd8bcc28b369b57fd991e5857fde57f6f66158345b8f287fd8e53d",
+      "approval_timestamp": "2026-04-25T20:14:09Z",
+      "non_advice_framing": "Unavailable metadata produces no generated output and no invented facts."
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+schema_version: market-news-evals-v1
+live_source_smoke_schema_version: market-news-live-source-smoke-v1
+required_models:
+  - MarketNewsTopicBucket
+  - MarketNewsClusterMetadata
+  - MarketNewsSelectionRationale
+  - MarketNewsItem
+  - MarketNewsAuditMetadata
+  - MarketNewsFocusResponse
+  - MarketAIAnalysisSection
+  - MarketAIComprehensiveAnalysisResponse
+  - MarketNewsResponse
+required_topic_buckets:
+  - macro_fed
+  - markets_earnings
+  - ai_technology_semiconductors
+  - geopolitics_energy_supply_chain
+  - credit_liquidity_sentiment
+required_analysis_labels:
+  - What Changed This Week
+  - Macro & Policy
+  - Equity Market Drivers
+  - AI / Technology / Semiconductors
+  - Geopolitical & Energy Risks
+  - Credit / Liquidity / Sentiment
+  - Scenario Lens
+  - Practical Watchpoints
+source_policy_required_exclusions:
+  - non_english
+  - non_allowlisted_source
+  - source_policy_blocked
+  - promotional
+  - opinion
+  - outside_market_week_window
+live_source_smoke_required_cases:
+  - provider_adapter_matrix
+  - selection_safety_gates
+  - critical_claim_gate
+  - ai_threshold
+live_source_smoke_required_providers:
+  - rss
+  - google_news_rss
+  - gdelt
+  - marketaux
+  - alpha_vantage
+  - finnhub
+  - guardian
+  - gnews
+  - mediastack
+  - newsapi
+  - yahoo_finance_search
+forbidden_analysis_language:
+  - you should buy
+  - you should sell
+  - price target is
+  - guaranteed return
+forbidden_personas:
+  - atlas
+  - sophia
+  - kenji
+  - crow
+  - rain

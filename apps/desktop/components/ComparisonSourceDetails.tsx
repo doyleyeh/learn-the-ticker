@@ -22,26 +22,24 @@ export function ComparisonSourceDetails({
       data-comparison-source-quality={sourceDocument.source_quality}
       data-comparison-source-use-policy={sourceDocument.source_use_policy}
       data-comparison-source-asset={sourceReference?.asset_ticker ?? ""}
-      open
+      data-comparison-source-summary-label="Comparison source metadata"
     >
-      <summary>Comparison source metadata</summary>
+      <summary>
+        <span className="source-index-summary-copy">
+          <span className="source-summary-kicker">
+            {sourceReference?.asset_ticker
+              ? `${sourceReference.asset_ticker} - ${sourceDocument.source_type}`
+              : sourceDocument.source_type}
+          </span>
+          <span className="source-summary-title">{sourceDocument.title}</span>
+        </span>
+        {sourceDocument.is_official ? <span className="source-badge">Official source</span> : null}
+      </summary>
       <div className="source-body">
-        <div className="source-title-row">
-          <h3>{sourceDocument.title}</h3>
-          {sourceDocument.is_official ? <span className="source-badge">Official source</span> : null}
-        </div>
         <dl className="source-meta">
           <div>
             <dt>Source document ID</dt>
             <dd>{sourceDocument.source_document_id}</dd>
-          </div>
-          <div>
-            <dt>Title</dt>
-            <dd>{sourceDocument.title}</dd>
-          </div>
-          <div>
-            <dt>Type</dt>
-            <dd>{sourceDocument.source_type}</dd>
           </div>
           <div>
             <dt>Publisher</dt>

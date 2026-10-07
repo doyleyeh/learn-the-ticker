@@ -83,6 +83,26 @@ cases:
     expected_citations: true
     expected_sources: true
 
+  - id: export_comparison_aapl_voo
+    export_kind: comparison
+    left_ticker: AAPL
+    right_ticker: VOO
+    expected_state: available
+    expected_validation_scope: same_comparison_pack
+    expected_validation_sections:
+      - key_differences
+      - stock_etf_relationship_context
+      - beginner_bottom_line
+    expected_sections:
+      - comparison_identity
+      - key_differences
+      - stock_etf_relationship_context
+      - beginner_bottom_line
+    expected_disclaimer: true
+    expected_licensing_note: true
+    expected_citations: true
+    expected_sources: true
+
   - id: export_chat_grounded
     export_kind: chat_transcript
     ticker: QQQ
@@ -157,7 +177,7 @@ cases:
   - id: export_unavailable_comparison
     export_kind: comparison
     left_ticker: AAPL
-    right_ticker: VOO
+    right_ticker: QQQ
     expected_state: unavailable
     expected_validation_scope: unavailable
     expected_sections: []

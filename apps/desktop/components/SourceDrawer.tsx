@@ -1,4 +1,5 @@
 import type { CitationContext, SourceDrawerSourceDocument } from "../lib/fixtures";
+import { buildTrustMetricSurfaceDescriptor } from "../lib/trustMetrics";
 
 type SourceDrawerRenderableDocument = SourceDrawerSourceDocument & {
   allowedExcerptNote?: string | null;
@@ -77,6 +78,7 @@ type SourceDrawerProps = {
   claim: string;
   contexts?: CitationContext[];
   drawerState?: SourceDrawerState;
+  defaultOpen?: boolean;
 };
 
 const HIDE_DETAILS_FOR_STATES = new Set<SourceDrawerState>([
@@ -159,7 +161,8 @@ export function SourceDrawer({
   source,
   claim,
   contexts = [],
-  drawerState = "available"
+  drawerState = "available",
+  defaultOpen = false
 }: SourceDrawerProps) {
   const publishedOrAsOf = source.published_at ?? source.as_of_date ?? "Unknown";
   const supportingPassages = contexts.length
@@ -169,37 +172,58 @@ export function SourceDrawer({
   const canExposeSourceFields = stateInfo.canExposeSourceFields;
   const canExposeSupportingPassage = stateInfo.canExposeSupportingPassage;
   const isUnavailableFreshness = HIDE_DETAILS_FOR_STATES.has(drawerState);
+  const trustMetricDescriptor = buildTrustMetricSurfaceDescriptor({
+    eventType: "source_drawer_usage",
+    workflowArea: "source_drawer",
+    selectedSection: contexts[0]?.sectionId ?? "source_drawer",
+    citationCount: contexts.length || (claim ? 1 : 0),
+    sourceDocumentCount: 1,
+    freshnessState: source.freshness_state,
+    evidenceState: drawerState
+  });
 
   return (
     <details
       className="source-drawer"
       id={`source-${source.source_document_id}`}
       data-source-document-id={source.source_document_id}
+      data-source-title={source.title}
       data-source-freshness-state={source.freshness_state}
       data-source-drawer-state={drawerState}
+      data-source-drawer-mobile-presentation="bottom-sheet"
+      data-governed-golden-source-drawer="api-backed-source-groups"
       data-source-use-policy={source.source_use_policy}
       data-source-allowlist-status={source.allowlist_status}
-      open
+      data-trust-metric-schema-version={trustMetricDescriptor.schemaVersion}
+      data-trust-metric-mode={trustMetricDescriptor.mode}
+      data-trust-metric-event={trustMetricDescriptor.eventType}
+      data-trust-metric-workflow-area={trustMetricDescriptor.workflowArea}
+      data-trust-metric-occurred-at={trustMetricDescriptor.occurredAt}
+      data-trust-metric-persistence={trustMetricDescriptor.persistence}
+      data-trust-metric-external-analytics={trustMetricDescriptor.externalAnalytics}
+      data-trust-metric-live-external-calls={trustMetricDescriptor.liveExternalCalls}
+      data-trust-metric-citation-count={trustMetricDescriptor.citationCount}
+      data-trust-metric-source-document-count={trustMetricDescriptor.sourceDocumentCount}
+      data-trust-metric-selected-section={trustMetricDescriptor.selectedSection}
+      data-trust-metric-freshness-state={trustMetricDescriptor.freshnessState}
+      data-trust-metric-evidence-state={trustMetricDescriptor.evidenceState}
+      data-trust-metric-citation-coverage-event="citation_coverage"
+      data-trust-metric-freshness-accuracy-event="freshness_accuracy"
+      open={defaultOpen}
     >
-      <summary>Source drawer</summary>
+      <summary data-source-drawer-close-control="native-details-summary">
+        <span className="source-index-summary-copy">
+          <span className="source-summary-kicker">{source.source_type}</span>
+          <span className="source-summary-title">{source.title}</span>
+        </span>
+        {source.isOfficial ? <span className="source-badge">Official source</span> : null}
+      </summary>
       <div className="source-body">
-        <div className="source-title-row">
-          <h2>{source.title}</h2>
-          {source.isOfficial ? <span className="source-badge">Official source</span> : null}
-        </div>
         <p className="source-gap-note">{stateInfo.label}</p>
         <dl className="source-meta">
           <div>
             <dt>Source document ID</dt>
             <dd>{source.source_document_id}</dd>
-          </div>
-          <div>
-            <dt>Title</dt>
-            <dd>{source.title}</dd>
-          </div>
-          <div>
-            <dt>Type</dt>
-            <dd>{source.source_type}</dd>
           </div>
           <div>
             <dt>Publisher</dt>
@@ -247,10 +271,6 @@ export function SourceDrawer({
             </div>
           )}
         </dl>
-        <div>
-          <h3>Source state</h3>
-          <p>{source.freshness_state}</p>
-        </div>
         {isUnavailableFreshness ? (
           <p className="source-gap-note">{stateInfo.allowlistStatusLabel}</p>
         ) : null}
