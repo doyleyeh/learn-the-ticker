@@ -1,6 +1,8 @@
 # Delivery status
 
-Updated: 2026-10-06 (Asia/Taipei). Public Windows v1 is **not ready**.
+Updated: 2026-10-07 (Asia/Taipei). Public Windows v1 is **not ready**.
+
+- Latest owner-directed checkpoint: M8-T03 COMPLETE. Paid commercial-agent subscription prerequisite is prominent before first research, in Connections and README, with saved/offline access and current Codex-only readiness explicit. Q **2,123 Python/94 frontend**, all nine B workflows and normal/640-pixel visual/keyboard checks passed. [Evidence](docs/verification/2026-10-07-subscription-disclosure.md). No provider/authentication/billing changes. Next independent implementation is M9-T01g3; Antigravity remains blocked and Claude remains paused.
 
 - Latest provider checkpoint: M8-T01e1 COMPLETE at `caf2c9a`. Pinned, signed Antigravity Windows 1.3.0 version/help inspection passed 12 targeted, final Q **2,096 Python/94 frontend**, and the actual bounded fresh-profile run. [Evidence](docs/verification/2026-10-06-antigravity-prerequisites.md). Follow-up M8-T01e is BLOCKED at the unresolved supported native credential-isolation interface after binary/docs/SDK/upstream investigation; [exact gate and alternatives](docs/verification/2026-10-06-antigravity-isolation-gate.md). Production stays disabled.
 - Latest archive checkpoint: M9-T01g2 COMPLETE. File-based format-3 serialization/validation and atomic restore passed 104 targeted, Q **2,123 Python/94 frontend**, and final full actual D. A **228-MB archive / 311-MB content** restored/restarted with original evidence/attachment preservation, late-failure rollback and nonempty protection. [Evidence, memory scope and cursor-cleanup repair](docs/verification/2026-10-06-streamed-archive-codec.md). HTTP/browser/native transport still uses the old formats/limits; next is M9-T01g3. Public M9 acceptance remains incomplete.

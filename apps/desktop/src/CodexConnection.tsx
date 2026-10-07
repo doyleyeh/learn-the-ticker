@@ -35,7 +35,7 @@ export function CodexConnection() {
 
   return <section className="plain-panel" aria-labelledby="codex-connection-title">
     <h2 id="codex-connection-title">Connect ChatGPT / Codex</h2>
-    <p>Install the Codex runtime first. This connection uses a dedicated provider profile and your supported ChatGPT subscription. Codex manages authentication; library backups exclude it.</p>
+    <p>Install the Codex runtime first and connect a compatible paid ChatGPT subscription. Sign-in alone does not confirm model access or available usage. Codex manages authentication in a separate app profile; library backups exclude it.</p>
     <p>Sign-in opens no research session and does not enable cloud research automatically.</p>
     {error && <p role="alert">{error}</p>}
     <div role="status"><p>{login?.message ?? "Checking connection status…"}</p></div>

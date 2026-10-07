@@ -11,6 +11,7 @@ import { EvidenceView } from "./TickerDashboard";
 export { EvidenceView } from "./TickerDashboard";
 import { CodexConnection } from "./CodexConnection";
 import { Connections } from "./Connections";
+import { SubscriptionNotice } from "./SubscriptionNotice";
 import { ConversationPanel } from "./ConversationPanel";
 import { AccessReview } from "./AccessReview";
 import { SourceReview } from "./SourceReview";
@@ -144,6 +145,7 @@ export function App() {
     <header className="topbar"><a className="brand" href="#library">Learn the Ticker</a><nav aria-label="Primary navigation"><a href="#library">Library</a><a href="#saved">Saved research</a><a href="#conversations">Conversations</a><a href="#comparisons">Comparisons</a><a href="#reports">Reports</a><a href="#imports">Sources</a><a href="#connections">Connections</a></nav></header>
     <main className="desktop-main">
       <p className="notice-text">Desktop developer preview · Your library stays on this computer. Educational research, not investment advice.</p>
+      {(!ready || library.length === 0 || page === "connections") && <SubscriptionNotice showConnectionLink={ready && page !== "connections"}/>}
       {error && <div role="alert" className="notice-text error"><p>{error}</p><button onClick={() => setError("")}>Dismiss</button></div>}
       {notice && <p role="status">{notice}</p>}
       {!ready ? <Connect onConnect={async (endpoint, token) => { try { connect({ endpoint, token }); await reload(); } catch (error) { fail(error); } }} /> : <>
@@ -163,7 +165,7 @@ export function App() {
         {page === "imports" && <ImportDocuments online={!!settings?.cloud_enabled} settings={settings} level={level}/>}
         {page === "comparisons" && <Comparisons key={`${comparisonSelection.comparison}:${comparisonSelection.bundle}`} library={library} saved={saved} settings={settings} resultId={comparisonSelection.comparison} initialLeft={comparisonSelection.bundle}/>}
         {page === "reports" && <Reports key={`${comparisonSelection.report}:${comparisonSelection.bundle}`} library={library} saved={saved} settings={settings} reportId={comparisonSelection.report} initialBundle={comparisonSelection.bundle}/>}
-        {page === "library" && <section><h1>Your research library</h1><p>Search any asset. Available sections depend on verifiable evidence.</p>{library.length === 0 && <section className="plain-panel"><h2>Start with one asset</h2><p>Connect your subscription runtime, then research a ticker or name. Evidence and dated explanations will be saved here.</p></section>}<div className="library-grid">{library.map((item) => <button className="plain-panel" key={item.asset.id} onClick={() => openAsset(item)}><strong>{item.asset.name}</strong><span>{item.asset.symbol} · {item.asset.asset_type}</span><span>Snapshot {new Date(item.created_at!).toLocaleString()}</span></button>)}</div></section>}
+        {page === "library" && <section><h1>Your research library</h1><p>Search any asset. Available sections depend on verifiable evidence.</p>{library.length === 0 && <section className="plain-panel"><h2>Start with one asset</h2><p>Connect a supported paid AI agent subscription in Connections, then research a ticker or name. Evidence and dated explanations will be saved here.</p></section>}<div className="library-grid">{library.map((item) => <button className="plain-panel" key={item.asset.id} onClick={() => openAsset(item)}><strong>{item.asset.name}</strong><span>{item.asset.symbol} · {item.asset.asset_type}</span><span>Snapshot {new Date(item.created_at!).toLocaleString()}</span></button>)}</div></section>}
         {page === "saved" && <section><h1>Saved research</h1><p>Bookmarks reference a fixed evidence version; refresh does not overwrite it.</p>{saved.length === 0 && <p>No saved research yet.</p>}{saved.map((report) => <article className="plain-panel" key={report.id} data-saved-id={report.id}>
           <button onClick={() => api<EvidenceBundle>(`/api/bundles/${encodeURIComponent(report.bundle_id)}`).then(openAsset).catch(fail)}>{report.title}</button>
           <DeleteSavedItem kind="saved" id={report.id} title={report.title} onDeleted={reload}/>

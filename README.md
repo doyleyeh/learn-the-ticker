@@ -2,6 +2,10 @@
 
 A local, citation-first financial research and learning application using your own commercial agent subscription. Your evidence, conversations and research belong in your local library.
 
+**The app is free and open source; its AI features require your own paid subscription to a supported commercial AI agent service.** Your connected agent helps find and review sources, analyze evidence, summarize research and generate explanations. Selected questions and permitted evidence go to that provider only with cloud-research consent. There is no bundled AI allowance.
+
+**Current preview: the verified ChatGPT / Codex connection only.** Gemini/Antigravity and Claude are not ready for app generation. A subscription alone does not establish compatible runtime/model access, and free-account use has not been verified. The app uses included allowance and stops when access or quota is unavailable; it never switches to paid API usage or automatic overages. Without a supported connection, saved research, conversations, explanations and built-in definitions remain readable. A new empty library has no generated research to read. Check [current connection support](STATUS.md) before choosing a service.
+
 Historical reports save a fixed original page with a separate Weekly News Focus and sparse Earlier context. They need no recent-news minimum. Weekly dates come from independently verified SEC filing publications; other news coverage stays unavailable. A disclosed app reading guide requires two weekly items. Saved reports and cited Markdown/JSON exports work offline; new reports require online mode. See [report verification](docs/verification/2026-10-06-historical-reports.md).
 
 Comparisons align two selected saved page versions with exact original values, citations and explicit incompatibility gaps. Open Comparisons or choose Compare this saved page on an asset. Saved results and their original sources remain readable offline and survive private backup/restore; new comparisons require online mode. See [M6 acceptance](docs/verification/2026-10-06-comparison-ui.md).

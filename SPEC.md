@@ -64,6 +64,8 @@ P-031: Default history is five annual years, twelve quarters and five daily-pric
 
 P-040: ChatGPT/Codex, Gemini and Claude all pass capability and evidence tests before public v1. One selected runtime/model at once. Explicit cloud permission; provider-managed sign-in where supported. No consumer-website scraping, browser-cookie harvesting, API billing fallback or silent provider switching. Pause on quota, authentication and incompatibility.
 
+Before first research, in Connections and in setup documentation, disclose that the application is free/open source but its supported AI workflows require the user's own paid commercial-agent subscription. Explain the agent's role in finding/reviewing sources, reasoning, summarization and content generation, plus consented provider transmission. Distinguish new AI work from saved research/conversations/explanations and curated definitions that remain available without a connection. Show current provider readiness; never imply that a paid plan, successful login or a provider's free chat tier establishes app compatibility. Free-account integrations require separate qualification before being advertised. This disclosure does not add a payment check or change existing per-request model/usage gates (DEC-065).
+
 P-041: Same-computer access only. Temporary authenticated local transport, OS credential storage, isolated workspaces, scoped tool permissions, explicit approval for destructive/expanded access, no telemetry.
 
 P-042: Closing the window keeps active research in the tray. Quit shuts down owned processes cleanly. Start-at-login is optional and off by default. Application/database updates default to notify/approve, with manual/automatic settings and coordinated rollback.
