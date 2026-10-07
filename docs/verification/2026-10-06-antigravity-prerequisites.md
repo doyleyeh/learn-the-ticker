@@ -1,0 +1,34 @@
+# Antigravity Windows prerequisite inspection
+
+Date: 2026-10-06. Scope: M8-T01e1 under owner-approved DEC-061. This is a runtime prerequisite checkpoint, not Google integration or public-v1 acceptance. Claude remains owner-paused.
+
+## Provenance and actual observations
+
+Reviewed Google's [Windows installer instructions](https://antigravity.google/docs/cli/install/) and downloaded the linked installer as text, without executing it. Its current official Windows amd64 release manifest selected **1.3.0**. Downloaded that exact artifact into ignored `.local/antigravity-qualification/agy-1.3.0.exe`; no global installation, PATH edit, shell setup or automatic profile migration.
+
+- Official artifact: `https://storage.googleapis.com/antigravity-public/antigravity-cli/1.3.0-6233328509124608/windows-x64/cli_windows_x64.exe`.
+- Size: **189,972,632 bytes**.
+- SHA-512, matched against the installer-linked official manifest: `00ddc37369441524aa9bd92176e31513e47a2a85fe5d09ec71e3bbe2fd4955551c6b9989f1eb82599dd9329b321e470644106ee3b07c1e3e82bff67124a67461`.
+- Windows Authenticode: **Valid**, signer **Google LLC**. This is provenance evidence, not a redistribution license or behavioral qualification.
+
+Actual `--version` returns 1.3.0. Public `--help` is written to stderr with exit zero; it includes explicit model, structured/streaming output, slash-command disabling, sandbox and print-timeout options. The pinned help reports print timeout **0s (unlimited)**, unlike the general headless page's five-minute statement. A future adapter must set its own positive deadline. No inference, account selection, sign-in, existing credential read command, settings mutation or installation command was requested. Version/help runs produced no entries in their fresh redirected profiles. That observation does not prove authenticated storage or tool isolation.
+
+## Bounded helper and deterministic verification
+
+`python -m scripts.inspect_antigravity --inspect` is explicit and Windows-only. It checks the exact size/SHA-512 before execution and after each command; only `--version` and `--help` can reach the child launcher. Redirect home/config/temp environment paths to a new owned temporary directory, strip inherited account/API/project/hooks, set the documented `AGY_CLI_DISABLE_AUTO_UPDATE=true`, bound each output stream to 8 KiB and each command to 15 seconds. The existing Windows Job Object launcher closes the process and descendants on success/failure. Compare public output to exact version and normalized help digest; reject diagnostics, drift, extra output and profile writes without printing their content. Never enable generation from a successful report.
+
+Repairs: the initial test used an unavailable pytest-asyncio plugin; converted it to the repository's existing `asyncio.run` pattern without adding a dependency. A 30-ms synthetic timeout had also been applied to the successful case and proved scheduler-sensitive; retain that deadline only for the intentionally nonterminating case, preserving the production 15-second bound. Public help inspection corrected the stderr assumption and normalized Windows line endings before pinning its digest. None of these repairs enables inference or changes the isolation acceptance gate.
+
+`python -m pytest tests/desktop/test_antigravity_inspection.py -q`: **12 passed**. Cases cover explicit invocation, environment exclusion, size/same-size hash drift, bounded/changed/private output, process failure/deadline, unconditional owned cleanup, prohibited login/generation/update commands, profile-write rejection and honest unqualified flags. CI uses synthetic process doubles and no staged binary, credentials or provider calls.
+
+Final `python -m scripts.verify milestone` passed **2,096 Python / 94 frontend**, lint/contracts/docs/static checks and the production TypeScript build after the normalized help pin correction. The final actual bounded helper passed with `prerequisites_verified`, version 1.3.0, and all authentication/inference-requested, generation, credential-isolation and tool-execution qualification flags false. Complete diff review found no credentials, provider diagnostics or staged runtime in Git. No browser/database/native installer lane is claimed for this tooling-only slice; the independent archive checkpoint is [separately verified](2026-10-06-backup-index.md).
+
+## Remaining qualification work and examined alternatives
+
+The [permission documentation](https://antigravity.google/docs/permissions/) describes deny/ask/allow rules, but workspace file operations are allowed by default and Windows behavior needs its own verification. A settings file alone cannot prove default-deny execution, unknown-tool handling, URL restrictions, hook/plugin/MCP isolation or absence of utility-model routing. The [migration guide](https://antigravity.google/docs/cli/gcli-migration) describes automatic legacy profile discovery. Do not launch normal onboarding against existing profiles.
+
+The [installation](https://antigravity.google/docs/cli/install/) and [troubleshooting](https://antigravity.google/docs/cli/troubleshooting/) pages describe native keyring storage, but the reviewed public help does not expose a credential-namespace or no-account policy-inventory switch. Static inspection also found native-keyring and fallback-provider symbols; their presence is not proof that a fallback is used on Windows. Redirecting HOME/config paths alone cannot establish the credential namespace. Next: establish a supported isolated native-only credential path and configuration/policy inspection procedure with synthetic data before account access. Do not read/copy the user's existing provider credentials, infer unsupported internal environment semantics, modify the signed binary or silently weaken this gate.
+
+The [SDK quickstart](https://antigravity.google/docs/sdk/overview/) uses a Gemini API key. It was examined as an alternative policy-inspection route but not installed or used as an account/billing fallback. The [official CLI repository](https://github.com/google-antigravity/antigravity-cli) also discloses interaction-data collection and a settings opt-out; verify opt-out behavior before sending research. Complete terms/distribution notices remain a separate release review. The Gemini CLI Apache license and its old registry proof do not qualify this different runtime.
+
+M8-T01e remains **IN_PROGRESS**: native credential isolation, concrete tool enforcement/inventory, account/usage/model catalogs, cancellation/reconnect and live original-evidence behavior are not yet verified. A supported isolated sign-in path must be concrete before opening login. This is an unresolved integration gate, not evidence that the owner's personal account is ineligible for Antigravity. No additional owner approval is needed merely to continue the already approved investigation.

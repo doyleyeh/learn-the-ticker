@@ -2,18 +2,22 @@
   "name": "learn-the-ticker",
   "version": "0.1.0",
   "private": true,
-  "description": "Citation-first beginner U.S. stock and ETF learning assistant.",
+  "description": "Citation-first local desktop asset research and learning for beginner and intermediate users.",
   "workspaces": [
-    "apps/web"
+    "apps/desktop"
   ],
   "scripts": {
-    "dev": "npm --workspace apps/web run dev",
-    "build": "npm --workspace apps/web run build",
-    "start": "npm --workspace apps/web run start",
-    "test": "node tests/frontend/smoke.mjs",
-    "test:browser-smoke": "LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 node tests/frontend/smoke.mjs",
-    "test:local-live-slice-smoke": "LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 npm --workspace apps/web run test:browser-smoke",
-    "test:local-live-durable-slice-smoke": "LEARN_TICKER_LOCAL_BROWSER_SMOKE=1 LEARN_TICKER_LOCAL_FRESH_DATA_SLICE_SMOKE=1 LEARN_TICKER_LOCAL_DURABLE_SMOKE=1 npm --workspace apps/web run test:browser-smoke",
-    "typecheck": "npm --workspace apps/web run typecheck"
+    "dev": "npm --workspace apps/desktop run dev",
+    "build": "npm --workspace apps/desktop run build",
+    "start": "npm --workspace apps/desktop run start",
+    "test": "npm --workspace apps/desktop run test && node tests/frontend/reference_contracts.mjs",
+    "test:browser": "npm --workspace apps/desktop run test:browser",
+    "lint": "npm --workspace apps/desktop run lint",
+    "typecheck": "npm --workspace apps/desktop run typecheck",
+    "desktop": "npm --workspace apps/desktop run tauri dev",
+    "desktop:build": "npm --workspace apps/desktop run tauri -- build -- --locked"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^16.0.0"
   }
 }

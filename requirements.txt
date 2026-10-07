@@ -3,9 +3,16 @@
 fastapi>=0.115,<1
 # Uvicorn serves the ASGI app locally; the skeleton makes no live external calls.
 uvicorn>=0.32,<1
-# T-076 persistence scaffold dependencies. SQLAlchemy and Alembic are bounded
-# readiness tooling only; current API/retrieval/chat/export paths do not import
-# them at module import time or open database connections during normal CI.
-SQLAlchemy>=2.0,<3
+sqlalchemy>=2.0,<3
 alembic>=1.13,<2
 psycopg[binary]>=3.2,<4
+keyring>=25,<26
+websockets>=14,<16
+httpx>=0.27,<1
+PyYAML>=6,<7
+tzdata>=2025.1
+# Bounded untrusted document parsing; see DEC-029 for limits and licenses.
+pypdf==6.19.0
+openpyxl==3.1.5
+defusedxml==0.7.1
+et-xmlfile==2.0.0

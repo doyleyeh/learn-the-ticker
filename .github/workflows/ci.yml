@@ -1,36 +1,36 @@
 name: CI
-
-on:
-  push:
-  pull_request:
-
+on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
-  quality-gate:
-    runs-on: ubuntu-latest
-
+  quality:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Check out repo
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/checkout@v5
         with:
-          python-version: "3.12"
-
-      - name: Install Python dev dependencies
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements-dev.txt
+      - run: npm ci
+      - name: Select whitespace comparison base
+        shell: bash
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
-
-      - name: Set up Node if package.json exists
-        if: hashFiles('package.json') != ''
-        uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-
-      - name: Install frontend dependencies if package.json exists
-        if: hashFiles('package.json') != ''
-        run: npm ci
-
-      - name: Run quality gate
+          base="${PR_BASE:-$PUSH_BASE}"
+          if [[ -n "$base" && ! "$base" =~ ^0+$ ]] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "LTT_VERIFY_BASE=$base" >> "$GITHUB_ENV"
+          fi
+      - if: runner.os == 'Windows'
+        run: ./scripts/run_quality_gate.ps1
+      - if: runner.os != 'Windows'
         run: bash scripts/run_quality_gate.sh

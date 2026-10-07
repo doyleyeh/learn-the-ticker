@@ -972,11 +972,11 @@ def test_t130_local_fresh_data_mvp_rehearsal_ties_governed_path_to_render_surfac
     result = run_rehearsal(env={})
     checks = {check["check_id"]: check for check in result["checks"]}
 
-    assert result["status"] == "pass"
+    assert result["status"] == "blocked"
     assert result["normal_ci_requires_live_calls"] is False
     assert result["production_services_started"] is False
     assert result["sources_approved_by_rehearsal"] is False
-    assert result["local_mvp_threshold_summary"]["overall_local_approval_status"] == "ready_for_local_operator_review"
+    assert result["local_mvp_threshold_summary"]["overall_local_approval_status"] == "blocked_for_local_operator_review"
     assert result["local_mvp_threshold_summary"]["launch_or_public_deployment_approved"] is False
     assert result["local_mvp_threshold_summary"]["asset_state_summary"]["generated_surface_violation_count"] == 0
     assert checks["source_handoff_approval_gate"]["status"] == "pass"
@@ -988,7 +988,7 @@ def test_t130_local_fresh_data_mvp_rehearsal_ties_governed_path_to_render_surfac
         "unsupported",
     ]
     assert checks["launch_manifest_review_packets"]["status"] == "pass"
-    assert checks["frontend_v04_smoke_markers"]["status"] == "pass"
+    assert checks["frontend_v04_smoke_markers"]["reason_code"] == "legacy_web_runtime_retired"
 
 
 def test_health_endpoint_available():

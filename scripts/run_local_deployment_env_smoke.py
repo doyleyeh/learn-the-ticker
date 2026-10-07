@@ -386,6 +386,15 @@ def _check_settings_defaults() -> dict[str, Any]:
 
 
 def _check_repo_local_scaffolding(root: Path) -> dict[str, Any]:
+    if not (root / "apps/web/package.json").is_file():
+        return {
+            "check_id": "repo_local_deployment_scaffolding",
+            "status": "blocked",
+            "reason_code": "legacy_web_runtime_retired",
+            "apps_web_is_vercel_project_root": False,
+            "services_started": False,
+            "blockers": ["legacy_web_runtime_retired"],
+        }
     root_package = (root / "package.json").read_text(encoding="utf-8")
     next_config = (root / "apps/web/next.config.mjs").read_text(encoding="utf-8")
     api_dockerfile = (root / "docker/api/Dockerfile").read_text(encoding="utf-8")

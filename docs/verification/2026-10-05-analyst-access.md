@@ -1,0 +1,28 @@
+# Alpha Vantage analyst access — 2026-10-05
+
+M4-T01g8b implements a bounded access check after DEC-049 and the [corrected personal-agent policy review](2026-10-05-personal-api-agent-policy.md). It resolves the earlier credential-in-URL obstacle for this candidate; it is not a production analyst adapter or a completed M4 milestone.
+
+## Mechanism and checks
+
+The [official MCP server source](https://github.com/alphavantage/alpha_vantage_mcp/blob/3ed9b05db06d16476d326a12441d68ad071b261a/mcp/src/av_mcp/utils.py) accepts an API key in `X-API-Key`. The developer helper loads the existing `alpha-vantage` Windows-vault entry only after explicit `--live` and valid symbol input. It uses the fixed HTTPS `mcp.alphavantage.co/mcp` endpoint, verified TLS, no environment proxy, no redirects and no retries. The request sequence is initialize, initialized notification and one `EARNINGS_ESTIMATES` tool call. No tool discovery, server callback, resource link, OAuth grant, signup or model inference is performed.
+
+Requests have 15-second I/O timeouts within a checked 45-second operation budget; a stalled read can run until its remaining I/O timeout. Initialization is bounded to 64 KiB and the data envelope to 1 MiB. The full-data flag avoids the upstream large-response preview/object-storage path; unexpected preview/resource responses are rejected, not followed. Keys never enter URLs, arguments, generated files or reports. Errors become fixed codes, including HTTP-200 entitlement/rate responses; bodies, arbitrary diagnostic strings and candidate values are not report fields. Candidate bytes remain transient.
+
+Commands and outcomes:
+
+- `python -m pytest tests/desktop/test_analyst_access.py -q`: **35 passed** after adding explicit elapsed-time and plain-text MCP-error coverage during review. No failed repair attempts.
+- `.codex/skills/project-delivery/scripts/verify-milestone.ps1`: final Q **1,747 Python/75 frontend**, Ruff/ESLint, contracts/types, Markdown/whitespace, static evaluations, TypeScript and production frontend build passed. Existing Starlette/httpx deprecation warning remains. The first gate passed 1,745 Python tests; the final gate includes the two additional cases.
+- `python -m scripts.qualify_analyst_access --live --symbol NVDA`: scoped access passed at **2026-10-05T13:59:37.046770+00:00** after the first Q and final targeted helper checks. **Three HTTP requests, one estimate tool call, 41 rows**, matching the requested symbol. Response hash `da3303d6c03d13ec36379b5ec1483431b80b4fca15778448015c14dea8355fa0`. No monetary value or raw response was printed or retained.
+- A separate bounded schema inspection after final Q passed at **2026-10-05T14:02:35.713624+00:00**: the same three-request sequence, 41 rows and identical response hash. Only predefined field-presence metadata was exposed. Across both checks: **six HTTP requests and two data-tool calls**, no retry after a denial/quota and no account or billing change.
+
+The deployed header-authenticated route and this account's point-in-time endpoint access are observed. A stored plan label, public demo and source code were not used as substitutes for the live result. No app source rule, UI, persisted contract, SQL/archive format, dependency or native resource changed. D/B/native gates are not applicable to this isolated helper; they remain mandatory for a future production integration.
+
+## Admission remains open
+
+Recognized row fields were `date`, `horizon`, EPS estimate average/high/low/analyst count and revenue estimate average/high/low/analyst count. Eight other field names were not emitted by the allowlisted inspection. None of the checked currency (`currency`, `reportedCurrency`, `currency_code`, `eps_currency`, `revenue_currency`) or estimate publication/as-of/update fields was present in the checked top-level/row keys. This establishes an unresolved denomination/date-metadata issue, not proof that every possible metadata field was absent.
+
+The [official endpoint description](https://www.alphavantage.co/documentation/#earnings-estimates) identifies annual/quarterly EPS/revenue estimates and analyst counts/revisions, but the reviewed material did not establish this response's currency/scale or a separate estimate publication date. Currency statements elsewhere on that documentation page concern different APIs and cannot support these estimates. A listing's trading currency, a separate issuer statement or the size of a number is insufficient proof of the estimate denomination. A forecast-period date and retrieval time are not publication/as-of timestamps.
+
+Before monetary admission, establish the source's documented estimate currency/scale and period semantics, then independently bind the response to the exact listing. Missing original estimate publication time can remain explicitly unknown; it does not alone require discarding dated opinions. Preserve original received decimals, bounds/counts, period and provenance as attributed opinions separate from reported facts and charts. Production source review, local/backup/context/export boundaries, C/R/D/B/Q, packaged/native and bounded positive live admission still require implementation and verification.
+
+The exact blocked action is **publishing monetary Alpha Vantage estimate values with an asserted unit/currency before the source basis is verified**. Owner approval and access are resolved; requesting the same personal-use approval again would not supply the missing financial metadata. No external provider message was sent, and no unsupported currency default or alternate source extraction was introduced to claim completion.

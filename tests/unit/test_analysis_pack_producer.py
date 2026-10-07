@@ -250,23 +250,10 @@ def test_live_analysis_pack_producer_uses_live_adapters_with_fixture_fetchers():
     assert qqq["volume_change"]["percent_change"] is not None
 
 
-def test_codex_operator_script_and_instructions_have_required_markers():
-    script = open("scripts/run_analysis_pack_codex.sh", "r", encoding="utf-8").read()
+def test_archived_analysis_instructions_retain_reference_boundaries():
     instructions = open(CODEX_INSTRUCTIONS_PATH, "r", encoding="utf-8").read()
 
-    assert "ltt_codex_exec -a never exec --sandbox workspace-write" in script
-    assert "scripts/build_analysis_pack_bundle.py" in script
-    assert "scripts/upload_analysis_pack_bundle.py" in script
-    assert "analysis-pack-bundle.json" in script
-    assert "technical_data.json" in script
-    assert "macro_cache.json" in script
-    assert "ai_context.json" in script
-    assert "--deterministic" in script
-    assert "Stage 0 - Technical Artifact Gate" in script
-    assert "Stage 1 - Macro Data Gate" in script
-    assert "Stage 2 - Tier-1 News Gate" in script
-    assert "Stage 3 - AI Comprehensive Analysis Gate" in script
-    assert "Stage 4 - Final Validation Gate" in script
+    assert "Historical main-branch record" in instructions
     assert "Generate English educational content for v1." in instructions
     assert "Do not inject HTML into app pages." in instructions
     assert "Codex Research And Analysis Workflow" in instructions

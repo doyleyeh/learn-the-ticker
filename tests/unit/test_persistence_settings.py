@@ -920,21 +920,12 @@ def test_migration_persistence_settings_prefer_direct_migration_url():
     assert "runtime-secret" not in str(settings.safe_diagnostics)
 
 
-def test_database_env_placeholders_are_server_side_only():
+def test_desktop_environment_does_not_expose_database_credentials():
     root_env = (ROOT / ".env.example").read_text(encoding="utf-8")
-    api_env = (ROOT / "deploy/env/api.example.env").read_text(encoding="utf-8")
-    worker_env = (ROOT / "deploy/env/worker.example.env").read_text(encoding="utf-8")
-    web_env = (ROOT / "apps/web/.env.example").read_text(encoding="utf-8")
-
-    for text in [root_env, api_env, worker_env]:
-        assert "DATABASE_URL" in text
-        assert "MIGRATION_DATABASE_URL" in text
-        assert "DATABASE_CONNECT_TIMEOUT_SECONDS" in text
-        assert "DATABASE_POOL_PRE_PING" in text
-        assert "ADMIN_ROUTES_ENABLED" in text
-        assert "LOCAL_DURABLE_REPOSITORIES_FAIL_FAST" in text
-        assert "DATABASE_ECHO_SQL" in text
-        assert "DATABASE_MIGRATIONS_ENABLED" in text
-
-    assert "NEXT_PUBLIC_DATABASE_URL" not in web_env
-    assert "DATABASE_URL" not in web_env
+    assert "LTT_PG_BIN" in root_env
+    for forbidden in ("DATABASE_URL", "MIGRATION_DATABASE_URL", "OPENROUTER_API_KEY", "NEXT_PUBLIC_"):
+        assert forbidden not in root_env
+        for path in (ROOT / "apps/desktop/src").rglob("*.ts*"):
+            assert forbidden not in path.read_text(encoding="utf-8"), path
+    assert not (ROOT / "apps/web/.env.example").exists()
+    assert not (ROOT / "deploy/env/api.example.env").exists()

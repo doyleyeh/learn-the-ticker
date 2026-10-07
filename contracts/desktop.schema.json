@@ -1,0 +1,4637 @@
+{
+  "$defs": {
+    "AnalystEstimate": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "metric": {
+          "enum": [
+            "eps",
+            "revenue"
+          ],
+          "title": "Metric",
+          "type": "string"
+        },
+        "period": {
+          "enum": [
+            "0q",
+            "+1q",
+            "0y",
+            "+1y"
+          ],
+          "title": "Period",
+          "type": "string"
+        },
+        "period_end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period End"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "const": "USD",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "USD/share",
+                "USD"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "average": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Average"
+        },
+        "low": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Low"
+        },
+        "high": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "High"
+        },
+        "analysts": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Analysts"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "period_missing",
+                "currency_missing",
+                "value_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "metric",
+        "period"
+      ],
+      "title": "AnalystEstimate",
+      "type": "object"
+    },
+    "AnalystEstimates": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "kind": {
+          "const": "analyst_opinion",
+          "default": "analyst_opinion",
+          "title": "Kind",
+          "type": "string"
+        },
+        "method": {
+          "const": "yahoo-consensus-estimates-v1",
+          "default": "yahoo-consensus-estimates-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/AnalystEstimate"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Points",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_id",
+        "points"
+      ],
+      "title": "AnalystEstimates",
+      "type": "object"
+    },
+    "ApprovalDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "deny",
+            "cancel"
+          ],
+          "title": "Decision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision"
+      ],
+      "title": "ApprovalDecision",
+      "type": "object"
+    },
+    "ApprovalRequest": {
+      "additionalProperties": false,
+      "description": "Ephemeral app-owned access review. No vendor arguments or granting authority.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "command",
+            "file_change",
+            "permissions"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "message": {
+          "default": "This access is outside the research policy and cannot be approved. Deny it to let the provider continue with permitted tools, or cancel research.",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "provider",
+        "kind",
+        "expires_at"
+      ],
+      "title": "ApprovalRequest",
+      "type": "object"
+    },
+    "AssetIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "symbol": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Symbol",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "asset_type": {
+          "enum": [
+            "stock",
+            "etf",
+            "fund",
+            "bond",
+            "crypto",
+            "option",
+            "future",
+            "index",
+            "other",
+            "unknown"
+          ],
+          "title": "Asset Type",
+          "type": "string"
+        },
+        "exchange": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exchange"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "identifiers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Identifiers",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "symbol",
+        "name",
+        "asset_type"
+      ],
+      "title": "AssetIdentity",
+      "type": "object"
+    },
+    "BackupSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "format_version": {
+          "default": "1",
+          "enum": [
+            "1",
+            "2",
+            "3"
+          ],
+          "title": "Format Version",
+          "type": "string"
+        },
+        "database_revision": {
+          "const": "0001",
+          "default": "0001",
+          "title": "Database Revision",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "fingerprint": {
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "assets": {
+          "title": "Assets",
+          "type": "integer"
+        },
+        "evidence_versions": {
+          "title": "Evidence Versions",
+          "type": "integer"
+        },
+        "conversations": {
+          "title": "Conversations",
+          "type": "integer"
+        },
+        "saved_reports": {
+          "title": "Saved Reports",
+          "type": "integer"
+        },
+        "term_explanations": {
+          "default": 0,
+          "title": "Term Explanations",
+          "type": "integer"
+        },
+        "retained_imports": {
+          "default": 0,
+          "title": "Retained Imports",
+          "type": "integer"
+        },
+        "import_explanations": {
+          "default": 0,
+          "title": "Import Explanations",
+          "type": "integer"
+        },
+        "comparisons": {
+          "default": 0,
+          "title": "Comparisons",
+          "type": "integer"
+        },
+        "dated_reports": {
+          "default": 0,
+          "title": "Dated Reports",
+          "type": "integer"
+        },
+        "attachment_bytes": {
+          "default": 0,
+          "title": "Attachment Bytes",
+          "type": "integer"
+        },
+        "jobs": {
+          "title": "Jobs",
+          "type": "integer"
+        },
+        "credentials_included": {
+          "const": false,
+          "default": false,
+          "title": "Credentials Included",
+          "type": "boolean"
+        },
+        "can_restore": {
+          "title": "Can Restore",
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "created_at",
+        "fingerprint",
+        "assets",
+        "evidence_versions",
+        "conversations",
+        "saved_reports",
+        "jobs",
+        "can_restore"
+      ],
+      "title": "BackupSummary",
+      "type": "object"
+    },
+    "BundleFreshness": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "bundle_id": {
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "assessed_at": {
+          "format": "date-time",
+          "title": "Assessed At",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceAge"
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "assessed_at",
+        "sources"
+      ],
+      "title": "BundleFreshness",
+      "type": "object"
+    },
+    "CacheSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "budget_bytes": {
+          "minimum": 0,
+          "title": "Budget Bytes",
+          "type": "integer"
+        },
+        "disposable_bytes": {
+          "minimum": 0,
+          "title": "Disposable Bytes",
+          "type": "integer"
+        },
+        "protected_bytes": {
+          "minimum": 0,
+          "title": "Protected Bytes",
+          "type": "integer"
+        },
+        "removed_bytes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Removed Bytes",
+          "type": "integer"
+        },
+        "removed_items": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Removed Items",
+          "type": "integer"
+        },
+        "deferred_for_active_work": {
+          "default": false,
+          "title": "Deferred For Active Work",
+          "type": "boolean"
+        },
+        "accounting": {
+          "const": "stored_json_payload_bytes",
+          "default": "stored_json_payload_bytes",
+          "title": "Accounting",
+          "type": "string"
+        }
+      },
+      "required": [
+        "budget_bytes",
+        "disposable_bytes",
+        "protected_bytes"
+      ],
+      "title": "CacheSummary",
+      "type": "object"
+    },
+    "Claim": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "asset_id": {
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "section": {
+          "default": "overview",
+          "maxLength": 100,
+          "title": "Section",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 10000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "kind": {
+          "default": "unverified_note",
+          "enum": [
+            "fact",
+            "calculation",
+            "interpretation",
+            "unverified_note"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As Of"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "input_claim_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Input Claim Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "asset_id",
+        "text"
+      ],
+      "title": "Claim",
+      "type": "object"
+    },
+    "ComparisonCell": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "state": {
+          "default": "missing",
+          "enum": [
+            "available",
+            "missing",
+            "not_applicable",
+            "unknown_type",
+            "conflict"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 30,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "basis": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Basis"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "title": "ComparisonCell",
+      "type": "object"
+    },
+    "ComparisonRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "left_bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Left Bundle Id",
+          "type": "string"
+        },
+        "right_bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Right Bundle Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "left_bundle_id",
+        "right_bundle_id"
+      ],
+      "title": "ComparisonRequest",
+      "type": "object"
+    },
+    "ComparisonResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "method": {
+          "default": "saved-evidence-alignment-v2",
+          "enum": [
+            "saved-evidence-alignment-v1",
+            "saved-evidence-alignment-v2"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/$defs/ComparisonSide"
+        },
+        "right": {
+          "$ref": "#/$defs/ComparisonSide"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/ComparisonRow"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Rows",
+          "type": "array"
+        }
+      },
+      "required": [
+        "left",
+        "right",
+        "rows"
+      ],
+      "title": "ComparisonResult",
+      "type": "object"
+    },
+    "ComparisonRow": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 160,
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 200,
+          "title": "Label",
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/$defs/ComparisonCell"
+        },
+        "right": {
+          "$ref": "#/$defs/ComparisonCell"
+        },
+        "alignment": {
+          "enum": [
+            "aligned",
+            "descriptive",
+            "missing_evidence",
+            "different_types",
+            "different_units",
+            "different_periods",
+            "different_methods",
+            "share_basis_unverified"
+          ],
+          "title": "Alignment",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "left",
+        "right",
+        "alignment"
+      ],
+      "title": "ComparisonRow",
+      "type": "object"
+    },
+    "ComparisonSide": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "#/$defs/AssetIdentity"
+        },
+        "saved_at": {
+          "format": "date-time",
+          "title": "Saved At",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "partial",
+            "available",
+            "stale",
+            "unavailable"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "completion": {
+          "enum": [
+            "complete",
+            "section_checkpoint"
+          ],
+          "title": "Completion",
+          "type": "string"
+        },
+        "fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "asset",
+        "saved_at",
+        "state",
+        "completion",
+        "fingerprint"
+      ],
+      "title": "ComparisonSide",
+      "type": "object"
+    },
+    "ContextReference": {
+      "additionalProperties": false,
+      "description": "Application-owned link to numerical evidence in an immutable earlier version.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^saved:[0-9a-f]{64}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "bundle_id",
+        "source_id"
+      ],
+      "title": "ContextReference",
+      "type": "object"
+    },
+    "Conversation": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 200,
+          "title": "Id",
+          "type": "string"
+        },
+        "asset_id": {
+          "maxLength": 200,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "context_bundle_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Bundle Id"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/ConversationMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "bookmarked": {
+          "default": false,
+          "title": "Bookmarked",
+          "type": "boolean"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "last_activity": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Activity"
+        }
+      },
+      "required": [
+        "asset_id"
+      ],
+      "title": "Conversation",
+      "type": "object"
+    },
+    "ConversationMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant",
+            "scope"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "bundle_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bundle Id"
+        },
+        "context_bundle_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Bundle Id"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "ConversationMessage",
+      "type": "object"
+    },
+    "DatedItem": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "claim_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Id"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "published": {
+          "format": "date",
+          "title": "Published",
+          "type": "string"
+        },
+        "effective": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effective"
+        },
+        "bucket": {
+          "enum": [
+            "previous_week",
+            "current_week",
+            "earlier_context"
+          ],
+          "title": "Bucket",
+          "type": "string"
+        },
+        "date_basis": {
+          "const": "verified_sec_filing_date",
+          "default": "verified_sec_filing_date",
+          "title": "Date Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "source_id",
+        "title",
+        "published",
+        "effective",
+        "bucket"
+      ],
+      "title": "DatedItem",
+      "type": "object"
+    },
+    "EvidenceBundle": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "#/$defs/AssetIdentity"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/Source"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "claims": {
+          "items": {
+            "$ref": "#/$defs/Claim"
+          },
+          "title": "Claims",
+          "type": "array"
+        },
+        "notes": {
+          "items": {
+            "$ref": "#/$defs/Claim"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "context_references": {
+          "items": {
+            "$ref": "#/$defs/ContextReference"
+          },
+          "maxItems": 100,
+          "title": "Context References",
+          "type": "array"
+        },
+        "state": {
+          "default": "partial",
+          "enum": [
+            "partial",
+            "available",
+            "stale",
+            "unavailable"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "completion": {
+          "default": "complete",
+          "enum": [
+            "complete",
+            "section_checkpoint"
+          ],
+          "title": "Completion",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "enum": [
+                "beginner",
+                "intermediate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Level"
+        },
+        "identity_verification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdentityVerification"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "financials": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FinancialEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "market": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MarketEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "asset"
+      ],
+      "title": "EvidenceBundle",
+      "type": "object"
+    },
+    "FilingPublication": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "authority": {
+          "const": "sec-submissions-v1",
+          "default": "sec-submissions-v1",
+          "title": "Authority",
+          "type": "string"
+        },
+        "cik": {
+          "pattern": "^[0-9]{10}$",
+          "title": "Cik",
+          "type": "string"
+        },
+        "accession": {
+          "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$",
+          "title": "Accession",
+          "type": "string"
+        },
+        "form": {
+          "maxLength": 20,
+          "title": "Form",
+          "type": "string"
+        },
+        "filed": {
+          "format": "date",
+          "title": "Filed",
+          "type": "string"
+        },
+        "report_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Report Date"
+        },
+        "document_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Document Url",
+          "type": "string"
+        },
+        "index_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Index Url",
+          "type": "string"
+        },
+        "index_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Index Hash",
+          "type": "string"
+        },
+        "retrieved_at": {
+          "format": "date-time",
+          "title": "Retrieved At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cik",
+        "accession",
+        "form",
+        "filed",
+        "document_url",
+        "index_url",
+        "index_hash",
+        "retrieved_at"
+      ],
+      "title": "FilingPublication",
+      "type": "object"
+    },
+    "FinancialEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scope": {
+          "const": "issuer",
+          "default": "issuer",
+          "title": "Scope",
+          "type": "string"
+        },
+        "association": {
+          "const": "sec-common-stock-concordance-v1",
+          "default": "sec-common-stock-concordance-v1",
+          "title": "Association",
+          "type": "string"
+        },
+        "issuer": {
+          "$ref": "#/$defs/AssetIdentity"
+        },
+        "issuer_verification": {
+          "$ref": "#/$defs/IdentityVerification"
+        },
+        "checked_at": {
+          "format": "date-time",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/FinancialObservation"
+          },
+          "maxItems": 40000,
+          "title": "Observations",
+          "type": "array"
+        },
+        "gaps": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Gaps",
+          "type": "array"
+        },
+        "ratio_method": {
+          "anyOf": [
+            {
+              "const": "sec-net-income-revenue-v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratio Method"
+        },
+        "ratios": {
+          "items": {
+            "$ref": "#/$defs/FinancialRatio"
+          },
+          "maxItems": 34,
+          "title": "Ratios",
+          "type": "array"
+        }
+      },
+      "required": [
+        "issuer",
+        "issuer_verification",
+        "checked_at"
+      ],
+      "title": "FinancialEvidence",
+      "type": "object"
+    },
+    "FinancialObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "cik": {
+          "pattern": "^[0-9]{10}$",
+          "title": "Cik",
+          "type": "string"
+        },
+        "concept": {
+          "maxLength": 100,
+          "title": "Concept",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 80,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Value",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 20,
+          "title": "Unit",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "period": {
+          "enum": [
+            "annual",
+            "quarter",
+            "instant",
+            "other_duration"
+          ],
+          "title": "Period",
+          "type": "string"
+        },
+        "accession": {
+          "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$",
+          "title": "Accession",
+          "type": "string"
+        },
+        "filed": {
+          "format": "date",
+          "title": "Filed",
+          "type": "string"
+        },
+        "form": {
+          "enum": [
+            "10-K",
+            "10-K/A",
+            "10-Q",
+            "10-Q/A",
+            "20-F",
+            "20-F/A",
+            "40-F",
+            "40-F/A"
+          ],
+          "title": "Form",
+          "type": "string"
+        },
+        "reported_fiscal_year": {
+          "maximum": 9999,
+          "minimum": 1900,
+          "title": "Reported Fiscal Year",
+          "type": "integer"
+        },
+        "reported_fiscal_period": {
+          "enum": [
+            "FY",
+            "Q1",
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "title": "Reported Fiscal Period",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "revision": {
+          "enum": [
+            "current",
+            "superseded",
+            "conflict"
+          ],
+          "title": "Revision",
+          "type": "string"
+        },
+        "supersedes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Supersedes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "cik",
+        "concept",
+        "value",
+        "unit",
+        "end",
+        "period",
+        "accession",
+        "filed",
+        "form",
+        "reported_fiscal_year",
+        "reported_fiscal_period",
+        "source_id",
+        "revision"
+      ],
+      "title": "FinancialObservation",
+      "type": "object"
+    },
+    "FinancialRatio": {
+      "additionalProperties": false,
+      "description": "Retained application calculation, separate from reported observations.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "denominator_concept": {
+          "enum": [
+            "us-gaap:Revenues",
+            "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
+          ],
+          "title": "Denominator Concept",
+          "type": "string"
+        },
+        "start": {
+          "format": "date",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "period": {
+          "enum": [
+            "annual",
+            "quarter"
+          ],
+          "title": "Period",
+          "type": "string"
+        },
+        "input_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 40000,
+          "title": "Input Ids",
+          "type": "array"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "percent": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Percent"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "missing_income",
+                "conflicting_inputs",
+                "ambiguous_inputs",
+                "different_units",
+                "different_filings",
+                "nonpositive_revenue"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "denominator_concept",
+        "start",
+        "end",
+        "period",
+        "input_ids",
+        "source_ids"
+      ],
+      "title": "FinancialRatio",
+      "type": "object"
+    },
+    "IdentityVerification": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "authority": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Authority",
+          "type": "string"
+        },
+        "source_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Source Url",
+          "type": "string"
+        },
+        "retrieved_at": {
+          "format": "date-time",
+          "title": "Retrieved At",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "identity_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Identity Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "authority",
+        "source_url",
+        "retrieved_at",
+        "content_hash",
+        "identity_hash"
+      ],
+      "title": "IdentityVerification",
+      "type": "object"
+    },
+    "ImportBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "locator": {
+          "maxLength": 200,
+          "title": "Locator",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "maxLength": 200000,
+          "title": "Text",
+          "type": "string"
+        },
+        "cells": {
+          "items": {
+            "$ref": "#/$defs/ImportCell"
+          },
+          "maxItems": 100,
+          "title": "Cells",
+          "type": "array"
+        }
+      },
+      "required": [
+        "locator"
+      ],
+      "title": "ImportBlock",
+      "type": "object"
+    },
+    "ImportCell": {
+      "additionalProperties": false,
+      "properties": {
+        "locator": {
+          "maxLength": 32,
+          "title": "Locator",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 8192,
+          "title": "Text",
+          "type": "string"
+        },
+        "kind": {
+          "default": "text",
+          "enum": [
+            "text",
+            "number",
+            "date",
+            "boolean",
+            "error",
+            "formula"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "number_format": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Number Format"
+        },
+        "raw_value": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Value"
+        }
+      },
+      "required": [
+        "locator",
+        "text"
+      ],
+      "title": "ImportCell",
+      "type": "object"
+    },
+    "ImportExplanation": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "document_id": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "level": {
+          "default": "beginner",
+          "enum": [
+            "beginner",
+            "intermediate"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "explanation": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "references": {
+          "items": {
+            "$ref": "#/$defs/ImportReference"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "References",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "interpretation": {
+          "const": true,
+          "default": true,
+          "title": "Interpretation",
+          "type": "boolean"
+        },
+        "verified": {
+          "const": false,
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "document_id",
+        "content_hash",
+        "explanation",
+        "references",
+        "id",
+        "provider"
+      ],
+      "title": "ImportExplanation",
+      "type": "object"
+    },
+    "ImportLearningRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "document_id": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "level": {
+          "default": "beginner",
+          "enum": [
+            "beginner",
+            "intermediate"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "import_explanation",
+          "default": "import_explanation",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "provider": {
+          "default": "codex",
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "transmission_confirmed": {
+          "const": true,
+          "title": "Transmission Confirmed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "document_id",
+        "content_hash",
+        "transmission_confirmed"
+      ],
+      "title": "ImportLearningRequest",
+      "type": "object"
+    },
+    "ImportLearningScope": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "document_id": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "level": {
+          "default": "beginner",
+          "enum": [
+            "beginner",
+            "intermediate"
+          ],
+          "title": "Level",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "content_hash"
+      ],
+      "title": "ImportLearningScope",
+      "type": "object"
+    },
+    "ImportPreview": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "unverified",
+            "link_only"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "local_file",
+            "public_url"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "checked_at": {
+          "format": "date-time",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "document": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParsedDocument"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "saved": {
+          "const": false,
+          "default": false,
+          "title": "Saved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "state",
+        "origin",
+        "checked_at"
+      ],
+      "title": "ImportPreview",
+      "type": "object"
+    },
+    "ImportReference": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "locator": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        },
+        "quote": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "locator",
+        "quote"
+      ],
+      "title": "ImportReference",
+      "type": "object"
+    },
+    "MarketBar": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "open": {
+          "maxLength": 80,
+          "title": "Open",
+          "type": "string"
+        },
+        "high": {
+          "maxLength": 80,
+          "title": "High",
+          "type": "string"
+        },
+        "low": {
+          "maxLength": 80,
+          "title": "Low",
+          "type": "string"
+        },
+        "close": {
+          "maxLength": 80,
+          "title": "Close",
+          "type": "string"
+        },
+        "adjusted_close": {
+          "maxLength": 80,
+          "title": "Adjusted Close",
+          "type": "string"
+        },
+        "volume": {
+          "maxLength": 80,
+          "title": "Volume",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adjusted_close",
+        "volume"
+      ],
+      "title": "MarketBar",
+      "type": "object"
+    },
+    "MarketCorporateAction": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "dividends",
+            "splits",
+            "capitalGains"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 161,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "kind",
+        "value"
+      ],
+      "title": "MarketCorporateAction",
+      "type": "object"
+    },
+    "MarketEvidence": {
+      "additionalProperties": false,
+      "description": "Application-owned daily history; never an LLM output field.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "provider": {
+          "const": "yahoo_yfinance",
+          "default": "yahoo_yfinance",
+          "title": "Provider",
+          "type": "string"
+        },
+        "association": {
+          "const": "yahoo-openfigi-common-stock-v1",
+          "default": "yahoo-openfigi-common-stock-v1",
+          "title": "Association",
+          "type": "string"
+        },
+        "usage_scope": {
+          "const": "private_yahoo_v1",
+          "default": "private_yahoo_v1",
+          "title": "Usage Scope",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "checked_at": {
+          "format": "date-time",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "exchange": {
+          "maxLength": 20,
+          "title": "Exchange",
+          "type": "string"
+        },
+        "exchange_label": {
+          "maxLength": 100,
+          "title": "Exchange Label",
+          "type": "string"
+        },
+        "currency": {
+          "const": "USD",
+          "default": "USD",
+          "title": "Currency",
+          "type": "string"
+        },
+        "instrument_type": {
+          "const": "EQUITY",
+          "default": "EQUITY",
+          "title": "Instrument Type",
+          "type": "string"
+        },
+        "timezone": {
+          "const": "America/New_York",
+          "default": "America/New_York",
+          "title": "Timezone",
+          "type": "string"
+        },
+        "requested_start": {
+          "format": "date",
+          "title": "Requested Start",
+          "type": "string"
+        },
+        "requested_end": {
+          "format": "date",
+          "title": "Requested End",
+          "type": "string"
+        },
+        "close_basis": {
+          "const": "split_adjusted",
+          "default": "split_adjusted",
+          "title": "Close Basis",
+          "type": "string"
+        },
+        "adjusted_close_basis": {
+          "const": "splits_and_distributions",
+          "default": "splits_and_distributions",
+          "title": "Adjusted Close Basis",
+          "type": "string"
+        },
+        "volume_basis": {
+          "const": "provider_reported",
+          "default": "provider_reported",
+          "title": "Volume Basis",
+          "type": "string"
+        },
+        "bars": {
+          "items": {
+            "$ref": "#/$defs/MarketBar"
+          },
+          "maxItems": 2000,
+          "minItems": 1,
+          "title": "Bars",
+          "type": "array"
+        },
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/MarketCorporateAction"
+          },
+          "maxItems": 2000,
+          "title": "Actions",
+          "type": "array"
+        },
+        "gaps": {
+          "items": {
+            "enum": [
+              "missing_price_rows",
+              "calendar_completeness_unverified"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Gaps",
+          "type": "array"
+        },
+        "return_method": {
+          "anyOf": [
+            {
+              "const": "yahoo-adjusted-ratio-v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Return Method"
+        },
+        "returns": {
+          "items": {
+            "$ref": "#/$defs/MarketReturn"
+          },
+          "maxItems": 5,
+          "title": "Returns",
+          "type": "array"
+        },
+        "valuations": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MarketValuations"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "valuation_gap": {
+          "anyOf": [
+            {
+              "enum": [
+                "source_unavailable",
+                "not_selected",
+                "no_observations"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valuation Gap"
+        },
+        "estimates": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnalystEstimates"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "estimate_gap": {
+          "anyOf": [
+            {
+              "enum": [
+                "source_unavailable",
+                "not_selected",
+                "no_observations"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimate Gap"
+        },
+        "fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "checked_at",
+        "name",
+        "exchange",
+        "exchange_label",
+        "requested_start",
+        "requested_end",
+        "bars",
+        "gaps",
+        "fingerprint"
+      ],
+      "title": "MarketEvidence",
+      "type": "object"
+    },
+    "MarketReturn": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "period": {
+          "enum": [
+            "ytd",
+            "1y",
+            "3y",
+            "5y",
+            "retained"
+          ],
+          "title": "Period",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "requested_start": {
+          "format": "date",
+          "title": "Requested Start",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "price_percent": {
+          "anyOf": [
+            {
+              "maxLength": 90,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Percent"
+        },
+        "total_return_estimate_percent": {
+          "anyOf": [
+            {
+              "maxLength": 90,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Return Estimate Percent"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "start_boundary_missing",
+                "insufficient_observations",
+                "missing_price_rows",
+                "history_gap"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "period",
+        "source_id",
+        "requested_start",
+        "end"
+      ],
+      "title": "MarketReturn",
+      "type": "object"
+    },
+    "MarketValuations": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "method": {
+          "const": "yahoo-reported-valuation-v1",
+          "default": "yahoo-reported-valuation-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "requested_start": {
+          "format": "date",
+          "title": "Requested Start",
+          "type": "string"
+        },
+        "requested_end": {
+          "format": "date",
+          "title": "Requested End",
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/ValuationObservation"
+          },
+          "maxItems": 600,
+          "minItems": 1,
+          "title": "Points",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_id",
+        "requested_start",
+        "requested_end",
+        "points"
+      ],
+      "title": "MarketValuations",
+      "type": "object"
+    },
+    "ParsedDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "csv",
+            "xlsx",
+            "pdf",
+            "html"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "verified": {
+          "const": false,
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/ImportBlock"
+          },
+          "maxItems": 2000,
+          "title": "Blocks",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "enum": [
+              "unverified_import",
+              "formulas_not_evaluated",
+              "pdf_layout_not_verified",
+              "empty_pages",
+              "merged_cells_not_expanded"
+            ],
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "format",
+        "content_hash",
+        "blocks",
+        "limitations"
+      ],
+      "title": "ParsedDocument",
+      "type": "object"
+    },
+    "ProviderLogin": {
+      "additionalProperties": false,
+      "description": "Ephemeral connection UI state. Never stored in the library or exports.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "provider": {
+          "const": "codex",
+          "default": "codex",
+          "title": "Provider",
+          "type": "string"
+        },
+        "status": {
+          "default": "idle",
+          "enum": [
+            "idle",
+            "pending",
+            "authenticated",
+            "cancelled",
+            "expired",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "verification_url": {
+          "anyOf": [
+            {
+              "const": "https://auth.openai.com/codex/device",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification Url"
+        },
+        "user_code": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Code"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "message": {
+          "default": "Sign in to the dedicated Codex connection.",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "title": "ProviderLogin",
+      "type": "object"
+    },
+    "ReportRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Bundle Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_id"
+      ],
+      "title": "ReportRequest",
+      "type": "object"
+    },
+    "ResearchJobSummary": {
+      "additionalProperties": false,
+      "description": "Read-only recovery metadata; no raw events, provider output or credentials.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 36,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "interrupted",
+            "needs_identity"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/ResearchRequest"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "request",
+        "created_at"
+      ],
+      "title": "ResearchJobSummary",
+      "type": "object"
+    },
+    "ResearchReport": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "method": {
+          "const": "saved-research-report-v1",
+          "default": "saved-research-report-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "#/$defs/AssetIdentity"
+        },
+        "evidence_saved_at": {
+          "format": "date-time",
+          "title": "Evidence Saved At",
+          "type": "string"
+        },
+        "focus": {
+          "$ref": "#/$defs/WeeklyFocus"
+        },
+        "reading_guide": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reading Guide"
+        },
+        "guide_source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Guide Source Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "fingerprint",
+        "asset",
+        "evidence_saved_at",
+        "focus"
+      ],
+      "title": "ResearchReport",
+      "type": "object"
+    },
+    "ResearchRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "query": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "asset_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "provider": {
+          "default": "codex",
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "level": {
+          "default": "beginner",
+          "enum": [
+            "beginner",
+            "intermediate"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "refresh": {
+          "default": false,
+          "title": "Refresh",
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "context_bundle_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Bundle Id"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "title": "ResearchRequest",
+      "type": "object"
+    },
+    "ResearchResult": {
+      "additionalProperties": false,
+      "description": "Provider output is a proposal; admission happens separately.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/AssetIdentity"
+          },
+          "maxItems": 20,
+          "title": "Candidates",
+          "type": "array"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/Source"
+          },
+          "maxItems": 100,
+          "title": "Sources",
+          "type": "array"
+        },
+        "claims": {
+          "items": {
+            "$ref": "#/$defs/Claim"
+          },
+          "maxItems": 200,
+          "title": "Claims",
+          "type": "array"
+        }
+      },
+      "title": "ResearchResult",
+      "type": "object"
+    },
+    "RetainedImportSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "csv",
+            "xlsx",
+            "pdf",
+            "html"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "local_file",
+            "public_url"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checked_at": {
+          "format": "date-time",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "retained_at": {
+          "format": "date-time",
+          "title": "Retained At",
+          "type": "string"
+        },
+        "byte_count": {
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "verified": {
+          "const": false,
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "format",
+        "origin",
+        "source",
+        "checked_at",
+        "retained_at",
+        "byte_count",
+        "content_hash"
+      ],
+      "title": "RetainedImportSummary",
+      "type": "object"
+    },
+    "RetainedImportView": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "item": {
+          "$ref": "#/$defs/RetainedImportSummary"
+        },
+        "document": {
+          "$ref": "#/$defs/ParsedDocument"
+        }
+      },
+      "required": [
+        "item",
+        "document"
+      ],
+      "title": "RetainedImportView",
+      "type": "object"
+    },
+    "RetainedItemDeletion": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "import",
+            "import_explanation"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "deleted": {
+          "title": "Deleted",
+          "type": "boolean"
+        },
+        "original_document_preserved": {
+          "title": "Original Document Preserved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "deleted",
+        "original_document_preserved"
+      ],
+      "title": "RetainedItemDeletion",
+      "type": "object"
+    },
+    "ReviewSource": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "publisher": {
+          "title": "Publisher",
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/SourcePolicy"
+        },
+        "rights_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Rights Url",
+          "type": "string"
+        },
+        "reviewed_at": {
+          "format": "date",
+          "title": "Reviewed At",
+          "type": "string"
+        },
+        "local_numeric_only": {
+          "default": false,
+          "title": "Local Numeric Only",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "url",
+        "publisher",
+        "policy",
+        "rights_url",
+        "reviewed_at"
+      ],
+      "title": "ReviewSource",
+      "type": "object"
+    },
+    "RuntimeCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "installed": {
+          "default": false,
+          "title": "Installed",
+          "type": "boolean"
+        },
+        "authentication": {
+          "default": "unknown",
+          "enum": [
+            "unknown",
+            "authenticated",
+            "required",
+            "unsupported"
+          ],
+          "title": "Authentication",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "qualification": {
+          "default": "unqualified",
+          "enum": [
+            "unqualified",
+            "protocol_only",
+            "live"
+          ],
+          "title": "Qualification",
+          "type": "string"
+        },
+        "generation": {
+          "default": false,
+          "title": "Generation",
+          "type": "boolean"
+        },
+        "browsing": {
+          "default": false,
+          "title": "Browsing",
+          "type": "boolean"
+        },
+        "streaming": {
+          "default": false,
+          "title": "Streaming",
+          "type": "boolean"
+        },
+        "cancellation": {
+          "default": false,
+          "title": "Cancellation",
+          "type": "boolean"
+        },
+        "approvals": {
+          "default": false,
+          "title": "Approvals",
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "title": "RuntimeCapabilities",
+      "type": "object"
+    },
+    "RuntimeEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sequence": {
+          "default": 0,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "run.started",
+            "message.delta",
+            "tool.started",
+            "evidence.registered",
+            "approval.required",
+            "run.completed",
+            "run.failed",
+            "run.cancelled"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        }
+      },
+      "required": [
+        "run_id",
+        "kind"
+      ],
+      "title": "RuntimeEvent",
+      "type": "object"
+    },
+    "RuntimeModel": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "is_default": {
+          "default": false,
+          "title": "Is Default",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "RuntimeModel",
+      "type": "object"
+    },
+    "RuntimeModelCatalog": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "status": {
+          "default": "unavailable",
+          "enum": [
+            "available",
+            "authentication_required",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/RuntimeModel"
+          },
+          "maxItems": 200,
+          "title": "Models",
+          "type": "array"
+        },
+        "message": {
+          "default": "Model discovery is not qualified for this connection.",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "title": "RuntimeModelCatalog",
+      "type": "object"
+    },
+    "SavedItemDeletion": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "saved",
+            "conversation",
+            "comparison",
+            "report",
+            "term"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "deleted": {
+          "title": "Deleted",
+          "type": "boolean"
+        },
+        "evidence_preserved": {
+          "const": true,
+          "default": true,
+          "title": "Evidence Preserved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "deleted"
+      ],
+      "title": "SavedItemDeletion",
+      "type": "object"
+    },
+    "SavedResearch": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 200,
+          "title": "Id",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "title"
+      ],
+      "title": "SavedResearch",
+      "type": "object"
+    },
+    "Settings": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "cloud_enabled": {
+          "default": false,
+          "title": "Cloud Enabled",
+          "type": "boolean"
+        },
+        "experimental_yahoo_enabled": {
+          "default": false,
+          "title": "Experimental Yahoo Enabled",
+          "type": "boolean"
+        },
+        "provider": {
+          "default": "codex",
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "manual_source_review": {
+          "default": false,
+          "title": "Manual Source Review",
+          "type": "boolean"
+        },
+        "update_mode": {
+          "default": "notify",
+          "enum": [
+            "notify",
+            "manual",
+            "automatic"
+          ],
+          "title": "Update Mode",
+          "type": "string"
+        },
+        "start_at_login": {
+          "default": false,
+          "title": "Start At Login",
+          "type": "boolean"
+        },
+        "retention_days": {
+          "default": 180,
+          "maximum": 3650,
+          "minimum": 7,
+          "title": "Retention Days",
+          "type": "integer"
+        },
+        "cache_gb": {
+          "default": 10,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Cache Gb",
+          "type": "integer"
+        }
+      },
+      "title": "Settings",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "asset_id": {
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "publisher": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Publisher",
+          "type": "string"
+        },
+        "retrieved_at": {
+          "format": "date-time",
+          "title": "Retrieved At",
+          "type": "string"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As Of"
+        },
+        "content_hash": {
+          "default": "",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/SourcePolicy",
+          "default": "link_only"
+        },
+        "official": {
+          "default": false,
+          "title": "Official",
+          "type": "boolean"
+        },
+        "verified": {
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        },
+        "excerpt": {
+          "default": "",
+          "maxLength": 20000,
+          "title": "Excerpt",
+          "type": "string"
+        },
+        "provenance": {
+          "default": "agent_candidate",
+          "enum": [
+            "agent_candidate",
+            "structured_adapter",
+            "market_adapter",
+            "verified_retrieval",
+            "user_import"
+          ],
+          "title": "Provenance",
+          "type": "string"
+        },
+        "usage_scope": {
+          "default": "standard",
+          "enum": [
+            "standard",
+            "private_yahoo_v1"
+          ],
+          "title": "Usage Scope",
+          "type": "string"
+        },
+        "filing_publication": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FilingPublication"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "asset_id",
+        "url",
+        "title",
+        "publisher"
+      ],
+      "title": "Source",
+      "type": "object"
+    },
+    "SourceAge": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "within_age_limit",
+            "stale",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "within_age_limit",
+            "old_dates",
+            "missing_dates",
+            "future_dates",
+            "unverified",
+            "unregistered",
+            "rights_changed"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "max_age_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Age Seconds"
+        }
+      },
+      "required": [
+        "source_id",
+        "state",
+        "reason"
+      ],
+      "title": "SourceAge",
+      "type": "object"
+    },
+    "SourcePolicy": {
+      "enum": [
+        "full_text_allowed",
+        "summary_allowed",
+        "metadata_only",
+        "link_only",
+        "rejected"
+      ],
+      "title": "SourcePolicy",
+      "type": "string"
+    },
+    "SourceReviewDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "cancel": {
+          "default": false,
+          "title": "Cancel",
+          "type": "boolean"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Source Ids",
+          "type": "array"
+        }
+      },
+      "title": "SourceReviewDecision",
+      "type": "object"
+    },
+    "SourceReviewRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "asset_id": {
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/ReviewSource"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "asset_id",
+        "sources",
+        "expires_at"
+      ],
+      "title": "SourceReviewRequest",
+      "type": "object"
+    },
+    "TermExplanation": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "explanation": {
+          "maxLength": 1600,
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "basis": {
+          "enum": [
+            "general",
+            "snapshot",
+            "insufficient"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "mode": {
+          "default": "term",
+          "enum": [
+            "term",
+            "question"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "term": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Term",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "asset_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "language": {
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "beginner",
+            "intermediate"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "interpretation": {
+          "const": true,
+          "default": true,
+          "title": "Interpretation",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "explanation",
+        "basis",
+        "id",
+        "term",
+        "bundle_id",
+        "asset_id",
+        "language",
+        "level",
+        "provider"
+      ],
+      "title": "TermExplanation",
+      "type": "object"
+    },
+    "TermRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "term_explanation",
+          "default": "term_explanation",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "mode": {
+          "default": "term",
+          "enum": [
+            "term",
+            "question"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "term": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Term",
+          "type": "string"
+        },
+        "bundle_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "level": {
+          "default": "beginner",
+          "enum": [
+            "beginner",
+            "intermediate"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "provider": {
+          "default": "codex",
+          "enum": [
+            "codex",
+            "gemini",
+            "claude"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        }
+      },
+      "required": [
+        "term",
+        "bundle_id"
+      ],
+      "title": "TermRequest",
+      "type": "object"
+    },
+    "TermResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "explanation": {
+          "maxLength": 1600,
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "basis": {
+          "enum": [
+            "general",
+            "snapshot",
+            "insufficient"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Source Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "explanation",
+        "basis"
+      ],
+      "title": "TermResult",
+      "type": "object"
+    },
+    "ValuationObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "metric": {
+          "enum": [
+            "MarketCap",
+            "EnterpriseValue",
+            "PeRatio",
+            "PsRatio",
+            "PbRatio",
+            "EnterprisesValueRevenueRatio",
+            "EnterprisesValueEBITDARatio"
+          ],
+          "title": "Metric",
+          "type": "string"
+        },
+        "sampling": {
+          "enum": [
+            "annual",
+            "quarterly",
+            "trailing"
+          ],
+          "title": "Sampling",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "period_type": {
+          "enum": [
+            "12M",
+            "3M",
+            "TTM"
+          ],
+          "title": "Period Type",
+          "type": "string"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "const": "USD",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "value_missing",
+                "currency_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "metric",
+        "sampling",
+        "date",
+        "period_type"
+      ],
+      "title": "ValuationObservation",
+      "type": "object"
+    },
+    "WeeklyFocus": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "method": {
+          "const": "verified-filing-week-v1",
+          "default": "verified-filing-week-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "window": {
+          "$ref": "#/$defs/WeeklyWindow"
+        },
+        "weekly": {
+          "items": {
+            "$ref": "#/$defs/DatedItem"
+          },
+          "maxItems": 8,
+          "title": "Weekly",
+          "type": "array"
+        },
+        "earlier": {
+          "items": {
+            "$ref": "#/$defs/DatedItem"
+          },
+          "maxItems": 8,
+          "title": "Earlier",
+          "type": "array"
+        },
+        "earlier_requested": {
+          "title": "Earlier Requested",
+          "type": "boolean"
+        },
+        "analysis_available": {
+          "title": "Analysis Available",
+          "type": "boolean"
+        },
+        "coverage": {
+          "const": "saved_verified_filings_only",
+          "default": "saved_verified_filings_only",
+          "title": "Coverage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "window",
+        "earlier_requested",
+        "analysis_available"
+      ],
+      "title": "WeeklyFocus",
+      "type": "object"
+    },
+    "WeeklyWindow": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "title": "As Of",
+          "type": "string"
+        },
+        "timezone": {
+          "const": "America/New_York",
+          "default": "America/New_York",
+          "title": "Timezone",
+          "type": "string"
+        },
+        "previous_start": {
+          "format": "date",
+          "title": "Previous Start",
+          "type": "string"
+        },
+        "previous_end": {
+          "format": "date",
+          "title": "Previous End",
+          "type": "string"
+        },
+        "current_start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Start"
+        },
+        "current_end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current End"
+        },
+        "earlier_start": {
+          "format": "date",
+          "title": "Earlier Start",
+          "type": "string"
+        },
+        "earlier_end": {
+          "format": "date",
+          "title": "Earlier End",
+          "type": "string"
+        }
+      },
+      "required": [
+        "as_of",
+        "previous_start",
+        "previous_end",
+        "current_start",
+        "current_end",
+        "earlier_start",
+        "earlier_end"
+      ],
+      "title": "WeeklyWindow",
+      "type": "object"
+    }
+  },
+  "title": "DesktopContracts",
+  "type": "object",
+  "properties": {
+    "ApprovalDecision": {
+      "$ref": "#/$defs/ApprovalDecision"
+    },
+    "ApprovalRequest": {
+      "$ref": "#/$defs/ApprovalRequest"
+    },
+    "AssetIdentity": {
+      "$ref": "#/$defs/AssetIdentity"
+    },
+    "BackupSummary": {
+      "$ref": "#/$defs/BackupSummary"
+    },
+    "Claim": {
+      "$ref": "#/$defs/Claim"
+    },
+    "Conversation": {
+      "$ref": "#/$defs/Conversation"
+    },
+    "EvidenceBundle": {
+      "$ref": "#/$defs/EvidenceBundle"
+    },
+    "ImportPreview": {
+      "$ref": "#/$defs/ImportPreview"
+    },
+    "RetainedImportSummary": {
+      "$ref": "#/$defs/RetainedImportSummary"
+    },
+    "RetainedImportView": {
+      "$ref": "#/$defs/RetainedImportView"
+    },
+    "ImportExplanation": {
+      "$ref": "#/$defs/ImportExplanation"
+    },
+    "ImportLearningRequest": {
+      "$ref": "#/$defs/ImportLearningRequest"
+    },
+    "ImportLearningScope": {
+      "$ref": "#/$defs/ImportLearningScope"
+    },
+    "ProviderLogin": {
+      "$ref": "#/$defs/ProviderLogin"
+    },
+    "ResearchJobSummary": {
+      "$ref": "#/$defs/ResearchJobSummary"
+    },
+    "ResearchRequest": {
+      "$ref": "#/$defs/ResearchRequest"
+    },
+    "ResearchResult": {
+      "$ref": "#/$defs/ResearchResult"
+    },
+    "RuntimeCapabilities": {
+      "$ref": "#/$defs/RuntimeCapabilities"
+    },
+    "RuntimeEvent": {
+      "$ref": "#/$defs/RuntimeEvent"
+    },
+    "RuntimeModel": {
+      "$ref": "#/$defs/RuntimeModel"
+    },
+    "RuntimeModelCatalog": {
+      "$ref": "#/$defs/RuntimeModelCatalog"
+    },
+    "SavedResearch": {
+      "$ref": "#/$defs/SavedResearch"
+    },
+    "Settings": {
+      "$ref": "#/$defs/Settings"
+    },
+    "Source": {
+      "$ref": "#/$defs/Source"
+    },
+    "TermExplanation": {
+      "$ref": "#/$defs/TermExplanation"
+    },
+    "TermRequest": {
+      "$ref": "#/$defs/TermRequest"
+    },
+    "TermResult": {
+      "$ref": "#/$defs/TermResult"
+    },
+    "SourceReviewDecision": {
+      "$ref": "#/$defs/SourceReviewDecision"
+    },
+    "SourceReviewRequest": {
+      "$ref": "#/$defs/SourceReviewRequest"
+    },
+    "BundleFreshness": {
+      "$ref": "#/$defs/BundleFreshness"
+    },
+    "ComparisonRequest": {
+      "$ref": "#/$defs/ComparisonRequest"
+    },
+    "ComparisonResult": {
+      "$ref": "#/$defs/ComparisonResult"
+    },
+    "ReportRequest": {
+      "$ref": "#/$defs/ReportRequest"
+    },
+    "ResearchReport": {
+      "$ref": "#/$defs/ResearchReport"
+    },
+    "SavedItemDeletion": {
+      "$ref": "#/$defs/SavedItemDeletion"
+    },
+    "RetainedItemDeletion": {
+      "$ref": "#/$defs/RetainedItemDeletion"
+    },
+    "CacheSummary": {
+      "$ref": "#/$defs/CacheSummary"
+    }
+  },
+  "additionalProperties": false
+}

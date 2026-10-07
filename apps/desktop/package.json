@@ -1,0 +1,35 @@
+{
+  "name": "@learn-the-ticker/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local desktop research application.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "start": "vite preview --host 127.0.0.1 --port 1420 --strictPort",
+    "test": "vitest run",
+    "test:browser": "npm run build && playwright test",
+    "lint": "eslint src components lib browser playwright.config.ts vite.config.ts --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "22.15.2",
+    "@types/react": "19.0.12",
+    "@types/react-dom": "19.0.4",
+    "@typescript-eslint/parser": "8.71.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "eslint": "10.12.0",
+    "typescript": "5.8.3",
+    "vite": "^6.4.0",
+    "vitest": "4.1.11"
+  }
+}

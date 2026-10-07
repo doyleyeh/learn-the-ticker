@@ -9,6 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+from unittest.mock import patch
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -191,6 +192,21 @@ class RehearsalCheck:
 
 
 def run_rehearsal(env: dict[str, str] | None = None, *, root: Path = ROOT) -> dict[str, Any]:
+    # Reference API defaults must not activate retrieval during deterministic checks.
+    # Explicit optional modes receive the original caller environment separately.
+    source_env = dict(os.environ if env is None else env)
+    with patch.dict(os.environ, {
+        "LIGHTWEIGHT_LIVE_FETCH_ENABLED": "false",
+        "LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED": "false",
+        "ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED": "false",
+        "MARKET_NEWS_FETCH_ENABLED": "false",
+        "MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED": "false",
+        "LLM_LIVE_GENERATION_ENABLED": "false",
+    }):
+        return _run_rehearsal(source_env, root=root)
+
+
+def _run_rehearsal(env: dict[str, str], *, root: Path) -> dict[str, Any]:
     source_env = dict(os.environ if env is None else env)
     checks = [
         _guarded("deterministic_default_boundary", lambda: _check_default_boundary(source_env)),
@@ -1415,16 +1431,14 @@ def _check_stock_vs_etf_comparison_readiness(root: Path) -> RehearsalCheck:
         )
 
     frontend_alignment = _stock_vs_etf_frontend_alignment(root)
-    if frontend_alignment.get("blocked"):
-        return _blocked(check_id, frontend_alignment["reason_code"], frontend_alignment)
-
     comparison_evidence = comparison["evidence_availability"]
     relationship = comparison["stock_etf_relationship"]
     export_validation = comparison_export["export_validation"]
     chat_route = chat["compare_route_suggestion"]
-    return _pass(
+    outcome = _blocked if frontend_alignment.get("blocked") else _pass
+    return outcome(
         check_id,
-        "aapl_voo_stock_vs_etf_comparison_ready",
+        frontend_alignment.get("reason_code", "aapl_voo_stock_vs_etf_comparison_ready"),
         {
             "schema_version": "stock-vs-etf-comparison-readiness-v1",
             "boundary": "review_only_fixture_backed_no_services_no_live_calls_v1",
@@ -1776,6 +1790,9 @@ def _blocked_comparison_case_regression(
 
 
 def _stock_vs_etf_frontend_alignment(root: Path) -> dict[str, Any]:
+    # The desktop browser gate owns current UI acceptance.
+    if not (root / "apps/web/package.json").is_file():
+        return {"blocked": True, "reason_code": "legacy_web_runtime_retired"}
     source_markers = {
         "apps/web/app/page.tsx": [
             "data-home-primary-workflow=\"single-supported-stock-or-etf-search\"",
@@ -2218,6 +2235,9 @@ def _check_local_ingestion_priority_planner(root: Path) -> RehearsalCheck:
 
 
 def _check_frontend_markers(root: Path) -> RehearsalCheck:
+    # The desktop browser gate owns current UI acceptance.
+    if not (root / "apps/web/package.json").is_file():
+        return _blocked("frontend_v04_smoke_markers", "legacy_web_runtime_retired")
     markers = {
         "apps/web/app/page.tsx": [
             "data-home-primary-workflow=\"single-supported-stock-or-etf-search\"",

@@ -1,21 +1,12 @@
 PYTHON ?= python3
 
-.PHONY: quality test eval local-merge task-cycle setup-wsl-agent-env
-
+.PHONY: quality test eval contracts
 quality:
 	bash scripts/run_quality_gate.sh
-
 test:
 	$(PYTHON) -m pytest tests -q
-
 eval:
 	$(PYTHON) evals/run_static_evals.py
-
-local-merge:
-	bash scripts/local_merge_task.sh
-
-task-cycle:
-	bash scripts/run_task_cycle.sh
-
-setup-wsl-agent-env:
-	bash scripts/setup_wsl_agent_env.sh
+contracts:
+	$(PYTHON) -m scripts.contracts
+	node scripts/generate_types.mjs

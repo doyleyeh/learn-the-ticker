@@ -1,0 +1,56 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { expect, it } from "vitest";
+import { CheckpointNotice, EvidenceView } from "./App";
+
+it("keeps unverified claims out of canonical sections and escapes source content", () => {
+  const html = renderToStaticMarkup(<EvidenceView bundle={{ asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "crypto" }, claims: [], notes: [{ id: "n", asset_id: "X:TEST", text: "<script>fictional metric</script>", kind: "unverified_note" }], sources: [] }}/>);
+  expect(html).toContain("Unavailable — no admitted evidence");
+  expect(html).not.toContain("<script>");
+  expect(html.split('data-evidence-layer="notes"')[0]).not.toContain("fictional metric");
+  expect(html).toContain("&lt;script&gt;fictional metric&lt;/script&gt;");
+});
+
+it("restores applicable stock/fund headings without fixture facts", () => {
+  const stock = renderToStaticMarkup(<EvidenceView bundle={{ asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "stock" } }}/>);
+  const fund = renderToStaticMarkup(<EvidenceView bundle={{ asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "etf" } }}/>);
+  expect(stock).toContain("Products and services");
+  expect(stock).toContain("Reported business strengths");
+  expect(fund).toContain("Fund objective and role");
+  expect(fund).toContain("Holdings and exposures");
+  expect(fund).toContain("Costs and trading context");
+  expect(fund).toContain("Unavailable — no admitted evidence");
+  expect(fund).not.toContain("Products and services");
+});
+
+it("hides type-dependent claims when the instrument type is unresolved", () => {
+  const html = renderToStaticMarkup(<EvidenceView bundle={{ asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "unknown" }, claims: [{ asset_id: "X:TEST", text: "Unconfirmed fund holdings", section: "holdings", source_ids: [] }] }}/>);
+  expect(html).toContain("Asset type is unconfirmed");
+  expect(html).not.toContain("Unconfirmed fund holdings");
+  expect(html).toContain("Unknown applicability");
+});
+
+it("keeps admitted filing news in the context section instead of stable overview", () => {
+  const html = renderToStaticMarkup(<EvidenceView bundle={{ asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "stock" }, claims: [{ asset_id: "X:TEST", text: "A synthetic filing event.", section: "news", source_ids: [] }] }}/>);
+  expect(html.split('id="ticker-news"')[0]).not.toContain("A synthetic filing event.");
+  expect(html.split('id="ticker-news"')[1].split('id="ticker-analysts"')[0]).toContain("A synthetic filing event.");
+  expect(html).toContain("Reported filing news");
+});
+
+it("distinguishes incomplete research from evidence availability", () => {
+  const html = renderToStaticMarkup(<CheckpointNotice completion="section_checkpoint"/>);
+  expect(html).toContain("Incomplete research");
+  expect(html).toContain("may have stopped");
+  expect(html).toContain("Earlier completed research is unchanged");
+  expect(renderToStaticMarkup(<CheckpointNotice completion="complete"/>)).toBe("");
+});
+
+it("the dashboard preserves unknown listing fields and separates missing quotes and analyst opinions", () => {
+  const html = renderToStaticMarkup(<EvidenceView bundle={{ id: "old-snapshot", created_at: "2020-01-01T00:00:00Z", asset: { id: "X:TEST", symbol: "TEST", name: "Synthetic", asset_type: "stock" } }}/>);
+  expect(html).toContain("Exchange / venue</dt><dd>Unconfirmed");
+  expect(html).toContain("Listing currency</dt><dd>Unconfirmed");
+  expect(html).toContain("Evidence saved 2020-01-01T00:00:00Z");
+  expect(html).toContain("Quote time, market session and delay are unknown");
+  expect(html).toContain("no qualified analyst estimates or outlooks");
+  expect(html).toContain("Original identity verification is not recorded");
+  expect(html).not.toContain("NASDAQ");
+});

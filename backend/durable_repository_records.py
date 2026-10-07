@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -199,7 +200,11 @@ def _sqlite_path_from_database_url(database_url: str) -> Path:
         raise DurableRepositoryRecordError("SQLite durable record URLs must use a local filesystem path.")
     if parsed.path in {"", "/"}:
         raise DurableRepositoryRecordError("SQLite durable record URLs require a database path.")
-    return Path(unquote(parsed.path))
+    path = unquote(parsed.path)
+    # sqlite:///C:/... is a Windows drive path, not a path rooted at /C:.
+    if os.name == "nt" and len(path) >= 4 and path[0] == "/" and path[1].isalpha() and path[2] == ":" and path[3] in "/\\":
+        path = path[1:]
+    return Path(path)
 
 
 def _utc_now() -> str:

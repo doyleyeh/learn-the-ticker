@@ -10,7 +10,7 @@ from backend.testing import TestClient
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WEB_ROOT = ROOT / "apps" / "web"
+WEB_ROOT = ROOT / "apps" / "desktop"
 client = TestClient(app)
 
 
@@ -94,9 +94,9 @@ def test_backend_responses_do_not_leak_advice_phrases():
 
 def test_frontend_copy_fixtures_and_comparison_do_not_leak_advice_phrases():
     paths = [
-        "app/page.tsx",
-        "app/assets/[ticker]/page.tsx",
-        "app/compare/page.tsx",
+        "src/App.tsx",
+        "src/App.tsx",
+        "src/App.tsx",
         "components/AssetHeader.tsx",
         "components/AssetChatPanel.tsx",
         "components/AssetEtfSections.tsx",
@@ -144,8 +144,8 @@ def test_frontend_export_control_copy_is_advice_safe():
         [
             (WEB_ROOT / "components/ExportControls.tsx").read_text(encoding="utf-8"),
             (WEB_ROOT / "lib/exportControls.ts").read_text(encoding="utf-8"),
-            (WEB_ROOT / "app/assets/[ticker]/page.tsx").read_text(encoding="utf-8"),
-            (WEB_ROOT / "app/compare/page.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "src/App.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "src/App.tsx").read_text(encoding="utf-8"),
             (WEB_ROOT / "components/AssetChatPanel.tsx").read_text(encoding="utf-8"),
         ]
     )
@@ -158,7 +158,6 @@ def test_frontend_export_control_copy_is_advice_safe():
         "full source documents",
         "restricted provider payloads",
         "live external download URLs",
-        "Export controls stay unavailable",
         "Save chat transcript",
     ]
 
@@ -174,16 +173,14 @@ def test_frontend_comparison_suggestion_copy_is_advice_safe():
         [
             (WEB_ROOT / "components/ComparisonSuggestions.tsx").read_text(encoding="utf-8"),
             (WEB_ROOT / "lib/compareSuggestions.ts").read_text(encoding="utf-8"),
-            (WEB_ROOT / "app/assets/[ticker]/page.tsx").read_text(encoding="utf-8"),
-            (WEB_ROOT / "app/compare/page.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "src/App.tsx").read_text(encoding="utf-8"),
+            (WEB_ROOT / "src/App.tsx").read_text(encoding="utf-8"),
         ]
     )
     suggestion_copy_markers = [
         "local source-backed comparison",
         "benchmark, cost, holdings breadth, and beginner role",
         "No local source-backed comparison pack",
-        "peer list, citation chips, source documents",
-        "not facts about the requested pair",
         "this is not personal advice",
     ]
 
@@ -352,7 +349,7 @@ def test_weekly_news_event_evidence_contract_copy_is_advice_safe():
 
 
 def test_mvp_functional_gap_review_copy_is_advice_safe_and_sanitized():
-    text = (ROOT / "docs" / "mvp_functional_gap_review.md").read_text(encoding="utf-8")
+    text = (ROOT / "docs/archive/2026-10-07-main" / "mvp_functional_gap_review.md").read_text(encoding="utf-8")
 
     markers = [
         "MVP Functional Gap Review",

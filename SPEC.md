@@ -1,215 +1,93 @@
-# SPEC.md
+# Learn the Ticker specification
 
-## Product Success
+The product contract for Windows public v1 and the active WSL2 commercial-agent development track. Requirements describe the destination, not completed functionality. [DECISIONS.md](DECISIONS.md) owns accepted architecture; [PLAN.md](PLAN.md) sequences delivery; [STATUS.md](STATUS.md) records evidence. Existing P-series identifiers are preserved from the approved desktop reboot.
 
-Learn the Ticker helps beginners understand U.S.-listed common stocks and manifest-approved ETF-500 scope U.S.-listed passive/index-based U.S. equity ETFs through plain-English, source-backed explanations.
+## Purpose and scope
 
-A successful answer or asset page helps the user understand:
+Build a freely distributed Apache-2.0, citation-first local research and learning library. Prioritize understanding one asset, then conversational research, then comparison. Keep useful financial interfaces while replacing fixed-universe and hosted-app assumptions. Official/free sources come first; unavailable data stays explicit. Provider subscriptions do not grant source redistribution rights.
 
-- what the asset is
-- what the company does or what the ETF holds
-- why people may study it
-- the top risks
-- how it compares with another supported asset when the user enters the separate comparison workflow
-- what changed in the reusable Market News Focus and ticker-specific Weekly News Focus
-- which sources support important claims
-- which beginner terms are worth learning next
+## Audience and boundaries
 
-The product is educational. It is not a stock picker, trading tool, brokerage app, portfolio optimizer, tax tool, or personalized financial advisor.
+P-001: One person and one transferable library per installation; no hosted app account. Technical repository users first, ordinary beginners next. English-first UI and English/Traditional Chinese explanations over original-language sources. Beginner and intermediate learning have equal prominence.
 
-## MVP Baseline
+P-002: Educational research only. No buy/sell/hold instructions, allocation or position sizing, personalized advice, unsupported price targets, tax advice or brokerage behavior. Redirect requests into sourced explanations. Retrieved content and imports cannot override these boundaries.
 
-The updated PRD and technical design spec define the current MVP/v1 baseline.
+## Research
 
-MVP direction:
+P-010: Resolve previously uncached symbols/names across asset categories. No fixed universe eligibility gate. Disambiguate listing, exchange, share class and contract. Uncertain type permits research notes but suppresses type-dependent facts.
 
-- accountless responsive web app
-- Next.js frontend rooted at `apps/web`
-- FastAPI backend rooted at `backend`
-- local Docker Compose scaffold for web, API, ingestion-worker placeholder, Postgres/pgvector, Redis, and MinIO-compatible object storage
-- Vercel Hobby frontend deployment target
-- Cloud Run API in `us-central1` with request-based billing and `min-instances=0`
-- Cloud Run Jobs for manual ingestion first
-- Neon Free Postgres and private Google Cloud Storage for first deployment
-- deterministic mocks and fixtures for CI
+P-011: Reuse cached evidence, inspect freshness, prefer applicable configured structured financial/news adapters, then let the agent investigate gaps. With cloud consent and qualified online tools, the agent can autonomously search the live web, open/read public source pages and follow relevant links or run follow-up searches for current market, ticker and news information. These permitted research calls do not require approval per fetch. Requests for latest information require source-appropriate freshness checks and refresh when needed; a recent cache retrieval alone cannot establish that the underlying information is current. Show partial sections and evidence dates. Never fabricate unavailable history or impute data without explicit labeling.
 
-MVP product scope:
+Use existing applicable APIs first. Web investigation follows only for missing, stale, conflicting or unsupported information relevant to the current request; sufficient admitted context can be explained without browsing. An API failure or denied permission must remain visible and must not be bypassed through an equivalent unauthorized web extraction.
 
-- top-500-first U.S.-listed common stocks from `data/universes/us_common_stocks_top500.current.json` as the strict/audit-quality seed, plus source-labeled SEC/exchange/provider fallback for the personal lightweight MVP
-- manifest-approved ETF-500 scope as the strict/audit-quality target, plus source-labeled lightweight rendering for recognized U.S.-listed, active, non-leveraged, non-inverse ETF pages when official automation or reputable provider fallback supplies enough normalized facts
-- pre-cached high-demand stocks and ETF-500 entries for reliability and latency, without treating the pre-cache set as the ETF coverage ceiling
-- explicit `pending_ingestion` states only for approved eligible supported assets outside the pre-cache set
-- home page single-asset search first, with natural `A vs B` queries redirecting to comparison instead of turning home into a comparison builder
-- stock and ETF asset pages with Beginner section first and Deep-Dive section available
-- separate connected comparison workflow for supported stock-vs-stock, ETF-vs-ETF, and stock-vs-ETF pairs
-- stock-vs-ETF comparison relationship badges and a special single-company-vs-ETF-basket structure
-- reusable Market News Focus plus ticker-specific Weekly News Focus and AI Comprehensive Analysis as separated timely context
-- limited asset-specific grounded chat beta
-- contextual glossary with curated core terms, desktop popovers, mobile bottom sheets, and grounded asset-specific context where supported
-- Markdown/JSON export/download for asset pages, comparison output, source lists, and chat transcripts
-- caching, source checksums, generated-summary freshness hashes, and section-level freshness labels
+P-012: Source candidates require independent validation and permission checks. Automatically admit only under predefined rules; expose optional review mode. Credibility and storage/display/export permission are separate. Rights limits apply even when the user has a commercial subscription.
 
-Unsupported and out-of-scope v1 assets include options, crypto, international equities, leveraged ETFs, inverse ETFs, ETNs, fixed income ETFs, commodity ETFs, active ETFs, multi-asset ETFs, preferred stocks, warrants, rights, and other complex products unless explicitly added later. Recognized-but-unsupported and out-of-scope assets may appear in search, but must not receive generated pages, generated chat answers, generated comparisons, or generated risk summaries.
+DEC-049 approves the personal API-to-agent framework, including analyst estimates, subject to applicable provider policies. Each user retrieves data for their own local library and may send permitted selected context to their chosen agent with existing consent. Do not equate framework distribution, private inference, public data redistribution and model training. A commercial agent vendor alone does not establish commercial use of the data. Evaluate official AI integration guidance, actual account/dataset coverage and operation-specific restrictions, including local retention and backups; explicit prohibitions still apply.
 
-## Current Implementation Direction
+DEC-050 confirms the user-run yfinance architecture and authorizes the private analyst adapter: open-source code runs on each user's computer, with no project-operated Yahoo data service, shared dataset or public financial API. Library licensing and retrieved-data terms are separate. Retain original estimate currencies/units and forecast periods; unknown publication/as-of time stays unknown. Existing cloud consent applies when the chosen agent uses remote inference.
 
-The repository is no longer planning-only. It is currently a deterministic, fixture-backed MVP scaffold with substantial backend and frontend surface area already in place.
+Approved experimental exception (DEC-039, amended by DEC-046): after explicit personal-mode opt-in, independently validated Yahoo numerical history obtained through the bounded yfinance adapter may be displayed and cached locally with immutable original citations and retained in same-user private backups. Label it unofficial/personal-use-only. With existing cloud consent, admitted numerical observations and retained calculations use the same selected-provider research, conversation and term-learning context as other admitted providers. Preserve original dates, units and citations; generated explanations never become factual inputs. Shareable Markdown/JSON exports still omit Yahoo data and dependent interpretations. This is a project-policy exception for private experimentation, not a claim of Yahoo permission; public Windows v1 retains its source-permission release gate. No developer credentials or datasets ship with the app.
 
-Current implementation stage:
+DEC-045 extends that approved private numerical scope to attributed provider-supplied valuation observations. Preserve their original metric/date/period/currency and citations; distinguish them from issuer-reported facts and app calculations. This permits evaluating supplied historical ratios without requiring a separate SEC/price reconstruction; operation scope follows DEC-046 and public-release gates still apply.
 
-- backend contracts exist for search, overview/details, Weekly News Focus, AI Comprehensive Analysis, comparison, grounded chat, glossary, exports, ingestion states, provider adapters, trust metrics, generated-output cache writes, local durable repository reads/writes, and LLM runtime diagnostics
-- frontend routes and components exist for home search, API-backed asset pages with deterministic fallback, comparison, chat, source metadata, glossary, and export controls
-- local frontend/API plumbing exists for MVP smoke testing: browser helpers prefer the configured FastAPI base URL, the Next app can rewrite `/api/:path*` to the local backend, and FastAPI CORS is wired from `CORS_ALLOWED_ORIGINS`
-- local durable repository execution has in-memory fallback, configured reader boundaries, and optional browser/API smoke coverage, but normal CI remains fixture-backed
-- v0.5 ETF manifest split contracts are implemented: supported ETF generated-output coverage reads `data/universes/us_equity_etfs_supported.current.json`, while recognition-only blocked states read `data/universes/us_etp_recognition.current.json`; the legacy combined ETF fixture remains only for repo continuity
-- repo-native source-handoff manifest tooling, governed golden API/frontend rendering proof, launch-manifest review packets, and the deterministic local fresh-data MVP rehearsal command are implemented as review-only/operator-safe layers
-- opt-in official-source acquisition readiness exists for SEC stock, ETF issuer, and Weekly News golden paths, and the lightweight fresh-data fetch path now exposes `/api/assets/{ticker}/fresh-data` plus `scripts/run_lightweight_data_fetch_smoke.py` for local stock/ETF fetch validation; launch-sized governed source artifacts and ETF-500 source-pack approvals remain audit-quality hardening gaps
-- v0.6 local validation expects operator-only live-AI review for grounded chat and AI Comprehensive Analysis when evidence thresholds are met, while CI and ordinary local tests remain deterministic mocks
-- CI and local checks are deterministic and fixture-backed; normal quality gates do not depend on live provider, market-data, news, or LLM calls
-- the local manual fresh-data readiness gate is review-only and reports `manual_test_ready` when deterministic local lightweight checks pass; strict ETF-500 coverage, ETF issuer source-pack approval, Top-500 SEC source-pack approval, parser readiness, Golden Asset Source Handoff, freshness/as-of metadata, checksums, local ingestion review, and generated-output cache promotion remain visible as `strict_audit_stop_conditions` that do not block lightweight local rendering
+P-013: Keep facts, calculated metrics, interpretations and unverified notes separate. Preserve conflicts and restated versions. Charts use admitted numeric evidence with compatible units, periods and corporate actions. Model prose is not numerical input.
 
-Near-term implementation priority order:
+P-014: Cite important facts in pages and conversations. Citation support must match the asset and claim. Include publication, effective/as-of and retrieval dates, provenance, freshness, original URL and permitted supporting text. Explain unavailable or uncertain support. Store admitted facts together with their original source references in immutable evidence versions, and supply those references when reusing facts in later conversation rounds. Historical retrieval dates never imply fresh verification.
 
-1. preserve the deterministic launch-readiness regression layer for search, support states, asset pages, comparison, source drawer, contextual glossary, grounded chat, exports, Weekly News Focus, AI Comprehensive Analysis, and mobile workflow markers
-2. preserve the implemented v0.5 ETF manifest split so strict supported ETF generated-output coverage stays separate from ETF/ETP recognition-only blocked search states, while lightweight local fetches can show source-labeled partial data for in-scope ETFs
-3. preserve Golden Asset Source Handoff enforcement for strict/audit-quality promotion across source allowlist records, source snapshots, knowledge packs, citations, generated-output cache entries, source drawer output, and exports
-4. preserve the reviewed Top-500 candidate-manifest refresh workflow that uses official IWB holdings first, official SPY/IVV/VOO holdings only as fallback inputs, SEC/Nasdaq validation, checksums, and a diff report before current-manifest promotion
-5. preserve optional browser E2E and local durable smoke for golden assets using the API-base/proxy/CORS path before production deployment work
-6. expand ETF eligible-universe review outputs from the current fixture-sized packet into category, exclusion, source-pack, and generated-output eligibility packets for the ETF-500 reviewed local MVP scope
-7. keep stock and ETF source-pack readiness packets split between local lightweight generated-surface eligibility and strict/audit source-pack status, so `insufficient_evidence` and `pending_review` remain audit diagnostics rather than local display blockers
-8. add batchable, resumable local ingestion planning so high-demand assets run first, then supported ETFs and top-500 stocks by review priority, while normal CI remains deterministic
-9. defer production deployment hardening, recurring jobs, broad paid-provider integrations, and post-MVP features until the local fresh-data path passes strict quality gates
+P-015: Import URLs, PDFs, CSVs and spreadsheets as untrusted material. Parser limits and source permissions apply. No-browsing connections explain cached/imported material only and disclose that limit.
 
-When choosing the next task, prefer improving PRD/TDS alignment of the current deterministic scaffold over adding new domains or speculative infrastructure.
-The local agent-loop harness should default to `gpt-5.5` with `high` reasoning effort, while allowing explicit per-run overrides such as `gpt-5.3-codex-spark` when the operator requests it.
+## Product experience
 
-## Source And Freshness Rules
+P-020: Retain overview, business/fund model, financial trends, holdings/exposures, valuation context, risks, charts, sources and freshness. Less important detail can collapse; beginner and intermediate explanations remain equally accessible.
 
-Stable facts must come from official or structured sources before model-written explanations.
+The ticker page should provide a finance-dashboard experience: overview/profile and basic listing information, available quote/chart history, key statistics, annual/quarterly financials, relevant ticker news and permitted analyst insights. The user's Yahoo Finance screenshots are feature/layout references, never factual fixtures or instructions. Analyst estimates and outlooks are attributed third-party opinions with dates, separate from reported results and generated explanations; P-002 remains in force. Show provider and underlying publisher where known, as-of time, delay/freshness and unavailable states. Source availability need not be identical across tickers.
 
-Provider hierarchy for MVP planning:
+P-021: Stream normalized progress and admit evidence progressively. Unknown, stale, unavailable, partial, insufficient evidence and not applicable are explicit states. Never render fixture content as live research.
 
-- stock canonical facts: SEC EDGAR submissions, SEC XBRL company facts, SEC filings, then company investor relations
-- ETF canonical facts: issuer pages, fact sheets, prospectuses, shareholder reports, holdings files, and exposure files
-- structured enrichment: free-first reference data and optional provider adapters only where licensing, rate limits, caching, display, and export rights allow
-- Economic Indicators: U.S.-only official historical actuals plus source-labeled market references where source-use policy allows, rendered as common context before market/ticker news
-- Market News Focus: approved reputable news/RSS/provider metadata sources where rights permit, normalized into reusable market-wide story clusters
-- ticker Weekly News Focus: official filings, investor-relations releases, issuer announcements, prospectus changes, fact-sheet changes, then approved reputable third-party/news sources where rights permit
+P-022: Concise arbitrary-term explanations through click/selection; hover and keyboard focus only reuse cache or curated definitions. Preserve a small curated glossary fallback. Cache generated explanations by term, evidence version, language and reader level. Generated asset-specific interpretations cite admitted evidence; generic definitions clearly identify missing source support. Generated terms never feed facts, charts, calculations or future factual context. Cached explanations remain available offline and across provider switches.
 
-Market News Focus and Weekly News Focus must use the last completed Monday-Sunday market week plus current week-to-date through yesterday, using U.S. Eastern dates. Market News Focus selects up to 20 approved market-wide story clusters, can be reused across supported ticker pages, and should show fewer items or a clear empty state when evidence is limited. Ticker Weekly News Focus keeps its official-first max-8 asset event workflow.
+P-023: Persistent conversations begin scoped to the page asset. Scope changes are visible and confirmed by identity resolution where needed. Provider changes preserve app history. Never let unsupported notes become factual context.
 
-Backend runtime summaries and AI analysis use a curated `generation_context` layered on top of `generation_evidence_pack`. The context contains summary-friendly `asset_profile`, `identity_context`, `exposure_context`, `market_context`, `ticker_context`, and `evidence_limits` groups. It may include already normalized Yahoo/yfinance-derived profile fields when source labels and rights-safe output rules are preserved, but Beginner Summary inputs must exclude raw quote, chart, price, volume, and technical-indicator fields unless required for identity.
+The page supplies bounded, permitted, version-scoped ticker evidence and original references to learning actions so users do not need to paste its contents or first request basic ticker facts. Term explanations, ticker questions and explicit comparisons reuse that context; selecting another ticker still requires independent identity resolution. Local display permission alone does not establish permission to send content to a cloud model.
 
-Codex-assisted analysis packs are structured JSON imports, not generated HTML artifacts. `analysis-pack-import-bundle-v1` may provide a fresh `market_context_pack-v1`, high-demand ticker packs, `economic-indicators-pack-v1`, `ai_context.json` metadata, and technical-indicator diagnostics through an admin validation/import path. Local operator CLIs default to live mode outside CI, pytest, static evals, and quality gates, while `--deterministic` forces fixture/no-live behavior. Live mode may use source-labeled news metadata, U.S. official macro source metadata with FRED as structured cross-check/fallback, Yahoo chart OHLCV metadata, and computed KD/RSI/MACD/BIAS/DMI/ADX/moving-average/volume-change fields. Imported market packs are used only while valid and fresh; imported ticker packs are limited to high-demand supported assets (`AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `VOO`, `QQQ`, `SPY`, `VTI`, `IVV`, `XLK`). Missing, stale, invalid, non-seed, or rights-unsafe imported packs fall back to the backend runtime pipeline. Accepted imports may be process-memory only or file-backed durable when `ANALYSIS_PACK_REPOSITORY_PATH`/`LTT_ANALYSIS_PACK_REPOSITORY_PATH` is configured before backend startup; file-backed storage must also write append-only import history.
+P-024: Saved reports and bookmarks reference immutable evidence versions. Refresh-on-use/manual refresh regenerate affected explanations. Older research remains accessible. Personal Markdown/JSON exports retain citations, dates and uncertainty; omit secrets, restricted raw content and hidden reasoning.
 
-MVP/v1 intentionally defers admin role/auth, cryptographic signed-bundle verification, rollback API/UI, and required operator identity for the personal GitHub/Vercel/GCP deployment path. If deployed, the import endpoint must stay local/private or be explicitly environment-gated. Checksum validation, source-use validation, no-raw-payload validation, import history, and optional `operator_label` metadata remain required in this slice.
+P-025: Comparisons show aligned evidence and gaps, never an investment winner. Offline supports cached pages, cached term explanations, curated definitions and previously generated comparisons; it does not generate new research or calculations.
 
-For local live ticker Weekly News, configured provider APIs and Yahoo/yfinance are candidate-discovery channels. Acquisition order remains official -> provider API -> Yahoo/yfinance, but final non-official selection is quality-ranked by ticker relevance, beginner utility, publisher reputation, source-use policy, recency, and duplicate status. A reputable Yahoo-discovered item may outrank a weak provider-API item. Generic market-regime or opinion pieces should stay in Market News Focus unless they have a clear ticker, issuer, ETF, index, holding, flow, fee, distribution, product, earnings, regulatory, customer, or supply-chain hook. Lower-reputation publishers are backfill only when strongly ticker-specific and non-advice-like.
+## Timely and historical context
 
-Ticker-specific AI Comprehensive Analysis must be suppressed unless at least two approved Weekly News Focus items exist. Approved reputable third-party items may count when source governance permits them and they are clearly labeled as third-party reporting. When present, the analysis starts with What Changed This Week, then Market Context, Business/Fund Context, and Risk Context. Market AI analysis must be suppressed unless enough approved market clusters exist across multiple topic buckets; when present, it uses thematic lenses including Scenario Lens and Practical Watchpoints, cites selected market news clusters, and avoids predictive or recommendation language.
+P-030: Weekly News Focus covers last completed Monday–Sunday plus current week through yesterday in U.S. Eastern time. Deduplicate high-signal, permitted items; official events first. Fewer than three triggers up-to-30-day Earlier context, separate from weekly counts. Weekly analysis needs two weekly items. Historical research reports can exist without recent news.
 
-Generated market and ticker analysis must cite only selected news, canonical facts, and validated `ai_context.json` records. Numeric claims about VIX, DXY, Treasury yields, close price, KD, RSI, MACD, BIAS, ADX, moving averages, or volume change must match the allowed numeric facts in `ai_context.json`; technical indicator fields such as ADX or volume must not be described as price levels. Yield-curve flattening or inversion appears only when the validated spread is under 25 bps or inverted, and geopolitical/supply-chain warnings appear only when selected news contains configured risk keywords.
+P-031: Default history is five annual years, twelve quarters and five daily-price years. Preserve latest restated and superseded figures. Show price return and total return separately. ETF history accumulates current/month-end observations and available backfill. Historical valuations require aligned inputs. Point-in-time analysis is deferred.
 
-Generated Beginner Summary, Deep Dive, Market AI, and ticker AI outputs must pass copy-quality validation. Rejected wording includes internal or low-value phrases such as fixtures, local MVP, available evidence, provider market-reference, raw provider key names like `regularMarketPrice`, and "this section uses..." phrasing. Market AI must synthesize selected stories with Economic Indicators and allowed numeric facts rather than only counting topic buckets or repeating headlines.
+## Runtime and operations
 
-Source-use policy wins over scoring. Rejected or rights-disallowed sources must not display, summarize, cache, or export. Raw source text storage is rights-tiered across `full_text_allowed`, `summary_allowed`, `metadata_only`, `link_only`, and `rejected`.
+P-040: ChatGPT/Codex, Gemini and Claude all pass capability and evidence tests before public v1. One selected runtime/model at once. Explicit cloud permission; provider-managed sign-in where supported. No consumer-website scraping, browser-cookie harvesting, API billing fallback or silent provider switching. Pause on quota, authentication and incompatibility.
 
-Golden Asset Source Handoff is the approval layer between retrieval and strict/audit-quality evidence use. Fetching from SEC, issuer sites, ETF holdings files, APIs, or provider adapters does not approve strict evidence by itself. Before a source is promoted into governed evidence storage, generated-output cache entries, or audit-quality exports, it must have approved domain/source identity, source type, official-source status, storage rights, export rights, source-use policy, approval rationale, parser status, freshness/as-of metadata, and review status. In lightweight personal-MVP mode, source-labeled normalized facts may support local display and local smoke validation before full handoff approval when raw payloads remain hidden and partial/unavailable states are visible.
+DEC-066 sets the active qualification order: preserve the scoped native Windows Codex result; qualify Codex on WSL2, then Antigravity on WSL2, then Claude Code on native Windows and WSL2 after the owner has a subscribed account. Native Windows Antigravity is deferred while its credential-isolation interface is unresolved. Record each provider/platform separately; a WSL result never qualifies the native Windows binary. All three commercial agents across Windows/WSL remain the long-term target. This sequencing change does not declare a deferred combination supported or authorize an incomplete public release.
 
-Top-500 stock coverage must be manifest-owned. The approved runtime manifest is `data/universes/us_common_stocks_top500.current.json`; monthly refresh work produces a candidate manifest and diff report before review. Official IWB holdings are the primary source input; official SPY, IVV, and VOO holdings are fallback inputs only. Live holdings or provider responses may inform candidates, but they must never become runtime coverage truth directly.
+Before first research, in Connections and in setup documentation, disclose that the application is free/open source but its supported AI workflows require the user's own paid commercial-agent subscription. Explain the agent's role in finding/reviewing sources, reasoning, summarization and content generation, plus consented provider transmission. Distinguish new AI work from saved research/conversations/explanations and curated definitions that remain available without a connection. Show current provider readiness; never imply that a paid plan, successful login or a provider's free chat tier establishes app compatibility. Free-account integrations require separate qualification before being advertised. This disclosure does not add a payment check or change existing per-request model/usage gates (DEC-065).
 
-ETF strict/audit-quality coverage remains manifest-owned. The implemented v0.5 runtime authority for strict generated ETF output is `data/universes/us_equity_etfs_supported.current.json`; the recognition-only authority for blocked ETF/ETP search states is `data/universes/us_etp_recognition.current.json`. ETF-500 is the named audit-quality target. Lightweight local fetches may render partial educational data for recognized in-scope ETFs from manifest/scope signals and reputable provider fallback, but recognition rows, live listings, provider flags, and issuer search results must still block clearly unsupported complex products and unknown tickers.
+P-041: Same-computer access only. Temporary authenticated local transport, OS credential storage, isolated workspaces, scoped tool permissions, explicit approval for destructive/expanded access, no telemetry.
 
-## Hard Product Rules
+P-042: Closing the window keeps active research in the tray. Quit shuts down owned processes cleanly. Start-at-login is optional and off by default. Application/database updates default to notify/approve, with manual/automatic settings and coordinated rollback.
 
-The product must:
+P-043: Full backups exclude credentials. Restore preserves newer research and validates database/app compatibility. Saved work persists until deletion; unsaved conversations expire after 180 idle days unless bookmarked. Disposable cache defaults to 10 GB with protected permitted evidence supporting saved work.
 
-- use source-backed facts before model-written explanations
-- separate stable canonical facts from Market News Focus, Weekly News Focus, and AI Comprehensive Analysis
-- render Economic Indicators as a cited common context layer, separate from stable asset identity and timely news analysis
-- show visible citations for important factual claims
-- show freshness or as-of information at page and section level
-- say unknown, stale, mixed evidence, unavailable, partial, or insufficient evidence when needed
-- keep chat grounded in the selected asset knowledge pack
-- block unsupported and out-of-scope assets from generated pages, generated chat, and generated comparisons
-- frame suitability as education, not personalized advice
-- preserve source hierarchy and source-use rights
-- run Golden Asset Source Handoff before evidence storage, generation, citation, cache, or export use
-- resolve top-500 stock support from the approved manifest rather than live runtime provider data
-- keep live provider, market-data, news, and LLM calls out of normal CI
-- reject imported analysis packs that expose raw article text, unrestricted provider payloads, secrets, hidden prompts, raw model reasoning, or visible persona labels
+P-044: Engineering target 1,000 cached assets, two retrieval jobs and one inference. This is not a coverage cap. Collect baseline timings; numerical performance acceptance remains deferred.
 
-The product must not:
+P-045: Freely distributed open-source desktop application. Retain one-command repository setup for developer previews, then deliver a Windows installer that includes core application dependencies. Handle provider prerequisites explicitly. Native Windows and Windows with WSL2 are the active environments under DEC-066; macOS and standalone Linux distribution are future work. OpenCode, Ollama and other open-source runtimes/models follow the commercial-agent integrations and need their own model, tool, resource, license and evidence qualification. No local-model execution is enabled by this roadmap. LAN/remote access and external app MCP hosting remain deferred.
 
-- tell users what to buy
-- tell users what to sell
-- tell users what to hold
-- tell users how much to allocate
-- provide tax advice
-- provide unsupported price targets
-- provide brokerage or trading execution behavior
-- present market-wide or ticker-specific recent news as stable asset identity
-- invent facts when evidence is missing
-- present unsupported claims as facts
-- expose provider or LLM secrets to browser code, docs, logs, `/health`, or committed env files
+## Release acceptance
 
-Advice-like user questions must be redirected into educational framing.
+Normal CI is deterministic, synthetic or permitted-recorded, with no live subscriptions. Separate live checks verify all three adapters. Windows release must install and run without developer tooling, validate lifecycle, backups, interrupted upgrades and rollback, and disclose provider prerequisites. Source, app and runtime licenses must be reviewed. Public v1 remains incomplete until these checks and all product workflows pass.
 
-Safe style:
+## Architecture requirements
 
-> I can't tell you whether to buy, sell, hold, or how much to invest. I can help you understand what this asset is, what it holds or does, its main risks, how it compares with alternatives, and what questions a beginner may want to research before making their own decision.
+Use React/TypeScript/Vite in Tauri 2, a packaged FastAPI service, and private PostgreSQL with SQLAlchemy/Alembic. Pydantic generates JSON Schema and TypeScript. Production enters backend/app; root npm commands delegate to apps/desktop. The native host supervises owned processes and exposes only private bootstrap IPC. No generic frontend shell/filesystem capability. Distribution is source plus Windows release artifacts.
 
-## Technical Success
+## Operating defaults and definition of done
 
-A task is complete only when:
+Preserve the defaults in [DEC-006](DECISIONS.md#dec-006-data-history-retention-and-scheduling). All P-series requirements and mandatory [PLAN.md](PLAN.md) milestones must have passing [EVALS.md](EVALS.md) evidence. Required missing checks and blocked live/installer acceptance prevent completion. A passing build, stored setting, or synthetic provider cannot establish shipped functionality.
 
-- the requested behavior is implemented
-- relevant unit tests pass
-- relevant integration tests pass, if applicable
-- relevant golden tests pass, if applicable
-- citation validation passes when citations are touched
-- safety evals pass when summaries, chat, suitability text, or advice-boundary copy are touched
-- Weekly News Focus/source-use tests pass when timely context or source allowlists are touched
-- summary and AI-analysis copy-quality validators pass when prompts, generation context, or fallback copy are touched
-- frontend smoke/type/build checks pass when UI or frontend workspace layout is touched
-- Bash and PowerShell workflow prompts stay aligned when agent-loop instructions are touched
-- Top-500 manifest and Golden Asset Source Handoff checks pass when coverage, ingestion, source policy, citations, caches, or exports are touched
-- no unrelated behavior is changed
-- normal CI remains deterministic and does not require live external calls
-- placeholder env files contain no real secrets
-- the final summary explains changed files, tests run, results, and remaining risks
-
-## MVP Success Checklist
-
-MVP is ready when:
-
-- the home page has one primary action: search for a single supported stock or ETF
-- the home page routes clear `A vs B` queries to `/compare?left=...&right=...` without becoming a comparison builder
-- search resolves supported stocks and ETFs by ticker, partial ticker, name, and issuer/provider where useful
-- search rows show ticker, name, stock/ETF identity, exchange or issuer, and support-state chips
-- unsupported and out-of-scope assets show clear blocked states
-- top-500 stock scope is driven by the versioned manifest, not live runtime provider queries
-- Top-500 candidate refreshes produce reviewed candidate files, source provenance, checksums, validation warnings, and diff reports before promotion
-- ETF-500 supported ETF scope is driven by the supported ETF manifest, while ETF/ETP recognition rows remain blocked from generated pages, chat, comparisons, Weekly News Focus, AI Comprehensive Analysis, and exports
-- Golden Asset Source Handoff blocks unapproved, unclear-rights, parser-invalid, hidden/internal, pending-review, and rejected sources from evidence storage, generation, citation, cache, and export paths
-- stock and ETF pages render beginner summaries from source-backed evidence
-- stock pages cover business overview, products/services, strengths, financial quality, risks, valuation context, Weekly News Focus, AI Comprehensive Analysis, and educational suitability
-- ETF pages cover role, holdings/exposure, construction, cost/trading context, risks, comparison/overlap, Weekly News Focus, AI Comprehensive Analysis, and educational suitability
-- partial pages render verified sections only and label missing evidence
-- top risks show exactly three items first
-- Market News Focus, Weekly News Focus, and AI Comprehensive Analysis are visually and structurally separate from stable facts and from each other
-- Market News Focus appears above ticker-specific Weekly News Focus on supported asset pages and is reusable across tickers
-- Weekly News Focus includes source date or as-of date, event date where available, retrieved date, citation/source link, source quality, source-use policy, and freshness state
-- key factual claims have visible citations or explicit uncertainty/unavailable labels
-- source drawer shows source metadata, freshness, source-use policy, related claims, and allowed supporting excerpts
-- comparison works as a separate connected workflow for ETF-vs-ETF, stock-vs-stock, and stock-vs-ETF pairs, with an educational beginner bottom line
-- stock-vs-ETF comparison uses relationship badges and the single-company-vs-ETF-basket structure
-- limited asset-specific chat answers only from the selected asset knowledge pack
-- single-asset chat redirects second-ticker comparison questions to the comparison workflow
-- accountless chat uses anonymous conversation IDs, 7-day TTL, deletion, minimal browser storage, and no raw transcript analytics/training/evaluation use
-- glossary explains core beginner terms contextually through desktop popovers and mobile bottom sheets, and avoids uncited asset-specific facts
-- source drawer, glossary, and asset chat remain usable on mobile through bottom sheets or full-screen panels
-- safety guardrails block buy/sell/hold, price-target, tax, brokerage, and allocation advice
-- users can export/download asset page content, comparison output, source lists, and chat transcripts as Markdown or JSON where licensing permits
-- caching and freshness hashes prevent unnecessary repeated API and LLM work
-- trust metrics can track citation coverage, unsupported claims, freshness accuracy, glossary usage, comparison usage, source drawer usage, safety redirects, export usage, and latency without raw user text
+Windows public v1 remains the release finish line; WSL2 commercial-agent development is now active. macOS, standalone Linux distribution, point-in-time analysis, LAN access and external app MCP hosting remain deferred. OpenCode/Ollama and other open-source runtimes follow commercial-agent qualification. No new latency SLA is implied; collect measured baselines.

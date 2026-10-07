@@ -9,8 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 EVALS_DIR = ROOT / "evals"
 
 os.environ.setdefault("LTT_FORCE_COMPAT_FASTAPI", "1")
+os.environ["LTT_STATIC_EVALS_RUNNING"] = "true"
 os.environ.setdefault("LIGHTWEIGHT_LIVE_FETCH_ENABLED", "false")
 os.environ.setdefault("LIGHTWEIGHT_WEEKLY_NEWS_FETCH_ENABLED", "false")
+os.environ["ECONOMIC_INDICATORS_LIVE_FETCH_ENABLED"] = "false"
 os.environ.setdefault("MARKET_NEWS_FETCH_ENABLED", "false")
 os.environ.setdefault("MARKET_NEWS_LIVE_SOURCE_REAL_FETCH_ENABLED", "false")
 sys.path.insert(0, str(ROOT))
@@ -208,8 +210,8 @@ def load_yaml(filename: str) -> dict:
     return data
 
 
-def test_golden_assets():
-    data = load_yaml("golden_assets.yaml")
+def test_reference_asset_scenarios():
+    data = load_yaml("reference_asset_scenarios.yaml")
     assert data.get("schema_version") == "golden-assets-v2"
 
     required_technical_stocks = {"AAPL", "MSFT", "NVDA", "TSLA"}
@@ -1919,13 +1921,13 @@ def test_glossary_context_contract():
     main_source = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
     glossary_source = (ROOT / "backend" / "glossary.py").read_text(encoding="utf-8")
     models_source = (ROOT / "backend" / "models.py").read_text(encoding="utf-8")
-    frontend_glossary_source = (ROOT / "apps" / "web" / "lib" / "glossary.ts").read_text(encoding="utf-8")
+    frontend_glossary_source = (ROOT / "apps" / "desktop" / "lib" / "glossary.ts").read_text(encoding="utf-8")
     for route in data["required_routes"]:
         assert route in main_source
     assert "build_glossary_response" in main_source
 
     for marker in data["forbidden_static_markers"]:
-        if marker == "apps/web/lib/glossary.ts":
+        if marker == "apps/desktop/lib/glossary.ts":
             assert "glossary-asset-context-v1" not in frontend_glossary_source
             continue
         assert marker not in glossary_source
@@ -2834,7 +2836,7 @@ def test_llm_provider_cases():
 def test_local_deployment_env_smoke_cases():
     smoke = run_local_deployment_env_smoke(run_docker_config=False)
     assert smoke["schema_version"] == LOCAL_DEPLOYMENT_ENV_SMOKE_SCHEMA_VERSION
-    assert smoke["status"] == "pass"
+    assert smoke["status"] == "blocked"
     assert smoke["normal_ci_requires_live_calls"] is False
     assert smoke["production_services_started"] is False
     assert smoke["deployments_created"] is False
@@ -2845,19 +2847,20 @@ def test_local_deployment_env_smoke_cases():
     assert smoke["production_ready"] is False
 
     checks = {check["check_id"]: check for check in smoke["checks"]}
-    assert checks["browser_env_secret_separation"]["status"] == "pass"
-    assert checks["server_env_readiness_placeholders"]["cloud_run_api_env_placeholders_present"] is True
-    assert checks["server_env_readiness_placeholders"]["cloud_run_worker_env_placeholders_present"] is True
-    assert checks["server_env_readiness_placeholders"]["vercel_next_public_api_base_placeholder_present"] is True
-    assert checks["repo_local_deployment_scaffolding"]["apps_web_is_vercel_project_root"] is True
-    assert checks["repo_local_deployment_scaffolding"]["next_api_rewrite_or_api_base_behavior_present"] is True
+    assert checks["browser_env_secret_separation"]["status"] == "blocked"
+    assert all(not item["unsafe_env_names"] and item["missing_safe_env_names"] for item in checks["browser_env_secret_separation"]["blockers"])
+    assert checks["server_env_readiness_placeholders"]["cloud_run_api_env_placeholders_present"] is False
+    assert checks["server_env_readiness_placeholders"]["cloud_run_worker_env_placeholders_present"] is False
+    assert checks["server_env_readiness_placeholders"]["vercel_next_public_api_base_placeholder_present"] is False
+    assert checks["repo_local_deployment_scaffolding"]["apps_web_is_vercel_project_root"] is False
+    assert checks["repo_local_deployment_scaffolding"]["reason_code"] == "legacy_web_runtime_retired"
     assert checks["docker_compose_config"]["status"] == "skipped"
 
     combined = "\n".join(
         [
             (ROOT / "scripts/run_local_deployment_env_smoke.py").read_text(encoding="utf-8"),
             (ROOT / "scripts/run_local_fresh_data_rehearsal.py").read_text(encoding="utf-8"),
-            (ROOT / "docs/local_fresh_data_ingest_to_render_runbook.md").read_text(encoding="utf-8"),
+            (ROOT / "docs/archive/2026-10-07-main/local_fresh_data_ingest_to_render_runbook.md").read_text(encoding="utf-8"),
         ]
     )
     for marker in [
@@ -2996,8 +2999,8 @@ def test_current_stock_manifest_fetch_smoke_cases():
 def test_lightweight_mvp_readiness_gate_cases():
     gate = run_lightweight_mvp_readiness_gate(env={})
     assert gate["schema_version"] == LIGHTWEIGHT_MVP_READINESS_GATE_SCHEMA_VERSION
-    assert gate["status"] == "pass"
-    assert gate["local_personal_mvp_ready_for_manual_review"] is True
+    assert gate["status"] == "blocked"
+    assert gate["local_personal_mvp_ready_for_manual_review"] is False
     assert gate["normal_ci_requires_live_calls"] is False
     assert gate["production_services_started"] is False
     assert gate["deployments_created"] is False
@@ -3108,7 +3111,7 @@ def test_lightweight_mvp_readiness_gate_cases():
     combined = "\n".join(
         [
             (ROOT / "scripts/run_lightweight_mvp_readiness_gate.py").read_text(encoding="utf-8"),
-            (ROOT / "docs/local_fresh_data_ingest_to_render_runbook.md").read_text(encoding="utf-8"),
+            (ROOT / "docs/archive/2026-10-07-main/local_fresh_data_ingest_to_render_runbook.md").read_text(encoding="utf-8"),
         ]
     )
     for marker in [
@@ -3204,7 +3207,7 @@ def _assert_provider_generated_flags_off(response: ProviderResponse, case_id: st
 
 
 if __name__ == "__main__":
-    test_golden_assets()
+    test_reference_asset_scenarios()
     test_top500_stock_universe_manifest_contract()
     test_safety_cases()
     test_citation_cases()

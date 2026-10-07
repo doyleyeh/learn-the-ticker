@@ -970,7 +970,7 @@ def _default_local_runtime_enabled(
 
 
 def _running_in_ci_or_pytest(source: dict[str, str] | os._Environ[str]) -> bool:
-    for name in ("CI", "GITHUB_ACTIONS", "BUILDKITE"):
+    for name in ("CI", "GITHUB_ACTIONS", "BUILDKITE", "LTT_STATIC_EVALS_RUNNING"):
         if _bool_setting(source.get(name), False) or _bool_setting(os.environ.get(name), False):
             return True
     for name in ("JENKINS_URL", "PYTEST_CURRENT_TEST"):

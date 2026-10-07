@@ -48,7 +48,7 @@ from backend.weekly_news_sources import build_lightweight_weekly_news_focus
 
 ANALYSIS_PACK_PRODUCER_SCHEMA_VERSION = "analysis-pack-producer-report-v1"
 ANALYSIS_PACK_PRODUCER_PROMPT_VERSION = "codex-assisted-analysis-pack-prompt-v1"
-CODEX_INSTRUCTIONS_PATH = "docs/ANALYSIS_PACK_CODEX_INSTRUCTIONS.md"
+CODEX_INSTRUCTIONS_PATH = "docs/archive/2026-10-07-main/ANALYSIS_PACK_CODEX_INSTRUCTIONS.md"
 
 
 def default_analysis_pack_tickers() -> tuple[str, ...]:
